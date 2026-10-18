@@ -6,7 +6,11 @@
       "ref": "667de3f35545de2148ba6c1e158208b3555124eb",
       "root": "apps/blog/content",
       "private": false,
-      "expected": 14
+      "expected": 14,
+      "syntax": {
+        "gfm": true,
+        "math": true
+      }
     },
     {
       "name": "yjshd",
@@ -14,7 +18,8 @@
       "ref": "973185e415530dee0a7c08f169188278d6312be9",
       "root": "content",
       "private": true,
-      "expected": 157
+      "expected": 157,
+      "syntax": {}
     }
   ]
 }
