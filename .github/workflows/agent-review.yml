@@ -1,0 +1,203 @@
+name: Agent review
+
+# 에이전트 PR의 CI가 끝나면 돈다.
+# - CI 실패: 로그를 주고 수정 → push → CI 재실행
+# - CI 통과: 독립 리뷰 → 승인이면 auto-merge, 수정 요청이면 수정 → push → CI 재실행
+# 수정 횟수가 상한을 넘으면 needs-human을 달고 멈춘다.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+concurrency:
+  group: agent-review-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  issues: read
+
+env:
+  REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
+  BRANCH: ${{ github.event.workflow_run.head_branch }}
+  HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+  CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+  CI_RUN_ID: ${{ github.event.workflow_run.id }}
+  MAX_FIX: ${{ vars.AGENT_MAX_FIX || '2' }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  review:
+    # 포크 PR이 agent/ 브랜치 이름을 써도 돌지 않게 같은 레포만 허용한다.
+    if: >-
+      vars.AGENT_ENABLED == 'true' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'agent/') &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: PR 찾기
+        id: pr
+        run: |
+          pr=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --label agent --json number,headRefOid,body --jq '.[0] // empty')
+          if [ -z "$pr" ]; then echo "열린 에이전트 PR 없음"; exit 0; fi
+          if [ "$(echo "$pr" | jq -r .headRefOid)" != "$HEAD_SHA" ]; then echo "이미 새 커밋이 있음 → 이번 CI 결과는 건너뜀"; exit 0; fi
+          echo "number=$(echo "$pr" | jq -r .number)" >> "$GITHUB_OUTPUT"
+          echo "issue=$(echo "$pr" | jq -r .body | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.pr.outputs.number
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          token: ${{ secrets.AGENT_GH_TOKEN }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        if: steps.pr.outputs.number
+      - uses: actions/setup-node@v4
+        if: steps.pr.outputs.number
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 준비
+        id: prep
+        if: steps.pr.outputs.number
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          ISSUE: ${{ steps.pr.outputs.issue }}
+        run: |
+          pnpm install --frozen-lockfile
+          GITHUB_TOKEN="${{ secrets.FIXTURES_TOKEN || github.token }}" pnpm fixtures:sync
+          mkdir -p .agent
+          gh issue view "$ISSUE" -R "$REPO" --json title,body \
+            --jq '"# #\(env.ISSUE) \(.title)\n\n\(.body)"' > .agent/issue.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          fixes=$(gh pr view "$PR" -R "$REPO" --json comments --jq '[.comments[].body | select(contains("<!-- agent:fix -->"))] | length')
+          echo "fixes=$fixes" >> "$GITHUB_OUTPUT"
+          echo "review_schema=$(jq -c . .github/agent/schema-review.json)" >> "$GITHUB_ENV"
+          echo "work_schema=$(jq -c . .github/agent/schema-work.json)" >> "$GITHUB_ENV"
+          if [ "$CI_CONCLUSION" = "success" ]; then
+            git diff origin/main...HEAD > .agent/diff.patch
+            echo "mode=review" >> "$GITHUB_OUTPUT"
+          else
+            { echo "# CI 실패 로그 (마지막 300줄)"; echo; echo '```'; GH_TOKEN="${{ github.token }}" gh run view "$CI_RUN_ID" -R "$REPO" --log-failed | tail -n 300; echo '```'; } > .agent/feedback.md
+            echo "mode=fix" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 리뷰 (Claude)
+        id: review
+        if: steps.prep.outputs.mode == 'review'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: "`.github/agent/review.md`의 지시를 따른다. 이슈는 `.agent/issue.md`, 변경은 `.agent/diff.patch`에 있다."
+          claude_args: >-
+            --max-turns 40
+            --json-schema '${{ env.review_schema }}'
+            --allowedTools "Read,Glob,Grep,Bash(pnpm test),Bash(pnpm test *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(ls *)"
+            --disallowedTools "Edit,Write"
+
+      - name: 리뷰 결과 처리
+        id: verdict
+        if: steps.prep.outputs.mode == 'review'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          ISSUE: ${{ steps.pr.outputs.issue }}
+          RESULT: ${{ steps.review.outputs.structured_output }}
+          FIXES: ${{ steps.prep.outputs.fixes }}
+        run: |
+          RESULT="${RESULT:-null}"
+          verdict=$(echo "$RESULT" | jq -r '.verdict // "error"')
+          if [ "$verdict" = "error" ]; then
+            gh pr comment "$PR" -R "$REPO" --body "<!-- agent:review-error -->
+          리뷰 단계가 결과를 내지 못함 (사용량 한도·턴 상한·오류 가능) · [실행 로그]($RUN_URL)"
+            gh pr edit "$PR" -R "$REPO" --add-label needs-human
+            exit 0
+          fi
+          {
+            echo "<!-- agent:review-$verdict -->"
+            echo "## 에이전트 리뷰: $verdict"; echo
+            echo "$RESULT" | jq -r '.summary'; echo
+            echo "$RESULT" | jq -r '.findings[] | "- `\(.file)\(if .line then ":\(.line)" else "" end)` \(.problem)\n  - 수정: \(.fix)"'
+            echo; echo "[실행 로그]($RUN_URL)"
+          } > .agent/review.md
+          gh pr comment "$PR" -R "$REPO" --body-file .agent/review.md
+
+          if [ "$verdict" = "approve" ]; then
+            gh pr merge "$PR" -R "$REPO" --auto --merge --delete-branch
+            exit 0
+          fi
+          if [ "$FIXES" -ge "$MAX_FIX" ]; then
+            gh pr comment "$PR" -R "$REPO" --body "수정 ${FIXES}회 후에도 리뷰를 통과하지 못해 멈춤. 사람 확인 필요."
+            gh pr edit "$PR" -R "$REPO" --add-label needs-human
+            gh issue edit "$ISSUE" -R "$REPO" --add-label needs-human
+            exit 0
+          fi
+          { echo "# 리뷰 지적"; echo; echo "$RESULT" | jq -r '.findings[] | "- \(.file)\(if .line then ":\(.line)" else "" end): \(.problem)\n  수정: \(.fix)"'; } > .agent/feedback.md
+          echo "fix=true" >> "$GITHUB_OUTPUT"
+
+      - name: CI 실패 수정 한도 확인
+        id: cigate
+        if: steps.prep.outputs.mode == 'fix'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          ISSUE: ${{ steps.pr.outputs.issue }}
+          FIXES: ${{ steps.prep.outputs.fixes }}
+        run: |
+          if [ "$FIXES" -ge "$MAX_FIX" ]; then
+            gh pr comment "$PR" -R "$REPO" --body "수정 ${FIXES}회 후에도 CI가 실패해 멈춤. 사람 확인 필요 · [CI 로그](${{ github.event.workflow_run.html_url }})"
+            gh pr edit "$PR" -R "$REPO" --add-label needs-human
+            gh issue edit "$ISSUE" -R "$REPO" --add-label needs-human
+            exit 0
+          fi
+          echo "fix=true" >> "$GITHUB_OUTPUT"
+
+      - name: 수정 (Claude)
+        id: fix
+        if: steps.verdict.outputs.fix == 'true' || steps.cigate.outputs.fix == 'true'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: "`.github/agent/fix.md`의 지시를 따른다. 이슈는 `.agent/issue.md`, 고칠 내용은 `.agent/feedback.md`에 있다."
+          claude_args: >-
+            --max-turns 60
+            --json-schema '${{ env.work_schema }}'
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git status),Bash(git status *),Bash(git diff *),Bash(git add *),Bash(git commit *),Bash(git log *),Bash(git show *),Bash(ls *)"
+
+      - name: 수정 push
+        if: steps.verdict.outputs.fix == 'true' || steps.cigate.outputs.fix == 'true'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          ISSUE: ${{ steps.pr.outputs.issue }}
+          RESULT: ${{ steps.fix.outputs.structured_output }}
+          OUTCOME: ${{ steps.fix.outcome }}
+        run: |
+          RESULT="${RESULT:-null}"
+          status=$(echo "$RESULT" | jq -r '.status // "failed"')
+          new=$(git rev-list --count "$HEAD_SHA"..HEAD)
+          if [ "$OUTCOME" = "success" ] && [ "$status" = "done" ] && [ "$new" -gt 0 ]; then
+            git push origin "HEAD:$BRANCH"
+            gh pr comment "$PR" -R "$REPO" --body "<!-- agent:fix -->
+          ## 에이전트 수정
+
+          $(echo "$RESULT" | jq -r '.summary')
+
+          [실행 로그]($RUN_URL)"
+            exit 0
+          fi
+          reason=$(echo "$RESULT" | jq -r '.blocked_reason // .summary // empty')
+          gh pr comment "$PR" -R "$REPO" --body "<!-- agent:fix-failed -->
+          수정 실패 (status: ${status}, 결과: ${OUTCOME}, 새 커밋 ${new}개) · [실행 로그]($RUN_URL)
+
+          ${reason}"
+          gh pr edit "$PR" -R "$REPO" --add-label needs-human
+          gh issue edit "$ISSUE" -R "$REPO" --add-label needs-human

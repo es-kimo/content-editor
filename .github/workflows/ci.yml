@@ -25,3 +25,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.FIXTURES_TOKEN || github.token }}
       - run: pnpm test
       - run: pnpm build
+
+  # 에이전트 PR(agent/ 브랜치)이 규칙 파일·워크플로·픽스처 설정을 바꾸거나 테스트를 꺼서 통과시키지 못하게 막는다.
+  # 다른 PR에서는 바로 통과한다 (필수 체크로 걸기 위해 항상 실행한다).
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 에이전트 PR 금지 변경 검사
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'agent/')
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          changed=$(git diff --name-only "$BASE"...HEAD)
+          bad=$(echo "$changed" | grep -E '^(\.github/|CLAUDE\.md$|AGENTS\.md$|fixtures\.config\.json$|scripts/sync-fixtures\.mts$|scripts/agent/)' || true)
+          disabled=$(git diff "$BASE"...HEAD -- '*.test.ts' '*.test.mts' | grep -E '^\+.*\b(test|it|describe)\.(skip|only|todo)\(' || true)
+          if [ -n "$bad" ]; then echo "::error::에이전트 PR이 수정할 수 없는 파일:"; echo "$bad"; fi
+          if [ -n "$disabled" ]; then echo "::error::새로 추가된 skip/only/todo:"; echo "$disabled"; fi
+          [ -z "$bad" ] && [ -z "$disabled" ]
