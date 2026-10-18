@@ -23,7 +23,20 @@ pnpm dev            # http://localhost:3000
 | `pnpm test`         | Vitest (`src/**/*.test.ts`)             |
 | `pnpm build`        | 프로덕션 빌드                           |
 
-PR마다 GitHub Actions가 `lint`, `format:check`, `typecheck`, `test`, `build`를 돌린다.
+PR마다 GitHub Actions가 `lint`, `format:check`, `typecheck`, `fixtures:sync`, `test`, `build`를 돌린다.
+
+## 테스트 픽스처
+
+mdx-doc은 실제 사이트 글 전체로 테스트한다. 대상 레포·커밋·기대 글 수는 `fixtures.config.json`에 고정한다.
+
+```bash
+pnpm fixtures:sync   # fixtures/<name>/ 아래에 page.mdx를 받는다 (gitignore)
+```
+
+- 토큰은 `GITHUB_TOKEN` 환경변수, 없으면 `gh auth token`을 쓴다.
+- yjshd는 private 레포라 글을 이 공개 레포에 커밋하지 않는다. 읽을 권한이 없으면 받지 않고, 그 소스의 테스트는 건너뛴다.
+- CI에서 yjshd까지 테스트하려면 `es-kimo/yjshd`에 Contents read 권한이 있는 fine-grained PAT를 레포 시크릿 `FIXTURES_TOKEN`으로 등록한다.
+- 기준 커밋을 올리려면 `fixtures.config.json`의 `ref`와 `expected`를 고치고 다시 받는다.
 
 ## 구조
 

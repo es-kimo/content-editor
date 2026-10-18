@@ -19,5 +19,9 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm typecheck
+      - run: pnpm fixtures:sync
+        env:
+          # yjshd(private) 픽스처는 FIXTURES_TOKEN 시크릿이 있을 때만 받는다. 없으면 blog만 받고 yjshd 테스트는 건너뛴다.
+          GITHUB_TOKEN: ${{ secrets.FIXTURES_TOKEN || github.token }}
       - run: pnpm test
       - run: pnpm build

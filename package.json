@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "fixtures:sync": "node scripts/sync-fixtures.mts"
   },
   "dependencies": {
     "next": "16.4.2",
