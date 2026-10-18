@@ -108,16 +108,21 @@ jobs:
           status=$(echo "$RESULT" | jq -r '.status // "failed"')
           commits=$(git rev-list --count origin/main..HEAD)
 
+          reason=""
           if [ "$OUTCOME" = "success" ] && [ "$status" = "done" ] && [ "$commits" -gt 0 ]; then
-            git push -u origin "$BRANCH"
+            # claude-code-action이 git 인증을 GITHUB_TOKEN으로 바꿔 두므로 push 전에 PAT로 되돌린다.
+            git config --unset-all http.https://github.com/.extraheader || true
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
             { echo "Closes #$N"; echo; echo "$RESULT" | jq -r '.summary'; echo; echo "---"; echo "에이전트 자동 생성 · [실행 로그]($RUN_URL)"; } > .agent/pr.md
-            gh pr create -R "$REPO" --base main --head "$BRANCH" \
+            if git push -u origin "$BRANCH" && gh pr create -R "$REPO" --base main --head "$BRANCH" \
               --title "$(gh issue view "$N" -R "$REPO" --json title --jq .title)" \
-              --body-file .agent/pr.md --label agent
-            exit 0
+              --body-file .agent/pr.md --label agent; then
+              exit 0
+            fi
+            reason="구현은 끝났지만 push 또는 PR 생성에 실패 (실행 로그 확인)"
           fi
 
-          reason=$(echo "$RESULT" | jq -r '.blocked_reason // .summary // empty')
+          [ -z "$reason" ] && reason=$(echo "$RESULT" | jq -r '.blocked_reason // .summary // empty')
           [ -z "$reason" ] && reason="Claude 단계 결과: ${OUTCOME}, status: ${status}, 커밋 ${commits}개 (사용량 한도·턴 상한·오류 가능, 실행 로그 확인)"
           gh issue comment "$N" -R "$REPO" --body "<!-- agent:attempt-failed -->
           에이전트 구현 시도 실패 · [실행 로그]($RUN_URL)

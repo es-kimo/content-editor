@@ -184,17 +184,23 @@ jobs:
           RESULT="${RESULT:-null}"
           status=$(echo "$RESULT" | jq -r '.status // "failed"')
           new=$(git rev-list --count "$HEAD_SHA"..HEAD)
+          reason=""
           if [ "$OUTCOME" = "success" ] && [ "$status" = "done" ] && [ "$new" -gt 0 ]; then
-            git push origin "HEAD:$BRANCH"
-            gh pr comment "$PR" -R "$REPO" --body "<!-- agent:fix -->
+            # claude-code-action이 git 인증을 GITHUB_TOKEN으로 바꿔 두므로 push 전에 PAT로 되돌린다.
+            git config --unset-all http.https://github.com/.extraheader || true
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+            if git push origin "HEAD:$BRANCH"; then
+              gh pr comment "$PR" -R "$REPO" --body "<!-- agent:fix -->
           ## 에이전트 수정
 
           $(echo "$RESULT" | jq -r '.summary')
 
           [실행 로그]($RUN_URL)"
-            exit 0
+              exit 0
+            fi
+            reason="수정은 끝났지만 push에 실패 (실행 로그 확인)"
           fi
-          reason=$(echo "$RESULT" | jq -r '.blocked_reason // .summary // empty')
+          [ -z "$reason" ] && reason=$(echo "$RESULT" | jq -r '.blocked_reason // .summary // empty')
           gh pr comment "$PR" -R "$REPO" --body "<!-- agent:fix-failed -->
           수정 실패 (status: ${status}, 결과: ${OUTCOME}, 새 커밋 ${new}개) · [실행 로그]($RUN_URL)
 
