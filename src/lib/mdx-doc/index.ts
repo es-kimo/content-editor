@@ -2,4 +2,6 @@ export { parseMdx, printMdx } from "./split";
 export type { HeadSegment, MdxDoc, Syntax } from "./split";
 export { parseMetadata } from "./metadata";
 export { setMetadata } from "./metadata-print";
+export { addImage, findUnusedImageImports, readImageImports } from "./images";
+export type { AddedImage, ImageImport } from "./images";
 export type { MetadataResult, MetadataValue } from "./metadata";
