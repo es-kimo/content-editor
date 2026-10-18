@@ -32,6 +32,11 @@ export function readImageImports(doc: MdxDoc): ImageImport[] {
  * 겹치지 않는 변수명(`imageN`)·파일명(`N.ext`)으로 이미지를 추가한다.
  * 기존 글의 `image`, `image.png` 같은 이름은 그대로 두고 번호만 이어 붙인다.
  */
+// JSX 문자열 속성은 백슬래시 이스케이프를 해석하지 않고 문자 참조만 해석한다
+function escapeJsxAttribute(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+}
+
 export function addImage(doc: MdxDoc, options: { extension: string; component: string; alt?: string }): AddedImage {
   if (!doc.ok) throw new Error("구간으로 나눌 수 없는 글에는 이미지를 추가할 수 없다");
   const extension = options.extension.replace(/^\./, "").toLowerCase();
@@ -51,7 +56,7 @@ export function addImage(doc: MdxDoc, options: { extension: string; component: s
   const file = `${n}.${extension}`;
 
   const importText = formatImport(doc.head, name, `./${file}`);
-  const tag = `<${options.component} src={${name}} alt=${JSON.stringify(options.alt ?? "")} />`;
+  const tag = `<${options.component} src={${name}} alt="${escapeJsxAttribute(options.alt ?? "")}" />`;
   return { doc: { ...doc, head: insertImport(doc.head, importText) }, name, file, tag };
 }
 

@@ -1,3 +1,6 @@
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { mdxFromMarkdown } from "mdast-util-mdx";
+import { mdxjs } from "micromark-extension-mdxjs";
 import { describe, expect, test } from "vitest";
 
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
@@ -113,6 +116,17 @@ describe("addImage", () => {
     const added = addImage(parseMdx(sample), { extension: "webp", component: "Image" });
     expect(parseMdx(printMdx(added.doc)).ok).toBe(true);
   });
+
+  test.each(['그는 "안녕"', "경로 C:\\temp\\n", "줄\n바꿈", "R&D &amp; &quot;"])(
+    "alt에 특수문자가 있어도 tag가 파싱되고 alt가 보존된다: %j",
+    (alt) => {
+      const added = addImage(parseMdx(sample), { extension: "png", component: "Image", alt });
+      expect(parseMdx(`${added.tag}\n`).ok).toBe(true);
+      const tree = fromMarkdown(added.tag, { extensions: [mdxjs()], mdastExtensions: [mdxFromMarkdown()] });
+      const element = tree.children[0] as { attributes: { name: string; value: unknown }[] };
+      expect(element.attributes.find((a) => a.name === "alt")?.value).toBe(alt);
+    },
+  );
 
   test("지원하지 않는 확장자와 파싱 실패 글은 거부한다", () => {
     expect(() => addImage(parseMdx(sample), { extension: "exe", component: "Image" })).toThrow();
