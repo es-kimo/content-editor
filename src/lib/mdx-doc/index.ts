@@ -5,3 +5,5 @@ export { setMetadata } from "./metadata-print";
 export { addImage, findUnusedImageImports, readImageImports } from "./images";
 export type { AddedImage, ImageImport } from "./images";
 export type { MetadataResult, MetadataValue } from "./metadata";
+export { checkMdx } from "./check";
+export type { MdxCheck, MdxError } from "./check";
