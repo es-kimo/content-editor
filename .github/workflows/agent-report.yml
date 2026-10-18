@@ -1,0 +1,46 @@
+name: Agent report
+
+# 매일 07:00 KST에 지난 24시간의 에이전트 작업을 `agent-report` 라벨 이슈에 코멘트로 남긴다.
+on:
+  schedule:
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
+
+jobs:
+  report:
+    if: vars.AGENT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 보고 작성
+        run: |
+          since=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          list() { jq -r 'if length == 0 then "- 없음" else .[] | "- #\(.number) \(.title)" end'; }
+          merged=$(gh pr list -R "$REPO" --label agent --state merged --search "merged:>=$since" --json number,title | list)
+          open=$(gh pr list -R "$REPO" --label agent --state open --json number,title | list)
+          human=$(gh issue list -R "$REPO" --label needs-human --state open --json number,title | list)
+          runs() { GH_TOKEN="${{ github.token }}" gh run list -R "$REPO" --workflow "$1" --created ">=$since" --json conclusion --jq '"\(length)회 (실패 \([.[] | select(.conclusion == "failure")] | length))"'; }
+          {
+            echo "## $(TZ=Asia/Seoul date +%Y-%m-%d) 에이전트 보고 (지난 24시간)"
+            echo; echo "### merge된 PR"; echo "$merged"
+            echo; echo "### 열린 에이전트 PR"; echo "$open"
+            echo; echo "### 사람 확인 필요 (needs-human)"; echo "$human"
+            echo; echo "### 실행"
+            echo "- 구현: $(runs agent-implement.yml)"
+            echo "- 리뷰·수정: $(runs agent-review.yml)"
+          } > report.md
+          cat report.md
+
+          gh label create agent-report -R "$REPO" --color c5def5 --description "에이전트 아침 보고" --force
+          issue=$(gh issue list -R "$REPO" --label agent-report --state open --json number --jq '.[0].number // empty')
+          if [ -z "$issue" ]; then
+            issue=$(gh issue create -R "$REPO" --label agent-report --title "에이전트 아침 보고" --body "매일 07:00 KST에 지난 24시간의 에이전트 작업을 코멘트로 남긴다." | grep -oE '[0-9]+$')
+          fi
+          gh issue comment "$issue" -R "$REPO" --body-file report.md

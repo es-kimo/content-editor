@@ -1,0 +1,130 @@
+name: Agent implement
+
+# 밤 시간대(01:00~06:30 KST)에 30분마다 다음 이슈 하나를 골라 구현하고 PR을 연다.
+# 열린 에이전트 PR이 있으면 아무것도 하지 않는다 (동시 1개).
+on:
+  schedule:
+    - cron: "*/30 16-21 * * *"
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "이슈 번호 (비우면 자동 선택)"
+        required: false
+
+concurrency:
+  group: agent-implement
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+env:
+  REPO: ${{ github.repository }}
+  # push·PR·라벨은 PAT로 한다. 기본 GITHUB_TOKEN으로 push하면 CI가 돌지 않는다.
+  GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
+  AGENT_MILESTONES: ${{ vars.AGENT_MILESTONES || 'M1 mdx-doc,M2 GitHub 연동,M3 편집 UI' }}
+  MAX_PRS: ${{ vars.AGENT_MAX_PRS_PER_NIGHT || '4' }}
+  MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS || '2' }}
+
+jobs:
+  implement:
+    if: vars.AGENT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.AGENT_GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: 다음 이슈 고르기
+        id: pick
+        run: |
+          open=$(gh pr list -R "$REPO" --label agent --state open --json number --jq length)
+          if [ "$open" != "0" ]; then echo "열린 에이전트 PR ${open}개 → 건너뜀"; exit 0; fi
+          since=$(date -u -d '12 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          made=$(gh pr list -R "$REPO" --label agent --state all --search "created:>=$since" --json number --jq length)
+          if [ "$made" -ge "$MAX_PRS" ]; then echo "최근 12시간 PR ${made}개, 상한 ${MAX_PRS} → 건너뜀"; exit 0; fi
+
+          if [ -n "${{ inputs.issue }}" ]; then
+            number="${{ inputs.issue }}"
+          else
+            number=$(node scripts/agent/pick-issue.mts | jq -r '.number // empty')
+          fi
+          if [ -z "$number" ]; then echo "고를 이슈 없음"; exit 0; fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          echo "branch=agent/${number}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "이슈 #$number"
+
+      - uses: pnpm/action-setup@v4
+        if: steps.pick.outputs.number
+      - uses: actions/setup-node@v4
+        if: steps.pick.outputs.number
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: 준비
+        if: steps.pick.outputs.number
+        env:
+          N: ${{ steps.pick.outputs.number }}
+        run: |
+          pnpm install --frozen-lockfile
+          GITHUB_TOKEN="${{ secrets.FIXTURES_TOKEN || github.token }}" pnpm fixtures:sync
+          mkdir -p .agent
+          gh issue view "$N" -R "$REPO" --json title,body,comments \
+            --jq '"# #\(env.N) \(.title)\n\n\(.body)\n\n## 코멘트\n" + ([.comments[] | "- \(.author.login): \(.body)"] | join("\n"))' > .agent/issue.md
+          gh issue edit "$N" -R "$REPO" --add-label "in progress"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "${{ steps.pick.outputs.branch }}"
+          echo "schema=$(jq -c . .github/agent/schema-work.json)" >> "$GITHUB_ENV"
+
+      - name: 구현 (Claude)
+        id: claude
+        if: steps.pick.outputs.number
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: "`.github/agent/implement.md`의 지시를 따른다. 구현할 이슈는 `.agent/issue.md`에 있다."
+          claude_args: >-
+            --max-turns 80
+            --json-schema '${{ env.schema }}'
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git status),Bash(git status *),Bash(git diff *),Bash(git add *),Bash(git commit *),Bash(git log *),Bash(git show *),Bash(ls *)"
+
+      - name: PR 열기 또는 실패 기록
+        if: steps.pick.outputs.number
+        env:
+          N: ${{ steps.pick.outputs.number }}
+          BRANCH: ${{ steps.pick.outputs.branch }}
+          RESULT: ${{ steps.claude.outputs.structured_output }}
+          OUTCOME: ${{ steps.claude.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          RESULT="${RESULT:-null}"
+          status=$(echo "$RESULT" | jq -r '.status // "failed"')
+          commits=$(git rev-list --count origin/main..HEAD)
+
+          if [ "$OUTCOME" = "success" ] && [ "$status" = "done" ] && [ "$commits" -gt 0 ]; then
+            git push -u origin "$BRANCH"
+            { echo "Closes #$N"; echo; echo "$RESULT" | jq -r '.summary'; echo; echo "---"; echo "에이전트 자동 생성 · [실행 로그]($RUN_URL)"; } > .agent/pr.md
+            gh pr create -R "$REPO" --base main --head "$BRANCH" \
+              --title "$(gh issue view "$N" -R "$REPO" --json title --jq .title)" \
+              --body-file .agent/pr.md --label agent
+            exit 0
+          fi
+
+          reason=$(echo "$RESULT" | jq -r '.blocked_reason // .summary // empty')
+          [ -z "$reason" ] && reason="Claude 단계 결과: ${OUTCOME}, status: ${status}, 커밋 ${commits}개 (사용량 한도·턴 상한·오류 가능, 실행 로그 확인)"
+          gh issue comment "$N" -R "$REPO" --body "<!-- agent:attempt-failed -->
+          에이전트 구현 시도 실패 · [실행 로그]($RUN_URL)
+
+          $reason"
+          gh issue edit "$N" -R "$REPO" --remove-label "in progress"
+          failed=$(gh issue view "$N" -R "$REPO" --json comments --jq '[.comments[].body | select(contains("<!-- agent:attempt-failed -->"))] | length')
+          if [ "$status" = "blocked" ] || [ "$failed" -ge "$MAX_ATTEMPTS" ]; then
+            gh issue edit "$N" -R "$REPO" --add-label needs-human
+          fi
