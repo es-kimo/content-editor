@@ -22,6 +22,15 @@ describe("setMetadata", () => {
     expect(out).toBe(`import a from "a";\n\nexport const metadata = {\n  title: "b",\n};\n\n# 본문\n`);
   });
 
+  test("metadata 구간이 둘이면 첫 구간만 다시 쓰고 두 번째 구간은 원본 그대로다", () => {
+    const second = `export const metadata = {title:"b"};`;
+    const parsed = parseMdx(`export const metadata = {title:"a"};\n\n${second}\n\n본문\n`);
+    expect(parsed.ok && parsed.head.filter((segment) => segment.kind === "metadata")).toHaveLength(2);
+    const out = printMdx(setMetadata(parsed, { title: "c" }));
+    expect(out.startsWith(`export const metadata = {\n  title: "c"`)).toBe(true);
+    expect(out.endsWith(`\n\n${second}\n\n본문\n`)).toBe(true);
+  });
+
   test("원본 스타일(작은따옴표, 4칸 들여쓰기, 후행 쉼표 없음)을 유지한다", () => {
     const parsed = doc(`{\n    title: 'a',\n    tags: ['x']\n}`);
     const out = printMdx(setMetadata(parsed, { title: "it's", tags: ["x", "y"] }));

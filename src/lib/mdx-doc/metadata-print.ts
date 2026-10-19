@@ -23,10 +23,9 @@ export function setMetadata(doc: MdxDoc, next: { [key: string]: MetadataValue })
   const current = parseMetadata(original);
   if (!current.editable || isEqual(current.value, next)) return doc;
 
-  // metadata 구간은 한 글에 하나뿐이다. 같은 이름을 두 번 export하면 구문 오류라 구간으로 나뉘지 않는다.
-  const head = doc.head.map((segment) =>
-    segment.kind === "metadata" ? { ...segment, text: printMetadata(next, detectStyle(original)) } : segment,
-  );
+  const index = doc.head.findIndex((segment) => segment.kind === "metadata");
+  const head = [...doc.head];
+  head[index] = { ...head[index]!, text: printMetadata(next, detectStyle(original)) };
   return { ...doc, head };
 }
 
