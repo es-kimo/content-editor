@@ -61,15 +61,18 @@ Agent report (07:00 KST)    지난 24시간 결과를 `agent-report` 이슈에 �
 
 - 고르는 이슈: 마일스톤 `AGENT_MILESTONES`에 속하고, 의존 이슈가 모두 닫혔고, `needs-human`·`blocked`·`spike`·`in progress` 라벨이 없는 것
 - 동시에 열린 에이전트 PR은 1개. 수정이 `AGENT_MAX_FIX`회를 넘거나 막히면 `needs-human`을 달고 멈춘다
+- 사용량 한도로 멈춘 실행은 실패로 세지 않는다. 구현은 다음 cron이 다시 고르고, 리뷰·수정은 PR에 `agent-retry`를 달아 다음 cron이 다시 돌린다 (`scripts/agent/classify.mts`가 실행 기록으로 판단)
 - 규칙: `CLAUDE.md`, 역할별 지시: `.github/agent/*.md`
 
-| 설정                                   | 종류     | 값                                                                                            |
-| -------------------------------------- | -------- | --------------------------------------------------------------------------------------------- |
-| `CLAUDE_CODE_OAUTH_TOKEN`              | secret   | `claude setup-token` (구독 사용)                                                              |
-| `AGENT_GH_TOKEN`                       | secret   | fine-grained PAT, 이 레포만, Contents·Pull requests·Issues 쓰기. Workflows 권한은 주지 않는다 |
-| `AGENT_ENABLED`                        | variable | `true`일 때만 돈다 (끄는 스위치)                                                              |
-| `AGENT_MILESTONES`                     | variable | 기본 `M1 mdx-doc,M2 GitHub 연동,M3 편집 UI`                                                   |
-| `AGENT_MAX_PRS_PER_NIGHT`              | variable | 기본 `4`                                                                                      |
-| `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS` | variable | 기본 `2` / `2`                                                                                |
+| 설정                                                                  | 종류     | 값                                                                                              |
+| --------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `CLAUDE_CODE_OAUTH_TOKEN`                                             | secret   | `claude setup-token` (구독 사용)                                                                |
+| `AGENT_GH_TOKEN`                                                      | secret   | fine-grained PAT, 이 레포만, Contents·Pull requests·Issues 쓰기. Workflows 권한은 주지 않는다   |
+| `AGENT_ENABLED`                                                       | variable | `true`일 때만 돈다 (끄는 스위치)                                                                |
+| `AGENT_MILESTONES`                                                    | variable | 기본 `M1 mdx-doc,M2 GitHub 연동,M3 편집 UI`                                                     |
+| `AGENT_MAX_PRS_PER_NIGHT`                                             | variable | 기본 `4`                                                                                        |
+| `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `2` / `2`                                                                                  |
+| `AGENT_MODEL`                                                         | variable | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR·리뷰 코멘트에 남는다 |
+| `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `high` / `medium` / `medium`                                                               |
 
 수동 실행: `gh workflow run agent-implement.yml -f issue=<번호>`

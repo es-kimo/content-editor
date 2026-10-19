@@ -8,7 +8,7 @@ Git 레포의 MDX 글을 웹에서 편집하고 그 레포에 커밋하는 에�
 
 ```bash
 pnpm install
-pnpm fixtures:sync   # 실제 글 171편을 fixtures/에 받는다 (테스트 정답지)
+pnpm fixtures:sync   # 실제 글 171편을 fixtures/에 받는다 (테스트 정답지). 에이전트 실행에서는 워크플로가 이미 받아 두므로 다시 실행하지 않는다
 pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build
 pnpm format          # 포맷 자동 수정
 ```

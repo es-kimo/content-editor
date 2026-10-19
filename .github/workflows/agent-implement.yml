@@ -19,6 +19,8 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
+  # 한도에 걸려 멈춘 리뷰 실행을 다시 돌리는 데 쓴다 (gh run rerun).
+  actions: write
 
 env:
   REPO: ${{ github.repository }}
@@ -27,6 +29,8 @@ env:
   AGENT_MILESTONES: ${{ vars.AGENT_MILESTONES || 'M1 mdx-doc,M2 GitHub 연동,M3 편집 UI' }}
   MAX_PRS: ${{ vars.AGENT_MAX_PRS_PER_NIGHT || '4' }}
   MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS || '2' }}
+  AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}
+  EFFORT: ${{ vars.AGENT_EFFORT_IMPLEMENT || 'high' }}
 
 jobs:
   implement:
@@ -42,6 +46,17 @@ jobs:
       - name: 다음 이슈 고르기
         id: pick
         run: |
+          # 사용량 한도로 리뷰·수정이 멈춘 PR(agent-retry)은 마지막 리뷰 실행을 다시 돌린다.
+          retry=$(gh pr list -R "$REPO" --label agent-retry --state open --json number,headRefName --jq '.[0] // empty')
+          if [ -n "$retry" ]; then
+            head=$(echo "$retry" | jq -r .headRefName)
+            run=$(GH_TOKEN="${{ github.token }}" gh run list -R "$REPO" --workflow agent-review.yml --branch "$head" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            if [ -n "$run" ] && GH_TOKEN="${{ github.token }}" gh run rerun "$run" -R "$REPO"; then
+              gh pr edit "$(echo "$retry" | jq -r .number)" -R "$REPO" --remove-label agent-retry
+              echo "PR $(echo "$retry" | jq -r .number)의 리뷰 실행 $run 재시도"
+            fi
+            exit 0
+          fi
           open=$(gh pr list -R "$REPO" --label agent --state open --json number --jq length)
           if [ "$open" != "0" ]; then echo "열린 에이전트 PR ${open}개 → 건너뜀"; exit 0; fi
           since=$(date -u -d '12 hours ago' +%Y-%m-%dT%H:%M:%SZ)
@@ -91,9 +106,13 @@ jobs:
           github_token: ${{ github.token }}
           prompt: "`.github/agent/implement.md`의 지시를 따른다. 구현할 이슈는 `.agent/issue.md`에 있다."
           claude_args: >-
+            --model ${{ env.AGENT_MODEL }}
+            --fallback-model sonnet
+            --effort ${{ env.EFFORT }}
             --max-turns 80
             --json-schema '${{ env.schema }}'
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git status),Bash(git status *),Bash(git diff *),Bash(git add *),Bash(git commit *),Bash(git log *),Bash(git show *),Bash(ls *)"
+            --disallowedTools "Bash(pnpm fixtures:sync),Bash(pnpm fixtures:sync *)"
 
       - name: PR 열기 또는 실패 기록
         if: steps.pick.outputs.number
@@ -102,18 +121,30 @@ jobs:
           BRANCH: ${{ steps.pick.outputs.branch }}
           RESULT: ${{ steps.claude.outputs.structured_output }}
           OUTCOME: ${{ steps.claude.outcome }}
+          EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           RESULT="${RESULT:-null}"
           status=$(echo "$RESULT" | jq -r '.status // "failed"')
           commits=$(git rev-list --count origin/main..HEAD)
+          info=$(node scripts/agent/classify-run.mts "$EXEC_FILE")
+          kind=$(echo "$info" | jq -r .kind)
+          models=$(echo "$info" | jq -r '.models | join(", ")')
+          echo "실행 결과: $info"
+
+          # 사용량 한도는 시도 실패로 세지 않는다. 이슈를 비워 두고 다음 cron에서 다시 고른다.
+          if [ "$kind" = "limit" ]; then
+            echo "::warning::사용량 한도로 중단: $(echo "$info" | jq -r .detail)"
+            gh issue edit "$N" -R "$REPO" --remove-label "in progress"
+            exit 0
+          fi
 
           reason=""
           if [ "$OUTCOME" = "success" ] && [ "$status" = "done" ] && [ "$commits" -gt 0 ]; then
             # claude-code-action이 git 인증을 GITHUB_TOKEN으로 바꿔 두므로 push 전에 PAT로 되돌린다.
             git config --unset-all http.https://github.com/.extraheader || true
             git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
-            { echo "Closes #$N"; echo; echo "$RESULT" | jq -r '.summary'; echo; echo "---"; echo "에이전트 자동 생성 · [실행 로그]($RUN_URL)"; } > .agent/pr.md
+            { echo "Closes #$N"; echo; echo "$RESULT" | jq -r '.summary'; echo; echo "---"; echo "에이전트 자동 생성 · 모델: ${models:-알 수 없음} · effort: $EFFORT · [실행 로그]($RUN_URL)"; } > .agent/pr.md
             if git push -u origin "$BRANCH" && gh pr create -R "$REPO" --base main --head "$BRANCH" \
               --title "$(gh issue view "$N" -R "$REPO" --json title --jq .title)" \
               --body-file .agent/pr.md --label agent; then
@@ -123,7 +154,7 @@ jobs:
           fi
 
           [ -z "$reason" ] && reason=$(echo "$RESULT" | jq -r '.blocked_reason // .summary // empty')
-          [ -z "$reason" ] && reason="Claude 단계 결과: ${OUTCOME}, status: ${status}, 커밋 ${commits}개 (사용량 한도·턴 상한·오류 가능, 실행 로그 확인)"
+          [ -z "$reason" ] && reason="Claude 단계 결과: ${OUTCOME} (${kind}), status: ${status}, 커밋 ${commits}개 · $(echo "$info" | jq -r .detail)"
           gh issue comment "$N" -R "$REPO" --body "<!-- agent:attempt-failed -->
           에이전트 구현 시도 실패 · [실행 로그]($RUN_URL)
 
