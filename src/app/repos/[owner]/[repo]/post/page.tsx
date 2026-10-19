@@ -8,7 +8,8 @@ import { assertRepoAllowed } from "@/app/_lib/site";
 import { createGitHubClient, readPost, type Post } from "@/lib/content";
 import { buildForm } from "@/lib/metadata-form";
 
-import { saveMetadataAction } from "./actions";
+import { saveBodyAction, saveMetadataAction } from "./actions";
+import { BodyEditor } from "./body-editor";
 import { MetadataForm } from "./metadata-form";
 
 type Params = Promise<{ owner: string; repo: string }>;
@@ -62,7 +63,16 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
 
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">본문</h2>
-        {post.doc.ok ? (
+        {post.doc.ok && post.collection.editor === "wysiwyg" ? (
+          // 저장한 뒤 같은 주소로 돌아오면 새 본문으로 에디터를 다시 열도록 key를 sha로 둔다.
+          <BodyEditor
+            key={post.sha}
+            body={post.doc.body}
+            syntax={loaded.config.syntax}
+            components={post.collection.components}
+            action={saveBodyAction.bind(null, repo, post.path, post.sha)}
+          />
+        ) : post.doc.ok ? (
           <pre className="overflow-x-auto rounded border p-3 text-sm whitespace-pre-wrap">{post.doc.body}</pre>
         ) : (
           <>

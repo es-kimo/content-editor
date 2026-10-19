@@ -24,3 +24,29 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Tailwind preflight가 제목·목록 모양을 지워 WYSIWYG 본문에서 구조가 보이지 않으므로 되돌린다. */
+.body-editor-content {
+  @apply flex flex-col gap-3 p-3 text-sm;
+}
+.body-editor-content h1 {
+  @apply text-2xl font-semibold;
+}
+.body-editor-content h2 {
+  @apply text-xl font-semibold;
+}
+.body-editor-content h3 {
+  @apply text-lg font-semibold;
+}
+.body-editor-content ul {
+  @apply list-disc pl-5;
+}
+.body-editor-content ol {
+  @apply list-decimal pl-5;
+}
+.body-editor-content a {
+  @apply underline;
+}
+.body-editor-content blockquote {
+  @apply border-l-2 pl-3 text-zinc-500;
+}
