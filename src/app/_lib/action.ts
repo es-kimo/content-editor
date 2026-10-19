@@ -1,7 +1,5 @@
-import { cookies } from "next/headers";
-
+import { readSession } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
-import { readAuthConfig, resolvePageSession, SESSION_COOKIE } from "@/lib/auth";
 import { CONFIG_FILE, loadEditorConfig, type EditorConfig } from "@/lib/editor-config";
 import { createGitHubClient, isUnauthorized, type GitHubClient } from "@/lib/github";
 
@@ -16,13 +14,8 @@ export async function runRepoAction<T>(
   run: (context: ActionContext) => Promise<T>,
 ): Promise<{ ok: true; value: T } | { ok: false; message: string }> {
   await assertRepoAllowed(repo);
-  // 갱신은 쿠키를 쓸 수 있는 라우트에서만 한다. 여기서 보내면 입력이 사라지므로 남은 토큰으로 시도하고 401이면 안내한다.
-  const page = resolvePageSession(
-    (await cookies()).get(SESSION_COOKIE)?.value,
-    readAuthConfig().sessionKey,
-    Date.now(),
-    true,
-  );
+  // 갱신하지 않으므로 남은 토큰으로 시도하고 401이면 안내한다.
+  const page = await readSession({ refresh: false });
   if (page.kind !== "ok") return { ok: false, message: "로그인이 필요하다. 다른 탭에서 로그인한 뒤 다시 저장한다." };
   const accessToken = page.session.accessToken;
 
