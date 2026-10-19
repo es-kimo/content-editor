@@ -19,6 +19,11 @@ export type HandlerDeps = { fetch: Fetch; now: number; warn: Warn };
 
 export const CALLBACK_PATH = "/api/auth/callback";
 export const REFRESH_PATH = "/api/auth/refresh";
+/**
+ * 갱신 라우트가 기존 토큰을 그대로 둔 채 돌려보낼 때 붙이는 쿼리. 만료 직전에 갱신이 거부되면 화면이 다시
+ * 갱신으로 보내 서로 리다이렉트하게 되므로, 화면은 이 표시가 있으면 남은 시간 동안 기존 토큰을 쓴다.
+ */
+export const REFRESH_ATTEMPTED_PARAM = "refreshed";
 
 /** GitHub 인가 화면에 머무를 수 있는 시간. 이보다 늦은 콜백은 state 쿠키가 없어 거부된다. */
 const STATE_MAX_AGE_S = 10 * 60;
@@ -87,13 +92,15 @@ export async function handleCallback(request: NextRequest, config: AuthConfig, d
 /** 서버 컴포넌트는 쿠키를 쓸 수 없어서, 갱신이 필요한 화면은 이 경로를 거쳐 돌아온다. */
 export async function handleRefresh(request: NextRequest, config: AuthConfig, deps: HandlerDeps) {
   const returnTo = new URL(safeReturnTo(request.nextUrl.searchParams.get("return_to")), request.nextUrl.origin);
-  const res = NextResponse.redirect(returnTo);
   const session = decodeSession(request.cookies.get(SESSION_COOKIE)?.value, config.sessionKey);
   if (!session) {
+    const res = NextResponse.redirect(returnTo);
     clearSessionCookie(res);
     return res;
   }
   const result = await ensureFreshSession(session, config, deps);
+  if (result.kind === "fresh") returnTo.searchParams.set(REFRESH_ATTEMPTED_PARAM, "1");
+  const res = NextResponse.redirect(returnTo);
   if (result.kind === "expired") clearSessionCookie(res);
   else if (result.kind === "refreshed") setSessionCookie(res, result.session, config, deps.now);
   return res;

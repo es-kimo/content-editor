@@ -125,4 +125,10 @@ describe("resolvePageSession", () => {
   test("만료 시각이 지난 세션은 갱신 경로로 보낸다", () => {
     expect(resolvePageSession(cookie, key, NOW + 9 * HOUR)).toEqual({ kind: "refresh" });
   });
+
+  test("갱신 라우트를 거쳐 왔으면 만료 직전이어도 다시 갱신으로 보내지 않는다", () => {
+    const nearExpiry = NOW + 8 * HOUR - 60 * 1000;
+    expect(resolvePageSession(cookie, key, nearExpiry)).toEqual({ kind: "refresh" });
+    expect(resolvePageSession(cookie, key, nearExpiry, true)).toEqual({ kind: "ok", session });
+  });
 });

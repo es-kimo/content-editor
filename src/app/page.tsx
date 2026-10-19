@@ -6,30 +6,34 @@ import {
   GitHubAuthError,
   loadAccount,
   readAuthConfig,
+  REFRESH_ATTEMPTED_PARAM,
   REFRESH_PATH,
   resolvePageSession,
   SESSION_COOKIE,
   type Account,
 } from "@/lib/auth";
 
-export default function Home() {
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
+export default function Home({ searchParams }: { searchParams: SearchParams }) {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-16 font-sans">
       <h1 className="text-2xl font-semibold">content-editor</h1>
       <Suspense fallback={<p className="text-zinc-500">불러오는 중…</p>}>
-        <AccountSection />
+        <AccountSection searchParams={searchParams} />
       </Suspense>
     </main>
   );
 }
 
-async function readPageSession() {
+async function readPageSession(searchParams: SearchParams) {
   const cookie = (await cookies()).get(SESSION_COOKIE)?.value;
-  return resolvePageSession(cookie, readAuthConfig().sessionKey, Date.now());
+  const refreshAttempted = (await searchParams)[REFRESH_ATTEMPTED_PARAM] !== undefined;
+  return resolvePageSession(cookie, readAuthConfig().sessionKey, Date.now(), refreshAttempted);
 }
 
-async function AccountSection() {
-  const page = await readPageSession();
+async function AccountSection({ searchParams }: { searchParams: SearchParams }) {
+  const page = await readPageSession(searchParams);
   if (page.kind === "anonymous") return <LoginLink />;
   if (page.kind === "refresh") redirect(`${REFRESH_PATH}?return_to=/`);
 

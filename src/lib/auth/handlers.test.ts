@@ -6,7 +6,15 @@ import { describe, expect, test, vi } from "vitest";
 import { formBody, json, mockFetch } from "@/test/mock-fetch";
 
 import type { AuthConfig } from "./config";
-import { handleCallback, handleLogin, handleLogout, handleRefresh, safeReturnTo } from "./handlers";
+import { resolvePageSession } from "./account";
+import {
+  handleCallback,
+  handleLogin,
+  handleLogout,
+  handleRefresh,
+  REFRESH_ATTEMPTED_PARAM,
+  safeReturnTo,
+} from "./handlers";
 import { decodeSession, encodeSession, SESSION_COOKIE, STATE_COOKIE, type Session } from "./session";
 
 const config: AuthConfig = { clientId: "Iv23test", clientSecret: "secret", sessionKey: randomBytes(32) };
@@ -188,6 +196,45 @@ describe("handleRefresh", () => {
     );
     expect(setCookie(res, SESSION_COOKIE)).toBeUndefined();
     expect(d.fetch).not.toHaveBeenCalled();
+  });
+
+  test("갱신에 성공하면 갱신 시도 표시를 붙이지 않는다", async () => {
+    const res = await handleRefresh(request("/api/auth/refresh?return_to=/", cookie()), config, deps());
+    expect(new URL(res.headers.get("location")!).searchParams.has(REFRESH_ATTEMPTED_PARAM)).toBe(false);
+  });
+
+  test("만료 직전에 갱신이 거부돼도 화면이 다시 갱신으로 보내지 않는다", async () => {
+    // 여유 시간(5분) 안이지만 아직 만료되지 않은 세션. 다른 탭이 refresh token을 먼저 써 버린 상황이다.
+    const nearExpiry = { ...session, accessTokenExpiresAt: NOW + 2 * 60 * 1000 };
+    const sessionCookie = encodeSession(nearExpiry, config.sessionKey);
+    expect(resolvePageSession(sessionCookie, config.sessionKey, NOW)).toEqual({ kind: "refresh" });
+
+    const res = await handleRefresh(
+      request("/api/auth/refresh?return_to=/", { [SESSION_COOKIE]: sessionCookie }),
+      config,
+      deps(mockFetch(() => json({ error: "bad_refresh_token" }))),
+    );
+    expect(setCookie(res, SESSION_COOKIE)).toBeUndefined();
+
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe("/");
+    const refreshAttempted = location.searchParams.has(REFRESH_ATTEMPTED_PARAM);
+    expect(resolvePageSession(sessionCookie, config.sessionKey, NOW, refreshAttempted)).toEqual({
+      kind: "ok",
+      session: nearExpiry,
+    });
+  });
+
+  test("만료 직전에 GitHub이 5xx를 줘도 화면이 다시 갱신으로 보내지 않는다", async () => {
+    const nearExpiry = { ...session, accessTokenExpiresAt: NOW + 2 * 60 * 1000 };
+    const sessionCookie = encodeSession(nearExpiry, config.sessionKey);
+    const res = await handleRefresh(
+      request("/api/auth/refresh?return_to=/", { [SESSION_COOKIE]: sessionCookie }),
+      config,
+      deps(mockFetch(() => new Response("bad gateway", { status: 502 }))),
+    );
+    const refreshAttempted = new URL(res.headers.get("location")!).searchParams.has(REFRESH_ATTEMPTED_PARAM);
+    expect(resolvePageSession(sessionCookie, config.sessionKey, NOW, refreshAttempted).kind).toBe("ok");
   });
 
   test("변조된 쿠키는 지운다", async () => {
