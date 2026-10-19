@@ -10,4 +10,5 @@ export {
 } from "./commit";
 export { fetchBlobTexts, fetchTree, listPosts, matchPosts, type PostListItem, type TreeEntry } from "./posts";
 export { findCollection, IMAGE_EXTENSIONS, isImageFile, readPost, type Post, type PostImage } from "./read";
+export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";
 export { summarizePost, type PostSummary } from "./summary";
