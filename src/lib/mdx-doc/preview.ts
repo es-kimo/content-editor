@@ -39,6 +39,7 @@ export function previewMdx(source: string, syntax: Syntax = {}, images: PreviewI
     },
   });
   removeUnsafeUrls(tree as Root);
+  openLinksInNewTab(tree as Root);
   return { ok: true, tree: tree as Root };
 }
 
@@ -75,6 +76,15 @@ function removeUnsafeUrls(node: Root | RootContent): void {
     }
   }
   if ("children" in node) for (const child of node.children) removeUnsafeUrls(child);
+}
+
+// 미리보기는 편집 화면 안에 있으므로 같은 탭에서 이동하면 저장하지 않은 본문을 잃는다.
+function openLinksInNewTab(node: Root | RootContent): void {
+  if (node.type === "element" && node.tagName === "a") {
+    node.properties.target = "_blank";
+    node.properties.rel = ["noopener", "noreferrer"];
+  }
+  if ("children" in node) for (const child of node.children) openLinksInNewTab(child);
 }
 
 function jsxElement(

@@ -29,7 +29,7 @@ describe("previewMdx", () => {
   test("마크다운 본문을 HTML로 그린다", () => {
     const out = html("# 제목\n\n**굵게** 문장과 [링크](https://a.com)\n\n- 하나\n- 둘\n\n> 인용\n\n---\n");
     expect(out).toContain("<h1>제목</h1>");
-    expect(out).toContain('<p><strong>굵게</strong> 문장과 <a href="https://a.com">링크</a></p>');
+    expect(out).toContain('<p><strong>굵게</strong> 문장과 <a href="https://a.com"');
     expect(out).toContain("<li>하나</li>");
     expect(out).toContain("<blockquote>");
     expect(out).toContain("<hr>");
@@ -100,6 +100,14 @@ describe("previewMdx", () => {
 
   test("HTML 속성으로 스크립트를 넣을 수 없다", () => {
     expect(html("[a](javascript:alert(1))\n")).not.toContain("javascript:");
+  });
+
+  // 같은 탭에서 이동하면 편집 화면을 떠나 저장하지 않은 본문을 잃는다.
+  test.each([
+    ["마크다운 링크", "[글](https://a.com)\n"],
+    ["HTML 링크", '<a href="/x">글</a>\n'],
+  ])("링크는 새 탭에서 열린다: %s", (_name, source) => {
+    expect(html(source)).toMatch(/<a href="[^"]+" target="_blank" rel="noopener noreferrer">글<\/a>/);
   });
 });
 
