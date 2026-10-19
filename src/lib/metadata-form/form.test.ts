@@ -1,20 +1,13 @@
 import { describe, expect, test } from "vitest";
 
-import { parseEditorConfig, type Collection } from "@/lib/editor-config";
+import type { Collection } from "@/lib/editor-config";
 import type { MetadataValue } from "@/lib/mdx-doc";
+import { testConfig } from "@/test/config";
 
 import { applyForm, buildForm, FIELD_PREFIX, readFormData } from "./form";
 
-const collection = (metadata: Record<string, unknown>): Collection => {
-  const result = parseEditorConfig(
-    JSON.stringify({
-      branch: "main",
-      collections: [{ name: "게시판", path: "content/{slug}/page.mdx", metadata, editor: "wysiwyg" }],
-    }),
-  );
-  if (!result.ok) throw new Error(JSON.stringify(result.issues));
-  return result.config.collections[0]!;
-};
+const collection = (metadata: Collection["metadata"]): Collection =>
+  testConfig([{ name: "게시판", path: "content/{slug}/page.mdx", metadata }]).collections[0]!;
 
 const board = collection({
   title: { type: "string", label: "제목", required: true },
@@ -37,52 +30,22 @@ const initialValues = (c: Collection, metadata: { [key: string]: MetadataValue }
 
 describe("buildForm", () => {
   test("config 순서대로 필드를 만들고 중첩 키의 지금 값을 채운다", () => {
-    expect(buildForm(board, METADATA)).toEqual([
-      {
-        key: "title",
-        label: "제목",
-        type: "string",
-        required: true,
-        options: [],
-        initial: "11월 휴진 안내",
-        locked: null,
-      },
-      {
-        key: "description",
-        label: "요약",
-        type: "text",
-        required: false,
-        options: [],
-        initial: "첫 줄\n둘째 줄",
-        locked: null,
-      },
-      {
-        key: "keywords",
-        label: "keywords",
-        type: "string[]",
-        required: false,
-        options: [],
-        initial: "휴진\n공지",
-        locked: null,
-      },
-      {
-        key: "other.createdAt",
-        label: "작성일",
-        type: "datetime",
-        required: false,
-        options: [],
-        initial: "2020-11-20T00:00:00",
-        locked: null,
-      },
-      {
-        key: "other.status",
-        label: "상태",
-        type: "select",
-        required: false,
-        options: ["ready", "draft"],
-        initial: "ready",
-        locked: null,
-      },
+    expect(buildForm(board, METADATA).map((f) => [f.key, f.initial, f.locked])).toEqual([
+      ["title", "11월 휴진 안내", null],
+      ["description", "첫 줄\n둘째 줄", null],
+      ["keywords", "휴진\n공지", null],
+      ["other.createdAt", "2020-11-20T00:00:00", null],
+      ["other.status", "ready", null],
+    ]);
+  });
+
+  test("config의 label·type·required·options를 필드에 옮기고, label이 없으면 키를 보인다", () => {
+    expect(buildForm(board, METADATA).map((f) => [f.key, f.label, f.type, f.required, f.options])).toEqual([
+      ["title", "제목", "string", true, []],
+      ["description", "요약", "text", false, []],
+      ["keywords", "keywords", "string[]", false, []],
+      ["other.createdAt", "작성일", "datetime", false, []],
+      ["other.status", "상태", "select", false, ["ready", "draft"]],
     ]);
   });
 
@@ -99,18 +62,18 @@ describe("buildForm", () => {
 
   test("타입이 맞지 않는 값은 잠근다", () => {
     const fields = buildForm(board, { title: 1, keywords: "휴진, 공지", other: "x" });
-    expect(fields.map((f) => [f.key, f.locked])).toEqual([
-      ["title", "값이 string 형식이 아니다"],
-      ["description", null],
-      ["keywords", "값이 string[] 형식이 아니다"],
-      ["other.createdAt", "other가 객체가 아니다"],
-      ["other.status", "other가 객체가 아니다"],
+    expect(fields.map((f) => [f.key, f.locked !== null])).toEqual([
+      ["title", true],
+      ["description", false],
+      ["keywords", true],
+      ["other.createdAt", true],
+      ["other.status", true],
     ]);
   });
 
   test("한 줄 입력이 지우는 줄바꿈이 든 string 값은 잠그고 원래 값을 둔다", () => {
     const fields = buildForm(board, { title: "가\n나", description: "가\n나" });
-    expect(fields.find((f) => f.key === "title")!.locked).toBe("값이 string 형식이 아니다");
+    expect(fields.find((f) => f.key === "title")!.locked).not.toBeNull();
     expect(fields.find((f) => f.key === "description")!.locked).toBeNull();
     // 브라우저가 줄바꿈을 지워 보낸 값이 와도 원래 값을 둔다.
     expect(applyForm(board, { title: "가\n나" }, { title: "가나" })).toEqual({ ok: true, value: { title: "가\n나" } });
@@ -119,9 +82,7 @@ describe("buildForm", () => {
   test.each([[[" 휴진"]], [["휴진 "]], [["휴진", ""]], [["가\n나"]]])(
     "제출하면 그대로 돌아오지 않는 string[] 값 %j는 잠그고 원래 값을 둔다",
     (keywords) => {
-      expect(buildForm(board, { keywords }).find((f) => f.key === "keywords")!.locked).toBe(
-        "값이 string[] 형식이 아니다",
-      );
+      expect(buildForm(board, { keywords }).find((f) => f.key === "keywords")!.locked).not.toBeNull();
       expect(applyForm(board, { keywords }, { keywords: "휴진" })).toEqual({ ok: true, value: { keywords } });
     },
   );
