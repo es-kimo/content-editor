@@ -38,7 +38,7 @@ export function uploadExtension(mimeType: string): string | null {
 }
 
 /** 확장자와 맞는 형식인지 파일 앞 바이트로 본다. 브라우저가 보낸 MIME 형식이나 이름은 믿지 않는다. */
-function sniffFormat(content: Uint8Array): UploadFormat | null {
+export function sniffFormat(content: Uint8Array): UploadFormat | null {
   const ascii = (start: number, end: number) => String.fromCharCode(...content.subarray(start, end));
   if (content[0] === 0x89 && ascii(1, 4) === "PNG") return "image/png";
   if (content[0] === 0xff && content[1] === 0xd8 && content[2] === 0xff) return "image/jpeg";
