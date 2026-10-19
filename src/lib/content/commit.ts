@@ -2,6 +2,7 @@ import { type EditorConfig } from "@/lib/editor-config";
 import { encodePath, GitHubApiError, repoPath, type GitHubClient } from "@/lib/github";
 import { isImageFile } from "@/lib/mdx-doc";
 
+import { listDir } from "./contents";
 import { findCollection } from "./read";
 
 export type CommitFile = { path: string; content: string | Uint8Array };
@@ -16,8 +17,6 @@ export type CommitResult =
   /** 검사와 ref 갱신 사이에 브랜치가 앞서 나갔다. force로 덮지 않는다. */
   | { ok: false; reason: "not-fast-forward" };
 
-type ContentsEntry = { type: string; name: string; sha: string };
-
 const parentDir = (filePath: string) => filePath.slice(0, filePath.lastIndexOf("/"));
 
 /** `ref`(커밋 sha) 시점의 파일·폴더 sha. 없으면 null. 같은 폴더 안의 경로는 목록 1번으로 본다. */
@@ -29,14 +28,7 @@ async function currentShas(
 ): Promise<Map<string, string | null>> {
   const shas = new Map<string, string | null>();
   for (const dir of new Set(paths.map(parentDir))) {
-    let entries: ContentsEntry[] = [];
-    try {
-      const res = await client.rest(`${repoPath(repo)}/contents/${encodePath(dir)}?ref=${ref}`);
-      const body = (await res.json()) as ContentsEntry[] | ContentsEntry;
-      if (Array.isArray(body)) entries = body;
-    } catch (error) {
-      if (!(error instanceof GitHubApiError && error.status === 404)) throw error;
-    }
+    const entries = (await listDir(client, repo, dir, ref)) ?? [];
     for (const path of paths.filter((p) => parentDir(p) === dir)) {
       const name = path.slice(dir.length + 1);
       shas.set(path, entries.find((e) => e.name === name)?.sha ?? null);
