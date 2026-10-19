@@ -20,6 +20,7 @@ export {
   previewMessage,
   previewOrigin,
   trustsPreviewMessage,
+  uploadPreviewMessage,
   type PreviewMessage,
   type PreviewUpload,
 } from "./preview";

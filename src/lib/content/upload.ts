@@ -84,7 +84,7 @@ export function addUpload(
   plan: UploadPlan,
   image: { extension: string; content: Uint8Array },
   files: string[],
-): { ok: true; plan: UploadPlan; tag: string } | Exclude<UploadCheck, { ok: true }> {
+): { ok: true; plan: UploadPlan; tag: string; file: string } | Exclude<UploadCheck, { ok: true }> {
   if (!(Object.values(UPLOAD_IMAGE_TYPES) as string[]).includes(image.extension)) {
     return { ok: false, reason: "image", file: `.${image.extension}`, problem: "format" };
   }
@@ -92,7 +92,7 @@ export function addUpload(
   const images = [...plan.images, { file: added.file, content: image.content }];
   const check = checkUploads(images);
   if (!check.ok) return check;
-  return { ok: true, plan: { doc: added.doc, images }, tag: added.tag };
+  return { ok: true, plan: { doc: added.doc, images }, tag: added.tag, file: added.file };
 }
 
 /** 넣은 이미지 중 저장할 본문에서 쓰는 것. 넣은 뒤 본문에서 지운 이미지는 커밋하지 않는다. */

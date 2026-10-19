@@ -1,4 +1,6 @@
-import { sniffFormat } from "./upload";
+import { printMdx, setBody } from "@/lib/mdx-doc";
+
+import { sniffFormat, uploadImports, type UploadPlan } from "./upload";
 
 /** 미리보기로 보낼, 편집 화면에서 넣은 이미지. `name`은 본문의 `src={변수}`에 쓰는 import 변수명이다. */
 export type PreviewUpload = { name: string; content: Uint8Array; width: number; height: number };
@@ -21,6 +23,22 @@ export function previewMessage(source: string, uploads: PreviewUpload[]): Previe
     images[name] = { blob: new Blob([new Uint8Array(content)], { type: sniffFormat(content) ?? "" }), width, height };
   }
   return { type: "preview", source, images };
+}
+
+/**
+ * WYSIWYG에서 고치는 본문을 넣은 이미지의 import까지 붙인 파일 전체로 만들어 미리보기 메시지에 담는다.
+ * @param sizes 넣은 이미지 파일 이름 → 올릴 이미지의 가로·세로
+ */
+export function uploadPreviewMessage(
+  plan: UploadPlan,
+  body: string,
+  sizes: ReadonlyMap<string, { width: number; height: number }>,
+): PreviewMessage {
+  const uploads = uploadImports(plan).flatMap(({ name, image }) => {
+    const size = sizes.get(image.file);
+    return size ? [{ name, content: image.content, ...size }] : [];
+  });
+  return previewMessage(printMdx(setBody(plan.doc, body)), uploads);
 }
 
 /** 미리보기 페이지의 origin. 메시지를 보낼 때 targetOrigin으로 쓴다. 주소가 아니면 null. */

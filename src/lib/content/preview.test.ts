@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { previewMessage, previewOrigin, trustsPreviewMessage } from "./preview";
+import { parseMdx, printMdx, setBody } from "@/lib/mdx-doc";
+
+import { previewMessage, previewOrigin, trustsPreviewMessage, uploadPreviewMessage } from "./preview";
+import { addUpload } from "./upload";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 3, 4]);
@@ -30,6 +33,24 @@ describe("previewMessage", () => {
 
   test("넣은 이미지가 없으면 images가 비어 있다", () => {
     expect(previewMessage(SOURCE, []).images).toEqual({});
+  });
+});
+
+describe("uploadPreviewMessage", () => {
+  test("고친 본문에 넣은 이미지의 import를 붙인 파일 전체와, 넣은 이미지만 담는다", () => {
+    const opened = parseMdx(SOURCE);
+    const added = addUpload({ doc: opened, images: [] }, { extension: "jpg", content: JPEG }, ["1.png"]);
+    if (!added.ok) throw new Error(added.problem);
+    const body = `고친 본문\n\n${added.tag}\n`;
+
+    const message = uploadPreviewMessage(added.plan, body, new Map([[added.file, { width: 10, height: 20 }]]));
+
+    expect(message.source).toBe(printMdx(setBody(added.plan.doc, body)));
+    expect(message.source).toMatch(/^import image1 from "\.\/1\.png";\nimport image2 from "\.\/2\.jpg";/);
+    expect(message.source.endsWith(body)).toBe(true);
+    // 레포에 이미 있는 이미지(image1)는 이 이슈 범위 밖이라 보내지 않는다.
+    expect(Object.keys(message.images)).toEqual(["image2"]);
+    expect(message.images.image2).toMatchObject({ width: 10, height: 20 });
   });
 });
 
