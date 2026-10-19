@@ -1,0 +1,32 @@
+{
+  "branch": "main",
+  "syntax": { "gfm": false, "math": false },
+  "collections": [
+    {
+      "name": "게시판",
+      "path": "content/4.게시판/{slug}/page.mdx",
+      "metadata": {
+        "title": { "type": "string", "label": "제목", "required": true },
+        "description": { "type": "text", "label": "요약" },
+        "keywords": { "type": "string[]", "label": "검색어" },
+        "other.createdAt": { "type": "datetime", "label": "작성일" },
+        "other.status": { "type": "select", "label": "상태", "options": ["ready", "draft"] }
+      },
+      "components": ["Image"],
+      "editor": "wysiwyg"
+    },
+    {
+      "name": "강좌",
+      "path": "content/3.강좌/{submenu}/{slug}/page.mdx",
+      "metadata": {
+        "title": { "type": "string", "label": "제목", "required": true },
+        "description": { "type": "text", "label": "요약" },
+        "category": { "type": "select", "label": "분류", "options": ["예방·관리", "영양·식생활", "연구·통계"] },
+        "other.createdAt": { "type": "datetime", "label": "작성일" },
+        "other.status": { "type": "select", "label": "상태", "options": ["ready", "draft"] }
+      },
+      "components": ["Image", "Video"],
+      "editor": "wysiwyg"
+    }
+  ]
+}

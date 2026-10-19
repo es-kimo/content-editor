@@ -40,11 +40,12 @@ pnpm fixtures:sync   # fixtures/<name>/ 아래에 page.mdx를 받는다 (gitigno
 
 ## 구조
 
-| 경로              | 내용                                              |
-| ----------------- | ------------------------------------------------- |
-| `src/app`         | UI (Next.js App Router)                           |
-| `src/lib/mdx-doc` | MDX 파일 분해/조립. UI와 GitHub에 의존하지 않는다 |
-| `src/lib/github`  | GitHub API (로그인, 읽기, 커밋)                   |
+| 경로                    | 내용                                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| `src/app`               | UI (Next.js App Router)                                                                      |
+| `src/lib/mdx-doc`       | MDX 파일 분해/조립. UI와 GitHub에 의존하지 않는다                                            |
+| `src/lib/github`        | GitHub API (로그인, 읽기, 커밋)                                                              |
+| `src/lib/editor-config` | 사이트 레포의 `editor.config.json` 스키마와 로드·검증 ([문서](docs/editor-config/README.md)) |
 
 `AGENTS.md`는 Next.js가 생성·관리하는 에이전트용 안내다. 이 버전의 Next.js API는 `node_modules/next/dist/docs/`를 기준으로 확인한다.
 
