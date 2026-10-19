@@ -1,0 +1,20 @@
+{
+  "branch": "blog",
+  "syntax": { "gfm": true, "math": true },
+  "collections": [
+    {
+      "name": "글",
+      "path": "apps/blog/content/{submenu}/{slug}/page.mdx",
+      "metadata": {
+        "title": { "type": "string", "required": true },
+        "description": { "type": "text" },
+        "keywords": { "type": "string[]" },
+        "alternate.canonical": { "type": "string" },
+        "other.createdAt": { "type": "datetime" },
+        "other.status": { "type": "select", "options": ["ready", "draft"] }
+      },
+      "components": ["Footnote", "FootnoteRef", "Mermaid", "TOC"],
+      "editor": "source"
+    }
+  ]
+}

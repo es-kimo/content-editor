@@ -12,6 +12,7 @@ import {
   SESSION_COOKIE,
   type Account,
 } from "@/lib/auth";
+import { CONFIG_FILE, ConfigLoadError, loadEditorConfig, type LoadedConfig } from "@/lib/editor-config";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -45,7 +46,7 @@ async function AccountSection({ searchParams }: { searchParams: SearchParams }) 
     if (e instanceof GitHubAuthError && e.status === 401) return <LoginLink />;
     throw e;
   }
-  return <AccountView account={account} />;
+  return <AccountView account={account} accessToken={page.session.accessToken} />;
 }
 
 function LoginLink() {
@@ -56,7 +57,7 @@ function LoginLink() {
   );
 }
 
-function AccountView({ account }: { account: Account }) {
+function AccountView({ account, accessToken }: { account: Account; accessToken: string }) {
   const { user, installations } = account;
   return (
     <>
@@ -86,6 +87,9 @@ function AccountView({ account }: { account: Account }) {
                 <li key={r.id}>
                   <a href={r.html_url}>{r.full_name}</a>
                   {r.private && <span className="ml-2 text-xs text-zinc-500">private</span>}
+                  <Suspense fallback={<p className="text-sm text-zinc-500">{CONFIG_FILE} 확인 중…</p>}>
+                    <ConfigStatus repo={r.full_name} accessToken={accessToken} />
+                  </Suspense>
                 </li>
               )),
             )}
@@ -94,4 +98,40 @@ function AccountView({ account }: { account: Account }) {
       </section>
     </>
   );
+}
+
+async function ConfigStatus({ repo, accessToken }: { repo: string; accessToken: string }) {
+  let loaded: LoadedConfig;
+  try {
+    loaded = await loadEditorConfig(repo, accessToken, fetch);
+  } catch (e) {
+    if (e instanceof ConfigLoadError) return <p className="text-sm text-red-600">{e.message}</p>;
+    throw e;
+  }
+  switch (loaded.kind) {
+    case "missing":
+      return <p className="text-sm text-zinc-500">레포 루트에 {CONFIG_FILE}이 없다.</p>;
+    case "ok":
+      return (
+        <p className="text-sm text-zinc-500">
+          브랜치 {loaded.config.branch} · 컬렉션 {loaded.config.collections.map((c) => c.name).join(", ")}
+        </p>
+      );
+    case "invalid":
+      return (
+        <div className="text-sm text-red-600">
+          <p>
+            {CONFIG_FILE} 오류 {loaded.issues.length}건
+          </p>
+          <ul className="list-disc pl-5">
+            {loaded.issues.map((issue, i) => (
+              <li key={i}>
+                {issue.path && <code className="mr-2">{issue.path}</code>}
+                {issue.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+  }
 }
