@@ -1,6 +1,8 @@
 import { compilePathPattern, type Collection, type EditorConfig, type PathParams } from "@/lib/editor-config";
-import { encodePath, GitHubApiError, repoPath, type GitHubClient } from "@/lib/github";
+import { repoPath, type GitHubClient } from "@/lib/github";
 import { isImageFile, metadataText, parseMdx, readMetadata, type MdxDoc, type MetadataResult } from "@/lib/mdx-doc";
+
+import { listDir } from "./contents";
 
 export type PostImage = { name: string; path: string; sha: string; size: number };
 
@@ -16,14 +18,6 @@ export type Post = {
   metadata: MetadataResult | null;
   /** 글 폴더 안의 이미지. 이름순. */
   images: PostImage[];
-};
-
-type ContentsEntry = {
-  type: "file" | "dir" | "symlink" | "submodule";
-  name: string;
-  path: string;
-  sha: string;
-  size: number;
 };
 
 /** 경로가 맞는 컬렉션. config에 없는 경로는 열지 않는다. */
@@ -55,19 +49,8 @@ export async function readPost(
   const dir = filePath.slice(0, slash);
   const fileName = filePath.slice(slash + 1);
 
-  let entries: ContentsEntry[];
-  try {
-    const res = await client.rest(
-      `${repoPath(repo)}/contents/${encodePath(dir)}?ref=${encodeURIComponent(config.branch)}`,
-    );
-    const body = (await res.json()) as ContentsEntry[] | ContentsEntry;
-    // 글 폴더 자리에 파일이 있으면 배열이 아닌 객체가 온다.
-    if (!Array.isArray(body)) return null;
-    entries = body;
-  } catch (error) {
-    if (error instanceof GitHubApiError && error.status === 404) return null;
-    throw error;
-  }
+  const entries = await listDir(client, repo, dir, config.branch);
+  if (!entries) return null;
 
   const file = entries.find((e) => e.type === "file" && e.name === fileName);
   if (!file) return null;
