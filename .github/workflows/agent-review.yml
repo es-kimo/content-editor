@@ -28,7 +28,7 @@ env:
   CI_RUN_ID: ${{ github.event.workflow_run.id }}
   MAX_FIX: ${{ vars.AGENT_MAX_FIX || '2' }}
   AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}
-  EFFORT_REVIEW: ${{ vars.AGENT_EFFORT_REVIEW || 'medium' }}
+  EFFORT_REVIEW: ${{ vars.AGENT_EFFORT_REVIEW || 'high' }}
   EFFORT_FIX: ${{ vars.AGENT_EFFORT_FIX || 'medium' }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
