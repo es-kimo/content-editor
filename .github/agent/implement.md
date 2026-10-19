@@ -3,6 +3,7 @@
 입력
 
 - `.agent/issue.md`: 구현할 이슈의 제목, 본문, 코멘트
+- `.agent/wiki/`: 레포 wiki. 이슈 본문의 PRD·작업 방식 링크는 여기서 읽는다 (`PRD.md`, `작업-방식.md`)
 - `CLAUDE.md`: 레포 규칙. 반드시 따른다.
 
 순서

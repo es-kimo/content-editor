@@ -3,6 +3,7 @@
 입력
 
 - `.agent/issue.md`: 이 PR이 닫으려는 이슈
+- `.agent/wiki/`: 레포 wiki. 이슈 본문의 PRD·작업 방식 링크는 여기서 읽는다 (`PRD.md`, `작업-방식.md`)
 - `.agent/feedback.md`: 고칠 내용. 리뷰 지적 목록이거나 CI 실패 로그다.
 - `CLAUDE.md`: 레포 규칙. 반드시 따른다.
 
