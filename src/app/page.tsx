@@ -47,7 +47,6 @@ async function AccountSection({ searchParams }: { searchParams: SearchParams }) 
   try {
     account = await loadAccount(page.session.accessToken, fetch);
   } catch (e) {
-    // 토큰이 폐기됐거나 앱 권한이 해제된 경우다. 다시 로그인하게 한다.
     if (isUnauthorized(e)) return <LoginLink />;
     throw e;
   }

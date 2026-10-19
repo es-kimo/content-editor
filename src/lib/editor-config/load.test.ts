@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { GitHubApiError } from "@/lib/github";
+import { GitHubApiError, isUnauthorized } from "@/lib/github";
 import { json, mockFetch } from "@/test/mock-fetch";
 
 import { loadEditorConfig } from "./load";
@@ -46,5 +46,18 @@ describe("loadEditorConfig", () => {
     const error = await loadEditorConfig("es-kimo/yjshd", "t", fetch).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(GitHubApiError);
     expect(error).toMatchObject({ status: 401, message: expect.stringContaining("HTTP 401") });
+  });
+
+  test("401이면 화면이 로그인 링크로 보낼 오류로 던진다", async () => {
+    const fetch = mockFetch(contentsRoute(() => json({ message: "Bad credentials" }, 401)));
+    const error = await loadEditorConfig("es-kimo/yjshd", "t", fetch).catch((e: unknown) => e);
+    expect(isUnauthorized(error)).toBe(true);
+  });
+
+  test("처음 화면에 보일 오류 안내는 레포와 config 파일 이름을 담는다", async () => {
+    const fetch = mockFetch(contentsRoute(() => json({ message: "Server Error" }, 502)));
+    await expect(loadEditorConfig("es-kimo/yjshd", "t", fetch)).rejects.toThrow(
+      "es-kimo/yjshd의 editor.config.json을 읽지 못했다: HTTP 502",
+    );
   });
 });
