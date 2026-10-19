@@ -3,6 +3,7 @@
 입력
 
 - `.agent/issue.md`: 이 PR이 닫으려는 이슈
+- `.agent/wiki/`: 레포 wiki. 이슈 본문의 PRD·작업 방식 링크는 여기서 읽는다 (`PRD.md`, `작업-방식.md`)
 - `.agent/diff.patch`: `main` 대비 변경
 - 레포 전체 (읽기만), `CLAUDE.md` 규칙
 

@@ -94,6 +94,9 @@ jobs:
           gh issue view "$N" -R "$REPO" --json title,body,comments \
             --jq '"# #\(env.N) \(.title)\n\n\(.body)\n\n## 코멘트\n" + ([.comments[] | "- \(.author.login): \(.body)"] | join("\n"))' > .agent/issue.md
           gh issue edit "$N" -R "$REPO" --add-label "in progress"
+          # 이슈 본문은 설계를 PRD(wiki)에 맡기므로 wiki를 같이 넘긴다. 받지 못해도 실행은 계속한다.
+          git clone --quiet --depth 1 "https://github.com/${REPO}.wiki.git" .agent/wiki \
+            || echo "::warning::wiki를 받지 못했다"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "${{ steps.pick.outputs.branch }}"
