@@ -12,7 +12,6 @@ export {
   createPost,
   listSubmenus,
   needsSubmenu,
-  postSlug,
   type CreatePostField,
   type CreatePostInput,
   type CreatePostResult,
@@ -33,6 +32,7 @@ export {
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
 export { saveSource, type SaveSourceInput, type SaveSourceResult } from "./save-source";
 export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";
+export { postSlug } from "./slug";
 export { summarizePost, type PostSummary } from "./summary";
 export {
   addUpload,

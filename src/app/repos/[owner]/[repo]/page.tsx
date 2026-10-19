@@ -1,7 +1,15 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { isUnauthorized, LoginLink, loadRepoConfig, postHref, repoHref } from "@/app/_lib/repo";
+import {
+  CollectionTabs,
+  isUnauthorized,
+  LoginLink,
+  loadRepoConfig,
+  newPostHref,
+  postHref,
+  repoHref,
+} from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
 import { createGitHubClient, listPosts, timed, type PostListItem } from "@/lib/content";
@@ -53,22 +61,16 @@ async function PostList({ params, searchParams }: { params: Params; searchParams
         <h1 className="text-2xl font-semibold">{repo}</h1>
         <p className="text-sm text-zinc-500">브랜치 {config.branch}</p>
       </header>
-      <nav className="flex flex-wrap gap-2">
-        {config.collections.map((c) => (
-          <Link
-            key={c.name}
-            href={repoHref(repo, c.name)}
-            aria-current={c === collection ? "page" : undefined}
-            className="rounded border px-3 py-1 text-sm aria-[current=page]:bg-black aria-[current=page]:text-white dark:aria-[current=page]:bg-white dark:aria-[current=page]:text-black"
-          >
-            {c.name}
-          </Link>
-        ))}
-      </nav>
+      <CollectionTabs config={config} current={collection} href={(c) => repoHref(repo, c)} />
       <section className="flex flex-col gap-2">
-        <p className="text-sm text-zinc-500">
-          {collection.name} {posts.length}편 · API 호출 {client.calls}번 · {elapsed}ms
-        </p>
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-sm text-zinc-500">
+            {collection.name} {posts.length}편 · API 호출 {client.calls}번 · {elapsed}ms
+          </p>
+          <Link href={newPostHref(repo, collection.name)} className="text-sm underline">
+            새 글
+          </Link>
+        </div>
         {posts.length === 0 ? (
           <p className="text-zinc-500">
             <code>{collection.path}</code>에 맞는 글이 없다.

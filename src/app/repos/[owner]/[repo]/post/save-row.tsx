@@ -1,6 +1,6 @@
 import type { SaveState } from "./actions";
 
-/** 글 화면 편집 영역의 저장 버튼과 저장 결과. */
+/** 글 화면 편집 영역과 새 글 화면의 저장 버튼과 저장 결과. */
 export function SaveRow({
   label,
   pending,
@@ -10,8 +10,8 @@ export function SaveRow({
   label: string;
   pending: boolean;
   state: SaveState;
-  /** 바뀐 것이 없어 커밋하지 않았을 때의 안내. */
-  unchanged: string;
+  /** 바뀐 것이 없어 커밋하지 않았을 때의 안내. 새 글처럼 그런 결과가 없으면 비워 둔다. */
+  unchanged?: string;
 }) {
   return (
     <div className="flex items-center gap-3">

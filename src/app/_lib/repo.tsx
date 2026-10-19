@@ -3,7 +3,13 @@ import type { ReactNode } from "react";
 
 import { GitHubAuthError } from "@/lib/auth";
 import { GitHubApiError } from "@/lib/content";
-import { CONFIG_FILE, ConfigLoadError, loadEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import {
+  CONFIG_FILE,
+  ConfigLoadError,
+  loadEditorConfig,
+  type Collection,
+  type EditorConfig,
+} from "@/lib/editor-config";
 
 export function LoginLink() {
   return (
@@ -17,6 +23,35 @@ export const repoHref = (repo: string, collection?: string) =>
   `/repos/${repo}` + (collection === undefined ? "" : `?${new URLSearchParams({ collection })}`);
 
 export const postHref = (repo: string, path: string) => `/repos/${repo}/post?${new URLSearchParams({ path })}`;
+
+export const newPostHref = (repo: string, collection?: string) =>
+  `/repos/${repo}/new` + (collection === undefined ? "" : `?${new URLSearchParams({ collection })}`);
+
+/** 컬렉션 탭. 고른 컬렉션은 `aria-current`로 반전한다. */
+export function CollectionTabs({
+  config,
+  current,
+  href,
+}: {
+  config: EditorConfig;
+  current: Collection;
+  href: (collection: string) => string;
+}) {
+  return (
+    <nav className="flex flex-wrap gap-2">
+      {config.collections.map((c) => (
+        <Link
+          key={c.name}
+          href={href(c.name)}
+          aria-current={c === current ? "page" : undefined}
+          className="rounded border px-3 py-1 text-sm aria-[current=page]:bg-black aria-[current=page]:text-white dark:aria-[current=page]:bg-white dark:aria-[current=page]:text-black"
+        >
+          {c.name}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 /** 토큰이 폐기됐거나 앱 권한이 해제돼 다시 로그인해야 하는 오류인지. */
 export function isUnauthorized(error: unknown): boolean {

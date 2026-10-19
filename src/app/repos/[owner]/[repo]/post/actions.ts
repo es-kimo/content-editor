@@ -1,29 +1,19 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { isUnauthorized, postHref } from "@/app/_lib/repo";
-import { assertRepoAllowed } from "@/app/_lib/site";
-import { readAuthConfig, resolvePageSession, SESSION_COOKIE } from "@/lib/auth";
+import { runRepoAction, type ActionContext } from "@/app/_lib/action";
+import { postHref } from "@/app/_lib/repo";
 import {
-  createGitHubClient,
   findCollection,
   saveBody,
   saveMetadata,
   saveSource,
-  type GitHubClient,
   type SaveBodyResult,
   type SaveMetadataResult,
   type SaveSourceResult,
 } from "@/lib/content";
-import {
-  CONFIG_FILE,
-  ConfigLoadError,
-  loadEditorConfig,
-  type Collection,
-  type EditorConfig,
-} from "@/lib/editor-config";
+import type { Collection } from "@/lib/editor-config";
 import { readFormData } from "@/lib/metadata-form";
 
 import { uploadMessage } from "./upload-message";
@@ -39,45 +29,25 @@ const error = (message: string, fields?: { [key: string]: string }): SaveState =
   fields,
 });
 
-type SaveContext = { client: GitHubClient; config: EditorConfig; collection: Collection };
+type SaveContext = ActionContext & { collection: Collection };
 type SaveResult = SaveMetadataResult | SaveBodyResult | SaveSourceResult;
 
 /**
  * 저장 액션의 공통 흐름: 세션 → config → 저장 → 결과를 화면 상태로. 성공하면 새 sha로 글 화면을 다시 연다.
- * 레포·경로·sha는 서버 컴포넌트에서 bind한 값이지만, 직접 보낸 요청일 수 있어 다시 검사한다.
+ * 경로·sha는 서버 컴포넌트에서 bind한 값이지만, 직접 보낸 요청일 수 있어 다시 검사한다.
  */
 async function runSave(
   repo: string,
   path: string,
   save: (context: SaveContext) => Promise<SaveResult>,
 ): Promise<SaveState> {
-  await assertRepoAllowed(repo);
-  // 갱신은 쿠키를 쓸 수 있는 라우트에서만 한다. 여기서 보내면 입력이 사라지므로 남은 토큰으로 시도하고 401이면 안내한다.
-  const page = resolvePageSession(
-    (await cookies()).get(SESSION_COOKIE)?.value,
-    readAuthConfig().sessionKey,
-    Date.now(),
-    true,
-  );
-  if (page.kind !== "ok") return error("로그인이 필요하다. 다른 탭에서 로그인한 뒤 다시 저장한다.");
-  const accessToken = page.session.accessToken;
-  const relogin = "로그인이 만료됐다. 다른 탭에서 다시 로그인한 뒤 저장한다.";
-
-  let result: SaveResult;
-  try {
-    const loaded = await loadEditorConfig(repo, accessToken, fetch);
-    if (loaded.kind !== "ok") return error(`${CONFIG_FILE}을 읽을 수 없다.`);
-    const found = findCollection(loaded.config, path);
-    if (!found) return error("config의 컬렉션에 없는 글이다.");
-    result = await save({
-      client: createGitHubClient(accessToken, fetch),
-      config: loaded.config,
-      collection: found.collection,
-    });
-  } catch (e) {
-    if (isUnauthorized(e) || (e instanceof ConfigLoadError && e.status === 401)) return error(relogin);
-    throw e;
-  }
+  const outcome = await runRepoAction(repo, async ({ client, config }) => {
+    const found = findCollection(config, path);
+    return found ? save({ client, config, collection: found.collection }) : null;
+  });
+  if (!outcome.ok) return error(outcome.message);
+  const result = outcome.value;
+  if (result === null) return error("config의 컬렉션에 없는 글이다.");
 
   if (result.ok) redirect(`${postHref(repo, path)}&${new URLSearchParams({ saved: result.commit })}`);
   switch (result.reason) {
