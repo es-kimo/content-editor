@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
 
 import { openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
+import { PageShell } from "@/app/_lib/ui";
 import { editorKeys, editorModes, IMAGE_COMPONENT, readPost, type Post } from "@/lib/content";
 import type { Syntax } from "@/lib/mdx-doc";
 import { buildForm } from "@/lib/metadata-form";
@@ -18,11 +18,9 @@ type Params = Promise<{ owner: string; repo: string }>;
 
 export default function PostPage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-16 font-sans">
-      <Suspense fallback={<p className="text-zinc-500">불러오는 중…</p>}>
-        <PostView params={params} searchParams={searchParams} />
-      </Suspense>
-    </main>
+    <PageShell>
+      <PostView params={params} searchParams={searchParams} />
+    </PageShell>
   );
 }
 

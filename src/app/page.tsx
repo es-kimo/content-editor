@@ -4,6 +4,7 @@ import { Fragment, Suspense } from "react";
 import { LoginLink, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { pageSiteScope } from "@/app/_lib/site";
+import { PageShell } from "@/app/_lib/ui";
 import { loadAccount, type Account } from "@/lib/auth";
 import { CONFIG_FILE, loadEditorConfig, type LoadedConfig } from "@/lib/editor-config";
 import { GitHubApiError, isUnauthorized } from "@/lib/github";
@@ -13,12 +14,9 @@ type Repository = Account["installations"][number]["repositories"][number];
 
 export default function Home({ searchParams }: { searchParams: SearchParams }) {
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-16 font-sans">
-      <h1 className="text-2xl font-semibold">content-editor</h1>
-      <Suspense fallback={<p className="text-zinc-500">불러오는 중…</p>}>
-        <AccountSection searchParams={searchParams} />
-      </Suspense>
-    </main>
+    <PageShell header={<h1 className="text-2xl font-semibold">content-editor</h1>}>
+      <AccountSection searchParams={searchParams} />
+    </PageShell>
   );
 }
 

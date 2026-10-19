@@ -1,19 +1,17 @@
 import Link from "next/link";
-import { Suspense } from "react";
 
 import { CollectionTabs, newPostHref, openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
+import { PageShell } from "@/app/_lib/ui";
 import { listPosts, timed } from "@/lib/content";
 
 type Params = Promise<{ owner: string; repo: string }>;
 
 export default function RepoPage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-16 font-sans">
-      <Suspense fallback={<p className="text-zinc-500">불러오는 중…</p>}>
-        <PostList params={params} searchParams={searchParams} />
-      </Suspense>
-    </main>
+    <PageShell>
+      <PostList params={params} searchParams={searchParams} />
+    </PageShell>
   );
 }
 
