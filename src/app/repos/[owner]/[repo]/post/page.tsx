@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { isUnauthorized, LoginLink, loadRepoConfig, postHref, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
-import { createGitHubClient, editorKeys, editorModes, readPost, type Post } from "@/lib/content";
+import { createGitHubClient, editorKeys, editorModes, IMAGE_COMPONENT, readPost, type Post } from "@/lib/content";
 import type { Syntax } from "@/lib/mdx-doc";
 import { buildForm } from "@/lib/metadata-form";
 
@@ -124,6 +124,11 @@ function BodyView({ repo, post, syntax }: { repo: string; post: Post; syntax: Sy
           body={post.doc.body}
           syntax={syntax}
           components={post.collection.components}
+          upload={
+            post.collection.components.includes(IMAGE_COMPONENT)
+              ? { doc: post.doc, files: post.images.map((image) => image.name) }
+              : null
+          }
           action={saveBodyAction.bind(null, repo, post.path, post.sha)}
         />
       }

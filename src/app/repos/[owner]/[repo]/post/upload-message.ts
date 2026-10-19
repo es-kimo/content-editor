@@ -1,4 +1,4 @@
-import { MAX_UPLOAD_BYTES, type UploadProblem } from "@/lib/content";
+import { MAX_UPLOAD_BYTES, type UploadProblem } from "@/lib/content/upload";
 
 /** 이미지 검사 실패 안내. 브라우저에서 넣을 때와 서버에서 저장할 때 같은 문구를 쓴다. */
 export function uploadMessage(file: string, problem: UploadProblem): string {
