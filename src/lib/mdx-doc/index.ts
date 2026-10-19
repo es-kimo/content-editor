@@ -7,5 +7,7 @@ export { newMdx } from "./new-doc";
 export { addImage, addImageAs, findUnusedImageImports, readImageImports } from "./images";
 export type { AddedImage, AddImageOptions, ImageImport } from "./images";
 export type { MetadataResult, MetadataValue } from "./metadata";
+export { previewMdx } from "./preview";
+export type { MdxPreview, PreviewImages } from "./preview";
 export { checkMdx } from "./check";
 export type { MdxCheck, MdxError } from "./check";

@@ -2,7 +2,15 @@ import { describe, expect, test } from "vitest";
 
 import { parseMdx, readImageImports } from "@/lib/mdx-doc";
 
-import { addUpload, checkUploads, fitImageSize, MAX_UPLOAD_BYTES, uploadExtension, usedUploads } from "./upload";
+import {
+  addUpload,
+  checkUploads,
+  fitImageSize,
+  MAX_UPLOAD_BYTES,
+  uploadExtension,
+  uploadImports,
+  usedUploads,
+} from "./upload";
 
 const ascii = (text: string) => [...text].map((c) => c.charCodeAt(0));
 const PNG = new Uint8Array([0x89, ...ascii("PNG\r\n\x1a\n"), 0, 0]);
@@ -129,5 +137,19 @@ describe("usedUploads", () => {
     const body = `<Image src={image1} alt="" />\n\n${tags[1]}\n`;
 
     expect(usedUploads(plan, body).map((image) => image.file)).toEqual(["3.jpg"]);
+  });
+});
+
+describe("uploadImports", () => {
+  test("넣은 이미지만 그 import 변수명과 짝지어 돌려준다", () => {
+    const { plan } = addAll([
+      { extension: "png", content: PNG },
+      { extension: "jpg", content: JPEG },
+    ]);
+
+    expect(uploadImports(plan).map(({ name, image }) => [name, image.file])).toEqual([
+      ["image2", "2.png"],
+      ["image3", "3.jpg"],
+    ]);
   });
 });

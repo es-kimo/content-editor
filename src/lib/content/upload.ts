@@ -1,4 +1,4 @@
-import { addImage, findUnusedImageImports, setBody, type MdxDoc } from "@/lib/mdx-doc";
+import { addImage, findUnusedImageImports, readImageImports, setBody, type MdxDoc } from "@/lib/mdx-doc";
 
 /** 본문에 넣는 이미지 컴포넌트. 사이트가 MDX 컴포넌트로 전역 등록해 두어 import하지 않는다. */
 export const IMAGE_COMPONENT = "Image";
@@ -99,4 +99,13 @@ export function addUpload(
 export function usedUploads(plan: UploadPlan, body: string): UploadImage[] {
   const unused = new Set(findUnusedImageImports(setBody(plan.doc, body)).map((image) => image.path));
   return plan.images.filter((image) => !unused.has(`./${image.file}`));
+}
+
+/** 넣은 이미지마다 본문의 `src={변수}`에 쓰는 import 변수명. 미리보기가 아직 커밋하지 않은 이미지를 보여 줄 때 쓴다. */
+export function uploadImports(plan: UploadPlan): { name: string; image: UploadImage }[] {
+  const names = new Map(readImageImports(plan.doc).map((image) => [image.path, image.name]));
+  return plan.images.flatMap((image) => {
+    const name = names.get(`./${image.file}`);
+    return name ? [{ name, image }] : [];
+  });
 }

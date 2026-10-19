@@ -1,12 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { startTransition, useActionState, useRef, useState } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 
-import { addUpload, MAX_IMAGE_SIDE, usedUploads, type UploadPlan } from "@/lib/content/upload";
-import { editedBody, sameBodyStructure, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
+import { addUpload, MAX_IMAGE_SIDE, uploadImports, usedUploads, type UploadPlan } from "@/lib/content/upload";
+import { editedBody, sameBodyStructure, type MdxDoc, type PreviewImages, type Syntax } from "@/lib/mdx-doc";
 
 import type { SaveState } from "./actions";
+import { BodyPreview } from "./body-preview";
 import { prepareImage } from "./prepare-image";
 import { SaveRow } from "./save-row";
 import { uploadMessage } from "./upload-message";
@@ -39,6 +40,14 @@ export function BodyEditor({
   const plan = useRef<UploadPlan | null>(upload && { doc: upload.doc, images: [] });
   const [images, setImages] = useState<{ file: string; size: number }[]>([]);
   const [imageProblem, setImageProblem] = useState<string | null>(null);
+  const [current, setCurrent] = useState(body);
+  // 넣은 이미지는 커밋 전이라 레포 주소가 없으므로 미리보기는 브라우저 안의 주소로 보여 준다.
+  const objectUrls = useRef(new Map<string, string>());
+  const [previewImages, setPreviewImages] = useState<PreviewImages>({});
+  useEffect(() => {
+    const urls = objectUrls.current;
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, []);
 
   if (problem) {
     return (
@@ -66,6 +75,12 @@ export function BodyEditor({
       tags.push(added.tag);
     }
     setImages((plan.current?.images ?? []).map(({ file, content }) => ({ file, size: content.byteLength })));
+    for (const { name, image } of plan.current ? uploadImports(plan.current) : []) {
+      if (!objectUrls.current.has(name)) {
+        objectUrls.current.set(name, URL.createObjectURL(new Blob([new Uint8Array(image.content)])));
+      }
+    }
+    setPreviewImages(Object.fromEntries(objectUrls.current));
     setImageProblem(problems.length > 0 ? problems.join(" ") : null);
     return tags;
   };
@@ -88,6 +103,7 @@ export function BodyEditor({
         markdown={body}
         components={components}
         onChange={(markdown, initialMarkdownNormalize) => {
+          setCurrent(markdown);
           if (!initialMarkdownNormalize) {
             edited.current = markdown;
             return;
@@ -114,6 +130,7 @@ export function BodyEditor({
         </p>
       )}
       {imageProblem && <p className="text-sm text-red-600">{imageProblem}</p>}
+      <BodyPreview markdown={current} syntax={syntax} images={previewImages} />
       <SaveRow label="본문 저장" pending={pending} state={state} unchanged="바뀐 내용이 없어 커밋하지 않았다." />
     </form>
   );
