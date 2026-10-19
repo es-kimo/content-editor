@@ -88,11 +88,18 @@ cron이 돌 때마다 아래 순서로 확인하고, 하나라도 걸리면 그 
 4. (cron 실행만) 최근 12시간 동안 만든 `agent` PR이 `AGENT_MAX_PRS_PER_NIGHT`개 미만이다.
 5. 아래 조건을 모두 만족하는 이슈가 있다 (`scripts/agent/select.mts`).
    - 열려 있다.
-   - 마일스톤이 `AGENT_MILESTONES`에 있다. 마일스톤이 없거나 목록에 없는 이슈는 고르지 않는다.
+   - `agent-ready` 라벨이 있다.
    - `needs-human`, `blocked`, `spike`, `in progress` 라벨이 없다.
    - 본문 `## 의존` 절에 적힌 이슈(`#번호`)가 모두 닫혔다. 절이 없거나 "없음"이면 의존이 없는 것으로 본다.
 
-후보가 여럿이면 `AGENT_MILESTONES`에 적힌 순서, 그다음 이슈 번호 순으로 첫 번째를 고른다. 이슈를 잠시 빼 두려면 `blocked` 라벨을 단다.
+후보가 여럿이면 이슈 번호가 가장 작은 것을 고른다. 마일스톤은 보지 않는다.
+
+누가 할지는 `agent-ready` 라벨 하나로 나눈다.
+
+- 에이전트에게 맡길 이슈: `agent-ready`를 단다. 완료 기준을 테스트나 실행 결과로 확인할 수 있고, 이 레포 밖의 작업(다른 레포, DNS, 계정 설정)이 없어야 한다. 의존 이슈가 아직 열려 있어도 미리 달아 두면 순서가 되었을 때 고른다.
+- 사람이 할 이슈: 라벨을 달지 않는다. 사람 작업과 코드 작업이 섞이면 이슈를 나눈다.
+- 에이전트가 막히거나 수정 한도를 넘으면 워크플로가 `needs-human`을 단다. 확인하고 다시 맡기려면 `needs-human`만 뗀다.
+- 잠시 빼 두려면 `blocked`를 단다.
 
 수동 실행(`gh workflow run agent-implement.yml -f issue=<번호>`)은 4번을 적용하지 않는다. 이슈 번호를 주면 5번도 건너뛰고 그 이슈를 구현하고, 비우면 5번으로 고른다. 1~3번은 수동 실행에도 똑같이 적용된다.
 
@@ -101,7 +108,6 @@ cron이 돌 때마다 아래 순서로 확인하고, 하나라도 걸리면 그 
 | `CLAUDE_CODE_OAUTH_TOKEN`                                             | secret   | `claude setup-token` (구독 사용)                                                                |
 | `AGENT_GH_TOKEN`                                                      | secret   | fine-grained PAT, 이 레포만, Contents·Pull requests·Issues 쓰기. Workflows 권한은 주지 않는다   |
 | `AGENT_ENABLED`                                                       | variable | `true`일 때만 돈다 (끄는 스위치)                                                                |
-| `AGENT_MILESTONES`                                                    | variable | 기본 `M1 mdx-doc,M2 GitHub 연동,M3 편집 UI`                                                     |
 | `AGENT_MAX_PRS_PER_NIGHT`                                             | variable | 기본 `6`. cron 실행에만 적용                                                                    |
 | `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `2` / `2`                                                                                  |
 | `AGENT_MODEL`                                                         | variable | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR·리뷰 코멘트에 남는다 |

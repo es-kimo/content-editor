@@ -26,7 +26,6 @@ env:
   REPO: ${{ github.repository }}
   # push·PR·라벨은 PAT로 한다. 기본 GITHUB_TOKEN으로 push하면 CI가 돌지 않는다.
   GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
-  AGENT_MILESTONES: ${{ vars.AGENT_MILESTONES || 'M1 mdx-doc,M2 GitHub 연동,M3 편집 UI' }}
   MAX_PRS: ${{ vars.AGENT_MAX_PRS_PER_NIGHT || '6' }}
   MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS || '2' }}
   AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}

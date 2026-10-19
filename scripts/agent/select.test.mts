@@ -6,12 +6,11 @@ const issue = (number: number, extra: Partial<IssueInfo> = {}): IssueInfo => ({
   number,
   title: `이슈 ${number}`,
   state: "open",
-  labels: [],
-  milestone: "M1",
+  labels: ["agent-ready"],
   body: "## 의존\n없음\n",
   ...extra,
 });
-const options = { milestones: ["M1", "M2"], skipLabels: ["needs-human", "blocked", "spike"] };
+const options = { readyLabel: "agent-ready", skipLabels: ["needs-human", "blocked", "spike"] };
 
 describe("parseDeps", () => {
   test("의존 절의 번호만 읽는다", () => {
@@ -37,17 +36,23 @@ describe("selectNext", () => {
   });
 
   test("건너뛸 라벨이 있으면 고르지 않는다", () => {
-    const issues = [issue(8, { labels: ["needs-human"] }), issue(13, { labels: ["spike"] }), issue(14)];
+    const issues = [
+      issue(8, { labels: ["agent-ready", "needs-human"] }),
+      issue(13, { labels: ["agent-ready", "spike"] }),
+      issue(14),
+    ];
     expect(selectNext(issues, options)?.number).toBe(14);
   });
 
-  test("마일스톤 순서가 번호보다 먼저다", () => {
-    const issues = [issue(5, { milestone: "M2" }), issue(9, { milestone: "M1" })];
-    expect(selectNext(issues, options)?.number).toBe(9);
+  test("준비 라벨이 없는 이슈는 고르지 않는다", () => {
+    expect(selectNext([issue(19, { labels: [] }), issue(27, { labels: ["site"] })], options)).toBeNull();
+    expect(
+      selectNext([issue(19, { labels: [] }), issue(27, { labels: ["site", "agent-ready"] })], options)?.number,
+    ).toBe(27);
   });
 
-  test("허용 목록에 없는 마일스톤과 마일스톤 없는 이슈는 고르지 않는다", () => {
-    expect(selectNext([issue(19, { milestone: "M4" }), issue(27, { milestone: null })], options)).toBeNull();
+  test("후보가 여럿이면 번호가 작은 것부터", () => {
+    expect(selectNext([issue(52), issue(47), issue(50)], options)?.number).toBe(47);
   });
 
   test("의존 이슈가 목록에 없으면(삭제·다른 레포) 닫히지 않은 것으로 본다", () => {
