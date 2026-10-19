@@ -10,7 +10,7 @@ import { blobSha } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
 import { createGitHubClient } from "./client";
-import { findCollection } from "./read";
+import { editorKeys, findCollection, readPost } from "./read";
 import { saveBody } from "./save-body";
 
 const REPO = "es-kimo/yjshd";
@@ -77,6 +77,18 @@ describe("saveBody", () => {
     expect(repo.log()).toHaveLength(2);
     expect(repo.log()[0]!.message).toBe("post: 11월 휴진 안내");
     expect(text(repo.file(POST))).toBe(HEAD + EDITED);
+  });
+
+  test("본문을 저장해도 metadata 영역의 key는 그대로라 고치던 폼 입력이 남는다", async () => {
+    const { client } = setup([{ path: POST, content: SOURCE }]);
+    const before = (await readPost(client, REPO, config, POST))!;
+
+    await saveBody(client, REPO, config, { path: POST, baseSha: before.sha, body: EDITED });
+    const after = (await readPost(client, REPO, config, POST))!;
+
+    expect(after.sha).not.toBe(before.sha);
+    expect(editorKeys(after).metadata).toBe(editorKeys(before).metadata);
+    expect(editorKeys(after).body).not.toBe(editorKeys(before).body);
   });
 
   test("에디터가 끝 줄바꿈을 뗀 본문을 내보내도 파일 끝 줄바꿈을 지킨다", async () => {

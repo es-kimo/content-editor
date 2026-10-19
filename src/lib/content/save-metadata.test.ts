@@ -11,7 +11,7 @@ import { blobSha } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
 import { createGitHubClient } from "./client";
-import { findCollection } from "./read";
+import { editorKeys, findCollection, readPost } from "./read";
 import { saveMetadata } from "./save-metadata";
 
 const REPO = "es-kimo/yjshd";
@@ -93,6 +93,18 @@ export const metadata = {
 본문 <Image src={image1} alt="" />
 `);
     expect(repo.paths()).toEqual(["README.md", POST]);
+  });
+
+  test("metadata를 저장해도 본문 영역의 key는 그대로라 고치던 본문이 남는다", async () => {
+    const { client } = setup([{ path: POST, content: SOURCE }]);
+    const before = (await readPost(client, REPO, config, POST))!;
+
+    await saveMetadata(client, REPO, config, { path: POST, baseSha: before.sha, values: FORM });
+    const after = (await readPost(client, REPO, config, POST))!;
+
+    expect(after.sha).not.toBe(before.sha);
+    expect(editorKeys(after).body).toBe(editorKeys(before).body);
+    expect(editorKeys(after).metadata).not.toBe(editorKeys(before).metadata);
   });
 
   test("폼 값을 바꾸지 않았으면 커밋하지 않는다", async () => {

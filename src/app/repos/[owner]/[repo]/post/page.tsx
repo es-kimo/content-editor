@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { isUnauthorized, LoginLink, loadRepoConfig, postHref, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
-import { createGitHubClient, readPost, type Post } from "@/lib/content";
+import { createGitHubClient, editorKeys, readPost, type Post } from "@/lib/content";
 import { buildForm } from "@/lib/metadata-form";
 
 import { saveBodyAction, saveMetadataAction } from "./actions";
@@ -64,9 +64,9 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">본문</h2>
         {post.doc.ok && post.collection.editor === "wysiwyg" ? (
-          // 저장한 뒤 같은 주소로 돌아오면 새 본문으로 에디터를 다시 열도록 key를 sha로 둔다.
+          // 다른 영역을 저장해도 고치던 본문이 남도록 key를 sha가 아닌 본문 원본으로 둔다.
           <BodyEditor
-            key={post.sha}
+            key={editorKeys(post).body}
             body={post.doc.body}
             syntax={loaded.config.syntax}
             components={post.collection.components}
@@ -109,8 +109,12 @@ function MetadataView({ repo, post }: { repo: string; post: Post }) {
   if (fields.length === 0) {
     return <p className="text-sm text-zinc-500">config에 이 컬렉션의 metadata 필드가 없다.</p>;
   }
-  // 저장한 뒤 같은 주소로 돌아오면 새 sha로 폼을 다시 만들도록 key를 sha로 둔다.
+  // 본문을 저장해도 고치던 폼 입력이 남도록 key를 sha가 아닌 metadata 원본으로 둔다.
   return (
-    <MetadataForm key={post.sha} fields={fields} action={saveMetadataAction.bind(null, repo, post.path, post.sha)} />
+    <MetadataForm
+      key={editorKeys(post).metadata}
+      fields={fields}
+      action={saveMetadataAction.bind(null, repo, post.path, post.sha)}
+    />
   );
 }
