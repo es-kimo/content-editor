@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { addImage, findUnusedImageImports, readImageImports } from "./images";
+import { addImage, addImageAs, findUnusedImageImports, readImageImports } from "./images";
 import { parseMdx, printMdx } from "./split";
 
 describe.each(fixtureSources)("픽스처 이미지 import: $name", (source) => {
@@ -45,6 +45,20 @@ describe.each(fixtureSources)("픽스처 이미지 import: $name", (source) => {
         before.every((b) => after.some((a) => a.name === b.name && a.path === b.path)) &&
         printed.endsWith(doc.body);
       if (!ok) failed.push(f.path);
+    }
+    expect(failed).toEqual([]);
+  });
+
+  test.skipIf(!fixtures)("이미지 2장을 고른 파일 이름으로 다시 추가하면 addImage와 같은 글이 된다", () => {
+    const failed: string[] = [];
+    for (const f of fixtures!) {
+      const doc = parseMdx(f.source, source.syntax);
+      if (!doc.ok) continue;
+      const first = addImage(doc, { extension: "png", component: "Image" });
+      const second = addImage(first.doc, { extension: "jpg", component: "Image" });
+      const firstAgain = addImageAs(doc, first.file, { component: "Image" });
+      const secondAgain = firstAgain && addImageAs(firstAgain.doc, second.file, { component: "Image" });
+      if (!secondAgain || printMdx(secondAgain.doc) !== printMdx(second.doc)) failed.push(f.path);
     }
     expect(failed).toEqual([]);
   });
@@ -132,6 +146,47 @@ describe("addImage", () => {
     expect(() => addImage(parseMdx(sample), { extension: "exe", component: "Image" })).toThrow();
     expect(() => addImage(parseMdx("<a"), { extension: "png", component: "Image" })).toThrow();
   });
+
+  test("import하지 않았어도 글 폴더에 있는 파일 이름은 피한다", () => {
+    const added = addImage(parseMdx(sample), { extension: "png", component: "Image", files: ["1.PNG", "2.jpg"] });
+    expect(added.file).toBe("2.png");
+  });
+
+  test("앞서 추가한 doc에 이어 추가하면 다음 번호를 쓴다", () => {
+    const first = addImage(parseMdx(sample), { extension: "png", component: "Image" });
+    const second = addImage(first.doc, { extension: "jpg", component: "Image" });
+    expect([first.file, second.file]).toEqual(["1.png", "2.jpg"]);
+  });
+});
+
+describe("addImageAs", () => {
+  test("addImage가 고른 파일 이름으로 원본에 다시 추가하면 같은 import와 tag가 된다", () => {
+    const doc = parseMdx(sample);
+    const first = addImage(doc, { extension: "png", component: "Image" });
+    const second = addImage(first.doc, { extension: "webp", component: "Image" });
+
+    // 첫 이미지를 본문에서 지웠으면 두 번째 이미지만 다시 추가한다.
+    const again = addImageAs(doc, second.file, { component: "Image" });
+
+    expect(again?.name).toBe("image2");
+    expect(again?.tag).toBe(second.tag);
+    expect(readImageImports(again!.doc)).toContainEqual({ name: "image2", path: "./2.webp" });
+  });
+
+  test("번호를 이미 쓰고 있으면 null이다", () => {
+    const doc = parseMdx('import image1 from "./1.png";\n\n{image2}\n');
+    expect(addImageAs(doc, "1.png", { component: "Image" })).toBeNull();
+    expect(addImageAs(doc, "2.png", { component: "Image" })).toBeNull();
+    expect(addImageAs(doc, "3.png", { component: "Image", files: ["3.png"] })).toBeNull();
+    expect(addImageAs(doc, "3.png", { component: "Image" })?.name).toBe("image3");
+  });
+
+  test.each(["image.png", "0.png", "1.exe", "../1.png", "1.PNG"])(
+    "N.ext 꼴이 아닌 파일 이름은 null이다: %s",
+    (file) => {
+      expect(addImageAs(parseMdx(sample), file, { component: "Image" })).toBeNull();
+    },
+  );
 });
 
 describe("findUnusedImageImports", () => {
