@@ -1,8 +1,6 @@
 import { compilePathPattern, type Collection, type EditorConfig, type PathParams } from "@/lib/editor-config";
 import { encodePath, GitHubApiError, repoPath, type GitHubClient } from "@/lib/github";
-import { parseMdx, parseMetadata, type MdxDoc, type MetadataResult } from "@/lib/mdx-doc";
-
-export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"] as const;
+import { isImageFile, metadataText, parseMdx, readMetadata, type MdxDoc, type MetadataResult } from "@/lib/mdx-doc";
 
 export type PostImage = { name: string; path: string; sha: string; size: number };
 
@@ -38,11 +36,6 @@ export function findCollection(
     if (params) return { collection, params };
   }
   return null;
-}
-
-export function isImageFile(name: string): boolean {
-  const extension = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
-  return name.includes(".") && (IMAGE_EXTENSIONS as readonly string[]).includes(extension);
 }
 
 /**
@@ -85,7 +78,6 @@ export async function readPost(
   const source = await blob.text();
 
   const doc = parseMdx(source, config.syntax);
-  const segment = metadataSegment(doc);
 
   return {
     collection: found.collection,
@@ -94,16 +86,12 @@ export async function readPost(
     sha: file.sha,
     source,
     doc,
-    metadata: segment ? parseMetadata(segment.text) : null,
+    metadata: readMetadata(doc),
     images: entries
       .filter((e) => e.type === "file" && isImageFile(e.name))
       .map(({ name, path, sha, size }) => ({ name, path, sha, size }))
       .sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true })),
   };
-}
-
-function metadataSegment(doc: MdxDoc) {
-  return doc.ok ? doc.head.find((s) => s.kind === "metadata") : undefined;
 }
 
 export type EditorMode = Collection["editor"];
@@ -131,5 +119,5 @@ export function editorModes(post: Post): EditorModes {
  */
 export function editorKeys(post: Post): { metadata: string; body: string } {
   if (!post.doc.ok) return { metadata: post.source, body: post.source };
-  return { metadata: metadataSegment(post.doc)?.text ?? "", body: post.doc.body };
+  return { metadata: metadataText(post.doc) ?? "", body: post.doc.body };
 }

@@ -31,6 +31,13 @@ describe("summarizePost", () => {
     expect(summarizePost(source, {}, "slug")).toMatchObject({ title: "a", status: null, createdAt: null });
   });
 
+  test("metadata가 없거나 읽을 수 없으면 파일명을 title로 쓰고 이유를 남긴다", () => {
+    expect(summarizePost("# 본문\n", {}, "slug")).toMatchObject({ title: "slug", problem: "metadata export가 없다" });
+    const unreadable = summarizePost("export const metadata = { title: foo };\n", {}, "slug");
+    expect(unreadable).toMatchObject({ title: "slug", titleFromMetadata: false });
+    expect(unreadable.problem).not.toBe("metadata export가 없다");
+  });
+
   test("site 문법을 따른다: math 없이 읽으면 실패하는 글도 math를 켜면 읽는다", () => {
     const source = `export const metadata = { title: "수식" };\n\n$$\n\\frac{a}{b}\n$$\n\n$x_{1}$\n`;
     expect(summarizePost(source, { math: true }, "slug")).toMatchObject({ title: "수식", titleFromMetadata: true });

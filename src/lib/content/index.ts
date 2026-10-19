@@ -20,8 +20,6 @@ export {
   editorKeys,
   editorModes,
   findCollection,
-  IMAGE_EXTENSIONS,
-  isImageFile,
   readPost,
   type EditorMode,
   type EditorModes,

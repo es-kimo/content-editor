@@ -5,7 +5,7 @@ import { createGitHubClient } from "@/lib/github";
 import { printMdx } from "@/lib/mdx-doc";
 import { blobSha, fakeGitHub, type FakeFile } from "@/test/fake-github";
 
-import { editorModes, isImageFile, readPost } from "./read";
+import { editorModes, readPost } from "./read";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";
@@ -104,6 +104,12 @@ describe("readPost", () => {
     expect(post!.doc.ok && post!.doc.body).toBe("본문\n");
   });
 
+  test("metadata export가 없는 글은 metadata가 null이다", async () => {
+    const client = createGitHubClient("t", fakeGitHub(REPO, "main", [{ path: POST, content: "# 본문\n" }]));
+    const post = await readPost(client, REPO, config, POST);
+    expect(post).toMatchObject({ metadata: null, doc: { ok: true } });
+  });
+
   test("구간으로 나눌 수 없는 글은 metadata가 null이고 원문은 그대로 있다", async () => {
     const source = "# 본문\n\nexport const metadata = { title: 'a' };\n";
     const client = createGitHubClient("t", fakeGitHub(REPO, "main", [{ path: POST, content: source }]));
@@ -164,19 +170,5 @@ describe("editorModes", () => {
 
   test("metadata export가 없는 글은 두 모드를 오갈 수 있다", async () => {
     expect(editorModes(await open("# 본문\n"))).toEqual({ initial: "wysiwyg", sourceOnly: null });
-  });
-});
-
-describe("isImageFile", () => {
-  test.each([
-    ["1.png", true],
-    ["a.JPEG", true],
-    ["b.webp", true],
-    ["c.svg", true],
-    ["page.mdx", false],
-    ["png", false],
-    ["notes.txt", false],
-  ])("%s → %s", (name, expected) => {
-    expect(isImageFile(name)).toBe(expected);
   });
 });

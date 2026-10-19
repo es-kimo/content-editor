@@ -1,5 +1,5 @@
 import type { Collection, MetadataField } from "@/lib/editor-config";
-import type { MetadataValue } from "@/lib/mdx-doc";
+import { lookupMetadata, type MetadataValue } from "@/lib/mdx-doc";
 
 export type MetadataObject = { [key: string]: MetadataValue };
 
@@ -31,7 +31,7 @@ export const FIELD_PREFIX = "metadata:";
 /** config의 metadata 정의와 글의 지금 값으로 폼을 만든다. config에 적힌 순서를 따른다. */
 export function buildForm(collection: Collection, metadata: MetadataObject): FormField[] {
   return Object.entries(collection.metadata).map(([key, field]) => {
-    const found = lookup(metadata, key);
+    const found = lookupMetadata(metadata, key);
     const base = {
       key,
       label: field.label ?? key,
@@ -68,7 +68,7 @@ export function applyForm(collection: Collection, metadata: MetadataObject, valu
   for (const [key, field] of Object.entries(collection.metadata)) {
     const raw = values[key];
     if (raw === undefined) continue;
-    const found = lookup(metadata, key);
+    const found = lookupMetadata(metadata, key);
     if (found.kind === "blocked") continue;
     const current = found.kind === "found" ? found.value : undefined;
     if (current !== undefined && toInput(field, current) === null) continue;
@@ -89,25 +89,6 @@ export function applyForm(collection: Collection, metadata: MetadataObject, valu
     set(next, key, parsed.value);
   }
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value: next };
-}
-
-type Lookup =
-  | { kind: "found"; value: MetadataValue }
-  | { kind: "missing" }
-  /** 중간 키가 객체가 아니어서 그 안에 값을 넣을 수 없다. */
-  | { kind: "blocked"; reason: string };
-
-function lookup(metadata: MetadataObject, key: string): Lookup {
-  const parts = key.split(".");
-  let node: MetadataObject = metadata;
-  for (const [i, part] of parts.entries()) {
-    if (!Object.hasOwn(node, part)) return { kind: "missing" };
-    const value = node[part]!;
-    if (i === parts.length - 1) return { kind: "found", value };
-    if (!isObject(value)) return { kind: "blocked", reason: `${parts.slice(0, i + 1).join(".")}가 객체가 아니다` };
-    node = value;
-  }
-  return { kind: "missing" };
 }
 
 export function set(metadata: MetadataObject, key: string, value: MetadataValue) {
@@ -131,9 +112,6 @@ function remove(metadata: MetadataObject, key: string) {
 function define(node: MetadataObject, key: string, value: MetadataValue) {
   Object.defineProperty(node, key, { value, enumerable: true, writable: true, configurable: true });
 }
-
-const isObject = (value: MetadataValue): value is MetadataObject =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
 
 const isEmpty = (value: MetadataValue | undefined) =>
   value === undefined ||
