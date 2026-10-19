@@ -1,7 +1,7 @@
 import type { EditorConfig } from "@/lib/editor-config";
+import type { GitHubClient } from "@/lib/github";
 import { checkMdx, printMdx, type MdxDoc, type MdxError, type MetadataValue } from "@/lib/mdx-doc";
 
-import type { GitHubClient } from "./client";
 import { savePost, type CommitResult } from "./commit";
 import { readPost, type Post } from "./read";
 import type { UploadImage } from "./upload";

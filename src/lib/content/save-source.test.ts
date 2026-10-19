@@ -4,11 +4,11 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import { createGitHubClient } from "@/lib/github";
 import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
-import { createGitHubClient } from "./client";
 import { saveSource } from "./save-source";
 
 const REPO = "es-kimo/site";

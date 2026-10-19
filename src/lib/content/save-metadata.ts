@@ -1,8 +1,8 @@
 import type { EditorConfig } from "@/lib/editor-config";
+import type { GitHubClient } from "@/lib/github";
 import { setMetadata } from "@/lib/mdx-doc";
 import { applyForm, type FormValues } from "@/lib/metadata-form";
 
-import type { GitHubClient } from "./client";
 import { commitEdit, openForEdit, type CommitEditResult, type OpenForEditResult } from "./edit-post";
 
 export type SaveMetadataInput = {

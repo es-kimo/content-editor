@@ -1,6 +1,6 @@
 import { type EditorConfig } from "@/lib/editor-config";
+import { encodePath, GitHubApiError, repoPath, type GitHubClient } from "@/lib/github";
 
-import { encodePath, GitHubApiError, repoPath, type GitHubClient } from "./client";
 import { findCollection, isImageFile } from "./read";
 
 export type CommitFile = { path: string; content: string | Uint8Array };

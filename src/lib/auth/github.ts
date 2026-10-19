@@ -1,3 +1,5 @@
+import type { GitHubClient } from "@/lib/github";
+
 import type { AuthConfig } from "./config";
 import type { Session } from "./session";
 
@@ -6,14 +8,10 @@ export type Warn = (message: string) => void;
 
 const AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
 const TOKEN_URL = "https://github.com/login/oauth/access_token";
-const API_URL = "https://api.github.com";
 
+/** OAuth 토큰 발급·갱신 실패. 다시 로그인해야 하는지는 API 응답의 `GitHubApiError.status`로만 판단한다. */
 export class GitHubAuthError extends Error {
-  constructor(
-    message: string,
-    /** GitHub 응답의 HTTP 상태. 토큰 엔드포인트처럼 200에 error를 담아 오는 경우는 `null`. */
-    readonly status: number | null = null,
-  ) {
+  constructor(message: string) {
     super(message);
     this.name = "GitHubAuthError";
   }
@@ -73,7 +71,7 @@ async function requestToken(
     body: new URLSearchParams(params),
     cache: "no-store",
   });
-  if (!res.ok) throw new GitHubAuthError(`토큰 요청 실패: HTTP ${res.status}`, res.status);
+  if (!res.ok) throw new GitHubAuthError(`토큰 요청 실패: HTTP ${res.status}`);
   const body = (await res.json()) as TokenResponse;
   // 토큰 엔드포인트는 실패도 200으로 돌려주고 본문의 error로 알린다.
   if (typeof body.error === "string") {
@@ -115,41 +113,30 @@ export function refreshAccessToken(
   );
 }
 
-async function api<T>(path: string, accessToken: string, fetchFn: Fetch): Promise<T> {
-  const res = await fetchFn(`${API_URL}${path}`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${accessToken}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new GitHubAuthError(`GitHub API ${path} 실패: HTTP ${res.status}`, res.status);
-  return (await res.json()) as T;
+async function getJson<T>(client: GitHubClient, path: string): Promise<T> {
+  return (await (await client.rest(path)).json()) as T;
 }
 
 export type GitHubUser = { login: string; name: string | null; avatar_url: string; html_url: string };
 export type Installation = { id: number; account: { login: string } | null };
 export type Repository = { id: number; full_name: string; private: boolean; html_url: string };
 
-export function getUser(accessToken: string, fetchFn: Fetch): Promise<GitHubUser> {
-  return api<GitHubUser>("/user", accessToken, fetchFn);
+export function getUser(client: GitHubClient): Promise<GitHubUser> {
+  return getJson<GitHubUser>(client, "/user");
 }
 
-export async function listInstallations(accessToken: string, fetchFn: Fetch): Promise<Installation[]> {
-  const body = await api<{ installations: Installation[] }>("/user/installations?per_page=100", accessToken, fetchFn);
+export async function listInstallations(client: GitHubClient): Promise<Installation[]> {
+  const body = await getJson<{ installations: Installation[] }>(client, "/user/installations?per_page=100");
   return body.installations;
 }
 
 export async function listInstallationRepositories(
-  accessToken: string,
+  client: GitHubClient,
   installationId: number,
-  fetchFn: Fetch,
 ): Promise<Repository[]> {
-  const body = await api<{ repositories: Repository[] }>(
+  const body = await getJson<{ repositories: Repository[] }>(
+    client,
     `/user/installations/${installationId}/repositories?per_page=100`,
-    accessToken,
-    fetchFn,
   );
   return body.repositories;
 }

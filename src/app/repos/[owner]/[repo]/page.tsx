@@ -1,18 +1,11 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
-import {
-  CollectionTabs,
-  isUnauthorized,
-  LoginLink,
-  loadRepoConfig,
-  newPostHref,
-  postHref,
-  repoHref,
-} from "@/app/_lib/repo";
+import { CollectionTabs, LoginLink, loadRepoConfig, newPostHref, postHref, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
-import { createGitHubClient, listPosts, timed, type PostListItem } from "@/lib/content";
+import { listPosts, timed, type PostListItem } from "@/lib/content";
+import { createGitHubClient, isUnauthorized } from "@/lib/github";
 
 type Params = Promise<{ owner: string; repo: string }>;
 

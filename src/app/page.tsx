@@ -6,7 +6,6 @@ import { Fragment, Suspense } from "react";
 import { LoginLink, repoHref } from "@/app/_lib/repo";
 import { pageSiteScope } from "@/app/_lib/site";
 import {
-  GitHubAuthError,
   loadAccount,
   readAuthConfig,
   REFRESH_ATTEMPTED_PARAM,
@@ -15,7 +14,8 @@ import {
   SESSION_COOKIE,
   type Account,
 } from "@/lib/auth";
-import { CONFIG_FILE, ConfigLoadError, loadEditorConfig, type LoadedConfig } from "@/lib/editor-config";
+import { CONFIG_FILE, loadEditorConfig, type LoadedConfig } from "@/lib/editor-config";
+import { GitHubApiError, isUnauthorized } from "@/lib/github";
 import { resolveRepoAccess, type RepoAccess } from "@/lib/sites";
 
 type Repository = Account["installations"][number]["repositories"][number];
@@ -48,7 +48,7 @@ async function AccountSection({ searchParams }: { searchParams: SearchParams }) 
     account = await loadAccount(page.session.accessToken, fetch);
   } catch (e) {
     // 토큰이 폐기됐거나 앱 권한이 해제된 경우다. 다시 로그인하게 한다.
-    if (e instanceof GitHubAuthError && e.status === 401) return <LoginLink />;
+    if (isUnauthorized(e)) return <LoginLink />;
     throw e;
   }
   const access = resolveRepoAccess(
@@ -143,7 +143,7 @@ async function ConfigStatus({ repo, accessToken }: { repo: string; accessToken: 
   try {
     loaded = await loadEditorConfig(repo, accessToken, fetch);
   } catch (e) {
-    if (e instanceof ConfigLoadError) return <p className="text-sm text-red-600">{e.message}</p>;
+    if (e instanceof GitHubApiError) return <p className="text-sm text-red-600">{e.message}</p>;
     throw e;
   }
   switch (loaded.kind) {

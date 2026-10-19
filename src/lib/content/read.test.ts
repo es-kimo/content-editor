@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import { createGitHubClient } from "@/lib/github";
 import { printMdx } from "@/lib/mdx-doc";
 import { blobSha, fakeGitHub, type FakeFile } from "@/test/fake-github";
 
-import { createGitHubClient } from "./client";
 import { editorModes, isImageFile, readPost } from "./read";
 
 const REPO = "es-kimo/yjshd";

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
 
+import { createGitHubClient } from "@/lib/github";
 import { yjshdConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
 import { fakeGitHub, type FakeFile } from "@/test/fake-github";
 
-import { createGitHubClient } from "./client";
 import { createPost, listSubmenus } from "./create-post";
 import { listPosts } from "./posts";
 import { readPost } from "./read";

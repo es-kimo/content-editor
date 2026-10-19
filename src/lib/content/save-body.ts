@@ -1,7 +1,7 @@
 import type { EditorConfig } from "@/lib/editor-config";
+import type { GitHubClient } from "@/lib/github";
 import { addImageAs, findUnusedImageImports, setBody, type MdxDoc } from "@/lib/mdx-doc";
 
-import type { GitHubClient } from "./client";
 import { commitEdit, currentTitle, openForEdit, type CommitEditResult, type OpenForEditResult } from "./edit-post";
 import { checkUploads, IMAGE_COMPONENT, type UploadCheck, type UploadImage } from "./upload";
 

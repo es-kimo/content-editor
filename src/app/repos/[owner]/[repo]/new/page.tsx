@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { CollectionTabs, isUnauthorized, LoginLink, loadRepoConfig, newPostHref, repoHref } from "@/app/_lib/repo";
+import { CollectionTabs, LoginLink, loadRepoConfig, newPostHref, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
-import { createGitHubClient, listSubmenus, needsSubmenu } from "@/lib/content";
+import { listSubmenus, needsSubmenu } from "@/lib/content";
+import { createGitHubClient, isUnauthorized } from "@/lib/github";
 
 import { createPostAction } from "./actions";
 import { NewPostForm } from "./new-post-form";

@@ -1,4 +1,4 @@
-export { ConfigLoadError, loadEditorConfig, type LoadedConfig } from "./load";
+export { loadEditorConfig, type LoadedConfig } from "./load";
 export {
   formatConfigIssues,
   parseEditorConfig,

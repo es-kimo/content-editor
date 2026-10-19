@@ -1,4 +1,3 @@
-export { createGitHubClient, GitHubApiError, timed, type GitHubClient } from "./client";
 export {
   commitFiles,
   postCommitMessage,
@@ -34,6 +33,7 @@ export { saveSource, type SaveSourceInput, type SaveSourceResult } from "./save-
 export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";
 export { newPostPath, postSlug } from "./slug";
 export { summarizePost, type PostSummary } from "./summary";
+export { timed } from "./timed";
 export {
   addUpload,
   fitImageSize,

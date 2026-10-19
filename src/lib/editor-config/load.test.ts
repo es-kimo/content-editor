@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
 
+import { GitHubApiError } from "@/lib/github";
 import { json, mockFetch } from "@/test/mock-fetch";
 
-import { ConfigLoadError, loadEditorConfig } from "./load";
+import { loadEditorConfig } from "./load";
 
 const CONTENTS_URL = "https://api.github.com/repos/es-kimo/yjshd/contents/editor.config.json";
 
@@ -43,7 +44,7 @@ describe("loadEditorConfig", () => {
   test("그 밖의 HTTP 오류는 상태 코드와 함께 예외로 던진다", async () => {
     const fetch = mockFetch(contentsRoute(() => json({ message: "Bad credentials" }, 401)));
     const error = await loadEditorConfig("es-kimo/yjshd", "t", fetch).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ConfigLoadError);
+    expect(error).toBeInstanceOf(GitHubApiError);
     expect(error).toMatchObject({ status: 401, message: expect.stringContaining("HTTP 401") });
   });
 });

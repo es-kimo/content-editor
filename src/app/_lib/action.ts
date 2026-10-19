@@ -1,10 +1,9 @@
 import { cookies } from "next/headers";
 
-import { isUnauthorized } from "@/app/_lib/repo";
 import { assertRepoAllowed } from "@/app/_lib/site";
 import { readAuthConfig, resolvePageSession, SESSION_COOKIE } from "@/lib/auth";
-import { createGitHubClient, type GitHubClient } from "@/lib/content";
-import { CONFIG_FILE, ConfigLoadError, loadEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import { CONFIG_FILE, loadEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import { createGitHubClient, isUnauthorized, type GitHubClient } from "@/lib/github";
 
 export type ActionContext = { client: GitHubClient; config: EditorConfig };
 
@@ -32,7 +31,7 @@ export async function runRepoAction<T>(
     if (loaded.kind !== "ok") return { ok: false, message: `${CONFIG_FILE}을 읽을 수 없다.` };
     return { ok: true, value: await run({ client: createGitHubClient(accessToken, fetch), config: loaded.config }) };
   } catch (e) {
-    if (isUnauthorized(e) || (e instanceof ConfigLoadError && e.status === 401)) {
+    if (isUnauthorized(e)) {
       return { ok: false, message: "로그인이 만료됐다. 다른 탭에서 다시 로그인한 뒤 저장한다." };
     }
     throw e;

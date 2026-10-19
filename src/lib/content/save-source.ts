@@ -1,6 +1,6 @@
 import type { EditorConfig } from "@/lib/editor-config";
+import type { GitHubClient } from "@/lib/github";
 
-import type { GitHubClient } from "./client";
 import { commitSource, currentTitle, openPost, type CommitEditResult, type OpenPostResult } from "./edit-post";
 
 export type SaveSourceInput = {
