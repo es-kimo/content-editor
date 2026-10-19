@@ -13,9 +13,11 @@ export class GitHubApiError extends Error {
   }
 }
 
+export type RestOptions = { accept?: string; method?: "GET" | "POST" | "PATCH"; body?: unknown };
+
 export type GitHubClient = {
-  /** REST 요청. 응답이 2xx가 아니면 `GitHubApiError`를 던진다. */
-  rest(path: string, options?: { accept?: string }): Promise<Response>;
+  /** REST 요청. `body`는 JSON으로 보낸다. 응답이 2xx가 아니면 `GitHubApiError`를 던진다. */
+  rest(path: string, options?: RestOptions): Promise<Response>;
   graphql<T>(query: string, variables: Record<string, unknown>): Promise<T>;
   /** 지금까지 보낸 API 요청 수. 목록 화면이 몇 번 호출했는지 기록하는 데 쓴다. */
   readonly calls: number;
@@ -36,8 +38,11 @@ export function createGitHubClient(accessToken: string, fetchFn: Fetch): GitHubC
     },
     async rest(path, options = {}) {
       calls++;
+      const base = headers(options.accept ?? "application/vnd.github+json");
       const res = await fetchFn(`${API_URL}${path}`, {
-        headers: headers(options.accept ?? "application/vnd.github+json"),
+        method: options.method ?? "GET",
+        headers: options.body === undefined ? base : { ...base, "Content-Type": "application/json" },
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
         cache: "no-store",
       });
       if (!res.ok) throw new GitHubApiError(`GitHub API ${decodeURI(path)} 실패: HTTP ${res.status}`, res.status);
