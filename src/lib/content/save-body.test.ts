@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
-import { parseMdx } from "@/lib/mdx-doc";
+import { editedBody, parseMdx } from "@/lib/mdx-doc";
 import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
@@ -77,6 +77,27 @@ describe("saveBody", () => {
     expect(repo.log()).toHaveLength(2);
     expect(repo.log()[0]!.message).toBe("post: 11월 휴진 안내");
     expect(text(repo.file(POST))).toBe(HEAD + EDITED);
+  });
+
+  test("에디터가 끝 줄바꿈을 뗀 본문을 내보내도 파일 끝 줄바꿈을 지킨다", async () => {
+    const { repo, client } = setup([{ path: POST, content: SOURCE }]);
+    const body = editedBody(bodyOf(SOURCE), null, EDITED.trim());
+
+    const result = await saveBody(client, REPO, config, { path: POST, baseSha: blobSha(SOURCE), body });
+
+    expect(result.ok).toBe(true);
+    expect(text(repo.file(POST))).toBe(HEAD + EDITED);
+  });
+
+  test("에디터에서 고쳤다가 되돌린 본문은 끝 줄바꿈이 없어도 커밋하지 않는다", async () => {
+    const { repo, client } = setup([{ path: POST, content: SOURCE }]);
+    const before = repo.head();
+    const body = editedBody(bodyOf(SOURCE), null, bodyOf(SOURCE).trim());
+
+    const result = await saveBody(client, REPO, config, { path: POST, baseSha: blobSha(SOURCE), body });
+
+    expect(result).toEqual({ ok: false, reason: "unchanged" });
+    expect(repo.head()).toBe(before);
   });
 
   test("본문이 원본과 같으면 커밋하지 않는다", async () => {

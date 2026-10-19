@@ -9,12 +9,17 @@ export function setBody(doc: MdxDoc, body: string): MdxDoc {
 /**
  * WYSIWYG 에디터에서 저장할 본문. 에디터는 글을 열기만 해도 본문을 다시 쓰므로(목록 기호, 빈 줄 등),
  * 사용자가 고치지 않았거나 고친 뒤 처음 상태로 되돌렸으면 원본을 돌려줘 diff가 생기지 않게 한다.
+ * MDXEditor는 내보내는 본문의 앞뒤 공백을 떼므로, 앞뒤 공백을 빼고 비교하고 고친 본문에는 원본의 앞뒤 공백을 다시 붙인다.
  * @param normalized 에디터가 글을 열며 다시 쓴 본문. 다시 쓰지 않았으면 null.
  * @param edited 사용자가 고친 뒤의 본문. 고치지 않았으면 null.
  */
 export function editedBody(original: string, normalized: string | null, edited: string | null): string {
-  if (edited === null || edited === (normalized ?? original)) return original;
-  return edited;
+  if (edited === null) return original;
+  const content = edited.trim();
+  if (content === (normalized ?? original).trim()) return original;
+  const start = original.length - original.trimStart().length;
+  const end = start + original.trim().length;
+  return original.slice(0, start) + content + original.slice(end);
 }
 
 /**

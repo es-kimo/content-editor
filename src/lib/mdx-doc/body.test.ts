@@ -57,6 +57,16 @@ describe("editedBody", () => {
     expect(editedBody(original, normalized, "- 하나\n- **둘**\n")).toBe("- 하나\n- **둘**\n");
     expect(editedBody(original, null, "* 하나\n* 셋\n")).toBe("* 하나\n* 셋\n");
   });
+
+  test("에디터가 앞뒤 공백을 뗀 본문을 내보내도 원본의 앞뒤 공백을 지킨다", () => {
+    expect(editedBody(original, normalized, "- 하나\n- **둘**")).toBe("- 하나\n- **둘**\n");
+    expect(editedBody("\n* 하나\n\n", null, "* 셋")).toBe("\n* 셋\n\n");
+  });
+
+  test("에디터가 앞뒤 공백을 뗀 본문이 처음 상태와 같으면 원본을 저장한다", () => {
+    expect(editedBody(original, normalized, "- 하나\n- 둘")).toBe(original);
+    expect(editedBody(original, null, "* 하나\n* 둘")).toBe(original);
+  });
 });
 
 describe("sameBodyStructure", () => {
