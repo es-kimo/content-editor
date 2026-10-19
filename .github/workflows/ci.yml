@@ -40,7 +40,8 @@ jobs:
           BASE: origin/${{ github.base_ref }}
         run: |
           changed=$(git diff --name-only "$BASE"...HEAD)
-          bad=$(echo "$changed" | grep -E '^(\.github/|CLAUDE\.md$|AGENTS\.md$|fixtures\.config\.json$|scripts/sync-fixtures\.mts$|scripts/agent/|scripts/github-app/|github-app/)' || true)
+          # docs/review/와 eslint.config.mjs는 리뷰·lint 기준이다. 에이전트가 기준을 낮춰 통과하지 못하게 한다.
+          bad=$(echo "$changed" | grep -E '^(\.github/|CLAUDE\.md$|AGENTS\.md$|fixtures\.config\.json$|scripts/sync-fixtures\.mts$|scripts/agent/|scripts/github-app/|github-app/|docs/review/|eslint\.config\.mjs$)' || true)
           disabled=$(git diff "$BASE"...HEAD -- '*.test.ts' '*.test.mts' | grep -E '^\+.*\b(test|it|describe)\.(skip|only|todo)\(' || true)
           if [ -n "$bad" ]; then echo "::error::에이전트 PR이 수정할 수 없는 파일:"; echo "$bad"; fi
           if [ -n "$disabled" ]; then echo "::error::새로 추가된 skip/only/todo:"; echo "$disabled"; fi
