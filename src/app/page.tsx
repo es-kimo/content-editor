@@ -1,25 +1,15 @@
-import { cookies } from "next/headers";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Fragment, Suspense } from "react";
 
 import { LoginLink, repoHref } from "@/app/_lib/repo";
+import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { pageSiteScope } from "@/app/_lib/site";
-import {
-  loadAccount,
-  readAuthConfig,
-  REFRESH_ATTEMPTED_PARAM,
-  REFRESH_PATH,
-  resolvePageSession,
-  SESSION_COOKIE,
-  type Account,
-} from "@/lib/auth";
+import { loadAccount, type Account } from "@/lib/auth";
 import { CONFIG_FILE, loadEditorConfig, type LoadedConfig } from "@/lib/editor-config";
 import { GitHubApiError, isUnauthorized } from "@/lib/github";
 import { resolveRepoAccess, type RepoAccess } from "@/lib/sites";
 
 type Repository = Account["installations"][number]["repositories"][number];
-type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 export default function Home({ searchParams }: { searchParams: SearchParams }) {
   return (
@@ -32,20 +22,13 @@ export default function Home({ searchParams }: { searchParams: SearchParams }) {
   );
 }
 
-async function readPageSession(searchParams: SearchParams) {
-  const cookie = (await cookies()).get(SESSION_COOKIE)?.value;
-  const refreshAttempted = (await searchParams)[REFRESH_ATTEMPTED_PARAM] !== undefined;
-  return resolvePageSession(cookie, readAuthConfig().sessionKey, Date.now(), refreshAttempted);
-}
-
 async function AccountSection({ searchParams }: { searchParams: SearchParams }) {
-  const page = await readPageSession(searchParams);
-  if (page.kind === "anonymous") return <LoginLink />;
-  if (page.kind === "refresh") redirect(`${REFRESH_PATH}?return_to=/`);
+  const accessToken = await pageAccessToken(searchParams, "/");
+  if (!accessToken) return <LoginLink />;
 
   let account: Account;
   try {
-    account = await loadAccount(page.session.accessToken, fetch);
+    account = await loadAccount(accessToken, fetch);
   } catch (e) {
     if (isUnauthorized(e)) return <LoginLink />;
     throw e;
@@ -54,7 +37,7 @@ async function AccountSection({ searchParams }: { searchParams: SearchParams }) 
     await pageSiteScope(),
     account.installations.flatMap((i) => i.repositories),
   );
-  return <AccountView user={account.user} access={access} accessToken={page.session.accessToken} />;
+  return <AccountView user={account.user} access={access} accessToken={accessToken} />;
 }
 
 function AccountView({

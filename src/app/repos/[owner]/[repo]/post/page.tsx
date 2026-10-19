@@ -2,11 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import { LoginLink, loadRepoConfig, postHref, repoHref } from "@/app/_lib/repo";
-import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
-import { assertRepoAllowed } from "@/app/_lib/site";
+import { openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
+import type { SearchParams } from "@/app/_lib/session";
 import { editorKeys, editorModes, IMAGE_COMPONENT, readPost, type Post } from "@/lib/content";
-import { createGitHubClient, isUnauthorized } from "@/lib/github";
 import type { Syntax } from "@/lib/mdx-doc";
 import { buildForm } from "@/lib/metadata-form";
 
@@ -31,22 +29,14 @@ export default function PostPage({ params, searchParams }: { params: Params; sea
 async function PostView({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const { owner, repo: name } = await params;
   const repo = `${owner}/${name}`;
-  await assertRepoAllowed(repo);
   const { path, saved } = await searchParams;
   if (typeof path !== "string") notFound();
 
-  const accessToken = await pageAccessToken(searchParams, postHref(repo, path));
-  if (!accessToken) return <LoginLink />;
-  const loaded = await loadRepoConfig(repo, accessToken);
-  if (!loaded.ok) return loaded.view;
-
-  let post: Post | null;
-  try {
-    post = await readPost(createGitHubClient(accessToken, fetch), repo, loaded.config, path);
-  } catch (e) {
-    if (isUnauthorized(e)) return <LoginLink />;
-    throw e;
-  }
+  const page = await openRepoPage(repo, searchParams, postHref(repo, path), ({ client, config }) =>
+    readPost(client, repo, config, path),
+  );
+  if (!page.ok) return page.view;
+  const { config, value: post } = page;
   if (!post) notFound();
 
   return (
@@ -67,7 +57,7 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
 
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">본문</h2>
-        <BodyView repo={repo} post={post} syntax={loaded.config.syntax} />
+        <BodyView repo={repo} post={post} syntax={config.syntax} />
       </section>
 
       <section className="flex flex-col gap-2">

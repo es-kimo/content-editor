@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { CollectionTabs, LoginLink, loadRepoConfig, newPostHref, repoHref } from "@/app/_lib/repo";
-import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
-import { assertRepoAllowed } from "@/app/_lib/site";
+import { CollectionTabs, newPostHref, openRepoPage, repoHref } from "@/app/_lib/repo";
+import type { SearchParams } from "@/app/_lib/session";
 import { listSubmenus, needsSubmenu } from "@/lib/content";
-import { createGitHubClient, isUnauthorized } from "@/lib/github";
 
 import { createPostAction } from "./actions";
 import { NewPostForm } from "./new-post-form";
@@ -25,28 +23,21 @@ export default function NewPostPage({ params, searchParams }: { params: Params; 
 async function NewPostView({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const { owner, repo: name } = await params;
   const repo = `${owner}/${name}`;
-  await assertRepoAllowed(repo);
   const selected = (await searchParams).collection;
 
-  const accessToken = await pageAccessToken(
+  const page = await openRepoPage(
+    repo,
     searchParams,
     newPostHref(repo, typeof selected === "string" ? selected : undefined),
+    async ({ client, config }) => {
+      const collection = config.collections.find((c) => c.name === selected) ?? config.collections[0];
+      const submenus = needsSubmenu(collection) ? await listSubmenus(client, repo, config, collection) : null;
+      return { collection, submenus };
+    },
   );
-  if (!accessToken) return <LoginLink />;
-  const loaded = await loadRepoConfig(repo, accessToken);
-  if (!loaded.ok) return loaded.view;
-  const { config } = loaded;
-
-  const collection = config.collections.find((c) => c.name === selected) ?? config.collections[0];
-  let submenus: string[] | null = null;
-  if (needsSubmenu(collection)) {
-    try {
-      submenus = await listSubmenus(createGitHubClient(accessToken, fetch), repo, config, collection);
-    } catch (e) {
-      if (isUnauthorized(e)) return <LoginLink />;
-      throw e;
-    }
-  }
+  if (!page.ok) return page.view;
+  const { config } = page;
+  const { collection, submenus } = page.value;
 
   return (
     <>
