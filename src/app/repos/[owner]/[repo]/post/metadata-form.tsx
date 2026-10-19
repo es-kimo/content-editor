@@ -77,6 +77,12 @@ function FieldInput({ field }: { field: FormField }) {
       return (
         <select {...common} className={`${inputClass} w-fit`}>
           {!field.required && <option value="">(없음)</option>}
+          {/* 빈 자리가 없으면 브라우저가 첫 선택지를 골라 손대지 않은 값이 저장되고 필수 검증도 비껴간다. */}
+          {field.required && field.initial === "" && (
+            <option value="" disabled>
+              (선택)
+            </option>
+          )}
           {field.options.map((option) => (
             <option key={option} value={option}>
               {option}

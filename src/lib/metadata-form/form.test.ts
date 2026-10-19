@@ -108,6 +108,24 @@ describe("buildForm", () => {
     ]);
   });
 
+  test("한 줄 입력이 지우는 줄바꿈이 든 string 값은 잠그고 원래 값을 둔다", () => {
+    const fields = buildForm(board, { title: "가\n나", description: "가\n나" });
+    expect(fields.find((f) => f.key === "title")!.locked).toBe("값이 string 형식이 아니다");
+    expect(fields.find((f) => f.key === "description")!.locked).toBeNull();
+    // 브라우저가 줄바꿈을 지워 보낸 값이 와도 원래 값을 둔다.
+    expect(applyForm(board, { title: "가\n나" }, { title: "가나" })).toEqual({ ok: true, value: { title: "가\n나" } });
+  });
+
+  test.each([[[" 휴진"]], [["휴진 "]], [["휴진", ""]], [["가\n나"]]])(
+    "제출하면 그대로 돌아오지 않는 string[] 값 %j는 잠그고 원래 값을 둔다",
+    (keywords) => {
+      expect(buildForm(board, { keywords }).find((f) => f.key === "keywords")!.locked).toBe(
+        "값이 string[] 형식이 아니다",
+      );
+      expect(applyForm(board, { keywords }, { keywords: "휴진" })).toEqual({ ok: true, value: { keywords } });
+    },
+  );
+
   test("선택지에 없는 지금 값은 선택지 맨 앞에 더해 그대로 고를 수 있게 한다", () => {
     const field = buildForm(board, { other: { status: "hidden" } }).find((f) => f.key === "other.status")!;
     expect(field.options).toEqual(["hidden", "ready", "draft"]);
@@ -129,6 +147,8 @@ describe("readFormData", () => {
 describe("applyForm", () => {
   test("처음 값 그대로 내면 metadata가 같다", () => {
     expect(applyForm(board, METADATA, initialValues(board, METADATA))).toEqual({ ok: true, value: METADATA });
+    const odd = { ...METADATA, title: "가\n나", keywords: [" 휴진", ""] };
+    expect(applyForm(board, odd, initialValues(board, odd))).toEqual({ ok: true, value: odd });
   });
 
   test("폼 값을 반영하고 폼에 없는 키와 키 순서는 보존한다", () => {

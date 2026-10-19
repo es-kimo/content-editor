@@ -143,7 +143,9 @@ const isEmpty = (value: MetadataValue | undefined) =>
 /** 지금 값을 폼 입력 문자열로. 필드 타입과 맞지 않으면 null. */
 function toInput(field: MetadataField, value: MetadataValue): string | null {
   switch (field.type) {
+    // <input type="text">는 줄바꿈을 지워 제출하므로, 손대지 않아도 값이 바뀌지 않게 잠근다.
     case "string":
+      return typeof value === "string" && !/[\r\n]/.test(value) ? value : null;
     case "text":
     case "select":
       return typeof value === "string" ? value : null;
@@ -152,8 +154,10 @@ function toInput(field: MetadataField, value: MetadataValue): string | null {
       const parsed = parseDatetime(value);
       return parsed ? formatLocal(parsed) : null;
     }
+    // 제출할 때 줄마다 trim하고 빈 줄을 버리므로, 그렇게 해도 그대로 돌아오는 배열만 폼에 싣는다.
     case "string[]":
-      return Array.isArray(value) && value.every((item) => typeof item === "string" && !/[\r\n]/.test(item))
+      return Array.isArray(value) &&
+        value.every((item) => typeof item === "string" && item !== "" && item.trim() === item && !/[\r\n]/.test(item))
         ? value.join("\n")
         : null;
   }
