@@ -7,3 +7,4 @@ export {
   type FormField,
   type FormValues,
 } from "./form";
+export { newMetadata } from "./new-metadata";
