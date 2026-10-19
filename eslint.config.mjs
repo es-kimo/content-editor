@@ -35,6 +35,8 @@ const eslintConfig = defineConfig([
     files: ["src/**/*.{ts,tsx}"],
     ignores: [
       "src/lib/content/client.ts",
+      // 클라이언트를 auth·editor-config와 같이 쓰려고 옮길 자리 (docs/review/architecture.md 알려진 부채)
+      "src/lib/github/**",
       "src/test/**",
       "**/*.test.ts",
       // 알려진 부채 (docs/review/architecture.md). 클라이언트로 합치면 지운다.
@@ -46,7 +48,7 @@ const eslintConfig = defineConfig([
         "error",
         {
           selector: "Literal[value=/api\\.github\\.com/], TemplateElement[value.raw=/api\\.github\\.com/]",
-          message: "GitHub API는 createGitHubClient(src/lib/content/client.ts)로 부른다.",
+          message: "GitHub API는 createGitHubClient로 부른다.",
         },
       ],
     },
