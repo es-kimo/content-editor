@@ -4,6 +4,7 @@ import { Suspense } from "react";
 
 import { isUnauthorized, LoginLink, loadRepoConfig, postHref, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
+import { assertRepoAllowed } from "@/app/_lib/site";
 import { createGitHubClient, readPost, type Post } from "@/lib/content";
 
 type Params = Promise<{ owner: string; repo: string }>;
@@ -21,6 +22,7 @@ export default function PostPage({ params, searchParams }: { params: Params; sea
 async function PostView({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const { owner, repo: name } = await params;
   const repo = `${owner}/${name}`;
+  await assertRepoAllowed(repo);
   const path = (await searchParams).path;
   if (typeof path !== "string") notFound();
 

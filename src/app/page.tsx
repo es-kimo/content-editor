@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Fragment, Suspense } from "react";
 
 import { LoginLink, repoHref } from "@/app/_lib/repo";
+import { pageSiteScope } from "@/app/_lib/site";
 import {
   GitHubAuthError,
   loadAccount,
@@ -15,7 +16,9 @@ import {
   type Account,
 } from "@/lib/auth";
 import { CONFIG_FILE, ConfigLoadError, loadEditorConfig, type LoadedConfig } from "@/lib/editor-config";
+import { resolveRepoAccess, type RepoAccess } from "@/lib/sites";
 
+type Repository = Account["installations"][number]["repositories"][number];
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 export default function Home({ searchParams }: { searchParams: SearchParams }) {
@@ -48,11 +51,22 @@ async function AccountSection({ searchParams }: { searchParams: SearchParams }) 
     if (e instanceof GitHubAuthError && e.status === 401) return <LoginLink />;
     throw e;
   }
-  return <AccountView account={account} accessToken={page.session.accessToken} />;
+  const access = resolveRepoAccess(
+    await pageSiteScope(),
+    account.installations.flatMap((i) => i.repositories),
+  );
+  return <AccountView user={account.user} access={access} accessToken={page.session.accessToken} />;
 }
 
-function AccountView({ account, accessToken }: { account: Account; accessToken: string }) {
-  const { user, installations } = account;
+function AccountView({
+  user,
+  access,
+  accessToken,
+}: {
+  user: Account["user"];
+  access: RepoAccess<Repository>;
+  accessToken: string;
+}) {
   return (
     <>
       <section className="flex items-center gap-3">
@@ -70,27 +84,57 @@ function AccountView({ account, accessToken }: { account: Account; accessToken: 
           </button>
         </form>
       </section>
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">접근 가능한 레포</h2>
-        {installations.length === 0 ? (
-          <p className="text-zinc-500">이 앱이 설치된 레포 중 접근할 수 있는 것이 없다.</p>
-        ) : (
-          <ul className="list-disc pl-5">
-            {installations.flatMap((i) =>
-              i.repositories.map((r) => (
+      <RepoSection access={access} accessToken={accessToken} />
+    </>
+  );
+}
+
+function RepoSection({ access, accessToken }: { access: RepoAccess<Repository>; accessToken: string }) {
+  switch (access.kind) {
+    case "forbidden":
+      return (
+        <section className="flex flex-col gap-2">
+          <h2 className="font-medium">{access.repo}</h2>
+          <p className="text-red-600">
+            이 계정은 {access.repo}에 접근할 권한이 없다. 레포 관리자에게 권한을 요청하거나 다른 계정으로 로그인한다.
+          </p>
+        </section>
+      );
+    case "pinned":
+      // 도메인에 레포가 고정돼 있으므로 레포 목록 없이 그 레포만 보인다.
+      return (
+        <section className="flex flex-col gap-2">
+          <h2 className="font-medium">{access.repo.full_name}</h2>
+          <RepoItem repo={access.repo} accessToken={accessToken} />
+        </section>
+      );
+    case "all":
+      return (
+        <section className="flex flex-col gap-2">
+          <h2 className="font-medium">접근 가능한 레포</h2>
+          {access.repos.length === 0 ? (
+            <p className="text-zinc-500">이 앱이 설치된 레포 중 접근할 수 있는 것이 없다.</p>
+          ) : (
+            <ul className="list-disc pl-5">
+              {access.repos.map((r) => (
                 <li key={r.id}>
                   <a href={r.html_url}>{r.full_name}</a>
                   {r.private && <span className="ml-2 text-xs text-zinc-500">private</span>}
-                  <Suspense fallback={<p className="text-sm text-zinc-500">{CONFIG_FILE} 확인 중…</p>}>
-                    <ConfigStatus repo={r.full_name} accessToken={accessToken} />
-                  </Suspense>
+                  <RepoItem repo={r} accessToken={accessToken} />
                 </li>
-              )),
-            )}
-          </ul>
-        )}
-      </section>
-    </>
+              ))}
+            </ul>
+          )}
+        </section>
+      );
+  }
+}
+
+function RepoItem({ repo, accessToken }: { repo: Repository; accessToken: string }) {
+  return (
+    <Suspense fallback={<p className="text-sm text-zinc-500">{CONFIG_FILE} 확인 중…</p>}>
+      <ConfigStatus repo={repo.full_name} accessToken={accessToken} />
+    </Suspense>
   );
 }
 

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 
 import { isUnauthorized, LoginLink, loadRepoConfig, postHref, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
+import { assertRepoAllowed } from "@/app/_lib/site";
 import { createGitHubClient, listPosts, timed, type PostListItem } from "@/lib/content";
 
 type Params = Promise<{ owner: string; repo: string }>;
@@ -20,6 +21,7 @@ export default function RepoPage({ params, searchParams }: { params: Params; sea
 async function PostList({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const { owner, repo: name } = await params;
   const repo = `${owner}/${name}`;
+  await assertRepoAllowed(repo);
   const selected = (await searchParams).collection;
 
   const accessToken = await pageAccessToken(
