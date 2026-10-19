@@ -1,6 +1,6 @@
 /**
  * 다음에 구현할 이슈를 골라 JSON으로 출력한다. 없으면 빈 출력.
- * env: GH_TOKEN, REPO(owner/name), AGENT_MILESTONES(쉼표 구분, 우선순위 순)
+ * env: GH_TOKEN, REPO(owner/name)
  */
 import { selectNext, type IssueInfo } from "./select.mts";
 
@@ -10,15 +10,10 @@ type ApiIssue = {
   state: "open" | "closed";
   body: string | null;
   labels: { name: string }[];
-  milestone: { title: string } | null;
   pull_request?: unknown;
 };
 
 const repo = process.env.REPO!;
-const milestones = (process.env.AGENT_MILESTONES ?? "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
 
 async function listIssues(): Promise<IssueInfo[]> {
   const issues: IssueInfo[] = [];
@@ -36,7 +31,6 @@ async function listIssues(): Promise<IssueInfo[]> {
         state: i.state,
         body: i.body ?? "",
         labels: i.labels.map((l) => l.name),
-        milestone: i.milestone?.title ?? null,
       });
     }
     if (batch.length < 100) return issues;
@@ -44,7 +38,7 @@ async function listIssues(): Promise<IssueInfo[]> {
 }
 
 const next = selectNext(await listIssues(), {
-  milestones,
+  readyLabel: "agent-ready",
   skipLabels: ["needs-human", "blocked", "spike", "in progress"],
 });
 if (next) console.log(JSON.stringify({ number: next.number, title: next.title }));
