@@ -41,6 +41,7 @@ export {
   MAX_UPLOAD_BYTES,
   UPLOAD_IMAGE_TYPES,
   uploadExtension,
+  uploadImports,
   usedUploads,
   type UploadImage,
   type UploadPlan,
