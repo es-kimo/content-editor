@@ -18,10 +18,18 @@ export type MetadataLookup =
 
 class Unsupported extends Error {}
 
+/**
+ * doc.head에서 metadata 구간의 위치. 없으면 -1.
+ * 빈 줄로 나뉜 ESM 블록은 따로 파싱되어 구간이 둘일 수 있다. 읽기와 다시 쓰기가 같은 구간을 고르도록 첫 구간 하나로 정한다.
+ */
+export function metadataIndex(doc: Extract<MdxDoc, { ok: true }>): number {
+  return doc.head.findIndex((segment) => segment.kind === "metadata");
+}
+
 /** doc의 metadata 구간 원문. 구간으로 나눌 수 없는 글이거나 metadata export가 없으면 null. */
 export function metadataText(doc: MdxDoc): string | null {
   if (!doc.ok) return null;
-  return doc.head.find((segment) => segment.kind === "metadata")?.text ?? null;
+  return doc.head[metadataIndex(doc)]?.text ?? null;
 }
 
 /**
