@@ -59,10 +59,27 @@ Agent review (CI 완료 시)   실패: 로그로 수정 / 통과: 독립 리뷰 
 Agent report (07:00 KST)    지난 24시간 결과를 `agent-report` 이슈에 코멘트
 ```
 
-- 고르는 이슈: 마일스톤 `AGENT_MILESTONES`에 속하고, 의존 이슈가 모두 닫혔고, `needs-human`·`blocked`·`spike`·`in progress` 라벨이 없는 것
 - 동시에 열린 에이전트 PR은 1개. 수정이 `AGENT_MAX_FIX`회를 넘거나 막히면 `needs-human`을 달고 멈춘다
 - 사용량 한도로 멈춘 실행은 실패로 세지 않는다. 구현은 다음 cron이 다시 고르고, 리뷰·수정은 PR에 `agent-retry`를 달아 다음 cron이 다시 돌린다 (`scripts/agent/classify.mts`가 실행 기록으로 판단)
 - 규칙: `CLAUDE.md`, 역할별 지시: `.github/agent/*.md`
+
+### 이슈를 고르는 조건
+
+cron이 돌 때마다 아래 순서로 확인하고, 하나라도 걸리면 그 회차는 아무것도 하지 않는다.
+
+1. `AGENT_ENABLED`가 `true`다.
+2. `agent-retry` 라벨이 붙은 열린 PR이 없다. 있으면 새 이슈 대신 그 PR의 마지막 리뷰 실행을 다시 돌린다.
+3. `agent` 라벨이 붙은 열린 PR이 없다.
+4. (cron 실행만) 최근 12시간 동안 만든 `agent` PR이 `AGENT_MAX_PRS_PER_NIGHT`개 미만이다.
+5. 아래 조건을 모두 만족하는 이슈가 있다 (`scripts/agent/select.mts`).
+   - 열려 있다.
+   - 마일스톤이 `AGENT_MILESTONES`에 있다. 마일스톤이 없거나 목록에 없는 이슈는 고르지 않는다.
+   - `needs-human`, `blocked`, `spike`, `in progress` 라벨이 없다.
+   - 본문 `## 의존` 절에 적힌 이슈(`#번호`)가 모두 닫혔다. 절이 없거나 "없음"이면 의존이 없는 것으로 본다.
+
+후보가 여럿이면 `AGENT_MILESTONES`에 적힌 순서, 그다음 이슈 번호 순으로 첫 번째를 고른다. 이슈를 잠시 빼 두려면 `blocked` 라벨을 단다.
+
+수동 실행(`gh workflow run agent-implement.yml -f issue=<번호>`)은 4번을 적용하지 않는다. 이슈 번호를 주면 5번도 건너뛰고 그 이슈를 구현하고, 비우면 5번으로 고른다. 1~3번은 수동 실행에도 똑같이 적용된다.
 
 | 설정                                                                  | 종류     | 값                                                                                              |
 | --------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
@@ -70,10 +87,10 @@ Agent report (07:00 KST)    지난 24시간 결과를 `agent-report` 이슈에 �
 | `AGENT_GH_TOKEN`                                                      | secret   | fine-grained PAT, 이 레포만, Contents·Pull requests·Issues 쓰기. Workflows 권한은 주지 않는다   |
 | `AGENT_ENABLED`                                                       | variable | `true`일 때만 돈다 (끄는 스위치)                                                                |
 | `AGENT_MILESTONES`                                                    | variable | 기본 `M1 mdx-doc,M2 GitHub 연동,M3 편집 UI`                                                     |
-| `AGENT_MAX_PRS_PER_NIGHT`                                             | variable | 기본 `4`                                                                                        |
+| `AGENT_MAX_PRS_PER_NIGHT`                                             | variable | 기본 `6`. cron 실행에만 적용                                                                    |
 | `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `2` / `2`                                                                                  |
 | `AGENT_MODEL`                                                         | variable | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR·리뷰 코멘트에 남는다 |
-| `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `high` / `medium` / `medium`                                                               |
+| `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `medium` / `high` / `medium`                                                               |
 
 수동 실행: `gh workflow run agent-implement.yml -f issue=<번호>`
 

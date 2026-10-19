@@ -27,10 +27,10 @@ env:
   # push·PR·라벨은 PAT로 한다. 기본 GITHUB_TOKEN으로 push하면 CI가 돌지 않는다.
   GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
   AGENT_MILESTONES: ${{ vars.AGENT_MILESTONES || 'M1 mdx-doc,M2 GitHub 연동,M3 편집 UI' }}
-  MAX_PRS: ${{ vars.AGENT_MAX_PRS_PER_NIGHT || '4' }}
+  MAX_PRS: ${{ vars.AGENT_MAX_PRS_PER_NIGHT || '6' }}
   MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS || '2' }}
   AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}
-  EFFORT: ${{ vars.AGENT_EFFORT_IMPLEMENT || 'high' }}
+  EFFORT: ${{ vars.AGENT_EFFORT_IMPLEMENT || 'medium' }}
 
 jobs:
   implement:
@@ -59,9 +59,12 @@ jobs:
           fi
           open=$(gh pr list -R "$REPO" --label agent --state open --json number --jq length)
           if [ "$open" != "0" ]; then echo "열린 에이전트 PR ${open}개 → 건너뜀"; exit 0; fi
-          since=$(date -u -d '12 hours ago' +%Y-%m-%dT%H:%M:%SZ)
-          made=$(gh pr list -R "$REPO" --label agent --state all --search "created:>=$since" --json number --jq length)
-          if [ "$made" -ge "$MAX_PRS" ]; then echo "최근 12시간 PR ${made}개, 상한 ${MAX_PRS} → 건너뜀"; exit 0; fi
+          # 밤 상한은 cron 실행에만 건다. 수동 실행은 사람이 보고 돌리는 것이라 막지 않는다.
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            since=$(date -u -d '12 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+            made=$(gh pr list -R "$REPO" --label agent --state all --search "created:>=$since" --json number --jq length)
+            if [ "$made" -ge "$MAX_PRS" ]; then echo "최근 12시간 PR ${made}개, 상한 ${MAX_PRS} → 건너뜀"; exit 0; fi
+          fi
 
           if [ -n "${{ inputs.issue }}" ]; then
             number="${{ inputs.issue }}"
