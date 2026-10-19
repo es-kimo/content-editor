@@ -114,13 +114,15 @@ describe("insertComponent", () => {
     expect(next.selection.main.head).toBe(at + '<Footnote id="2">2</Footnote>'.length);
   });
 
-  test("block 템플릿은 문단 사이에 빈 줄로 띄워 넣는다", () => {
+  test("block 템플릿은 문단 사이에 빈 줄로 띄워 넣고 커서를 템플릿 바로 뒤에 둔다", () => {
     const state = select(SOURCE, SOURCE.indexOf("<TOC"));
 
     const next = state.update(insertComponent(state, "Mermaid", {})).state;
 
-    expect(next.doc.toString()).toContain(`# GitHub Pages의 HTTPS\n\n<Mermaid chart={\``);
-    expect(next.doc.toString()).toContain("`} />\n\n<TOC items={toc} />");
+    const doc = next.doc.toString();
+    expect(doc).toContain(`# GitHub Pages의 HTTPS\n\n<Mermaid chart={\``);
+    expect(doc).toContain("`} />\n\n<TOC items={toc} />");
+    expect(doc.slice(0, next.selection.main.head)).toMatch(/`} \/>$/);
   });
 
   test("넣은 템플릿은 실행 취소 한 번에 넣기 전 원문으로 돌아간다", () => {
