@@ -1,7 +1,7 @@
 import { parse } from "acorn";
 import type { Program } from "estree";
 
-import { parseMetadata } from "./metadata";
+import { metadataIndex, parseMetadata } from "./metadata";
 import type { MetadataValue } from "./metadata";
 import type { MdxDoc } from "./split";
 
@@ -19,7 +19,7 @@ const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 /** 값이 바뀌었을 때만 metadata 블록을 다시 쓴다. 같거나 편집할 수 없는 metadata면 doc을 그대로 돌려준다. */
 export function setMetadata(doc: MdxDoc, next: { [key: string]: MetadataValue }): MdxDoc {
   if (!doc.ok) return doc;
-  const index = doc.head.findIndex((segment) => segment.kind === "metadata");
+  const index = metadataIndex(doc);
   if (index === -1) return doc;
   const original = doc.head[index]!.text;
   const current = parseMetadata(original);

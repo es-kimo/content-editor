@@ -16,7 +16,13 @@ export type AddedImage = {
   tag: string;
 };
 
-const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
+
+/** 파일 이름이나 경로가 이미지 확장자로 끝나는지. 대소문자는 가리지 않는다. */
+export function isImageFile(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  return dot !== -1 && IMAGE_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
+}
 
 /** head의 이미지 import를 읽는다. 이름 없는 import(`import "./a.css"`)나 `{ a }` 형태, 이미지가 아닌 경로는 제외한다. */
 export function readImageImports(doc: MdxDoc): ImageImport[] {
@@ -24,7 +30,7 @@ export function readImageImports(doc: MdxDoc): ImageImport[] {
   return doc.head.flatMap((segment) => {
     if (segment.kind !== "import") return [];
     const parsed = parseImport(segment.text);
-    return parsed && IMAGE_EXTENSION.test(parsed.path) ? [parsed] : [];
+    return parsed && isImageFile(parsed.path) ? [parsed] : [];
   });
 }
 
@@ -43,7 +49,7 @@ export type AddImageOptions = {
 export function addImage(doc: MdxDoc, options: AddImageOptions): AddedImage {
   if (!doc.ok) throw new Error("구간으로 나눌 수 없는 글에는 이미지를 추가할 수 없다");
   const extension = options.extension.replace(/^\./, "").toLowerCase();
-  if (!IMAGE_EXTENSION.test(`.${extension}`)) throw new Error(`지원하지 않는 이미지 확장자: ${extension}`);
+  if (!isImageFile(`.${extension}`)) throw new Error(`지원하지 않는 이미지 확장자: ${extension}`);
 
   const isFree = freeNumber(doc, options.files);
   let n = 1;
@@ -58,7 +64,7 @@ export function addImage(doc: MdxDoc, options: AddImageOptions): AddedImage {
 export function addImageAs(doc: MdxDoc, file: string, options: Omit<AddImageOptions, "extension">): AddedImage | null {
   if (!doc.ok) return null;
   const match = /^([1-9]\d*)\.([a-z]+)$/.exec(file);
-  if (!match || !IMAGE_EXTENSION.test(file)) return null;
+  if (!match || !isImageFile(file)) return null;
   const n = Number(match[1]);
   if (!freeNumber(doc, options.files)(n, match[2])) return null;
   return insertImage(doc, n, match[2], options);

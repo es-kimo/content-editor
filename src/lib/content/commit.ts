@@ -1,7 +1,8 @@
 import { type EditorConfig } from "@/lib/editor-config";
 import { encodePath, GitHubApiError, repoPath, type GitHubClient } from "@/lib/github";
+import { isImageFile } from "@/lib/mdx-doc";
 
-import { findCollection, isImageFile } from "./read";
+import { findCollection } from "./read";
 
 export type CommitFile = { path: string; content: string | Uint8Array };
 

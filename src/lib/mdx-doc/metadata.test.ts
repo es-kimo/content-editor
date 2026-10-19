@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { parseMetadata } from "./metadata";
+import { lookupMetadata, metadataText, parseMetadata, readMetadata } from "./metadata";
 import { parseMdx } from "./split";
 
 const parse = (init: string) => parseMetadata(`export const metadata = ${init};`);
@@ -53,6 +53,54 @@ describe("parseMetadata", () => {
   });
 });
 
+describe("readMetadata", () => {
+  test("글의 metadata 구간을 값으로 읽는다", () => {
+    const doc = parseMdx(`import a from "./a.png";\n\nexport const metadata = { title: "공지" };\n\n본문\n`);
+    expect(readMetadata(doc)).toEqual({ editable: true, value: { title: "공지" } });
+    expect(metadataText(doc)).toBe(`export const metadata = { title: "공지" };`);
+  });
+
+  test("metadata export가 없으면 null이고, 있지만 읽을 수 없으면 편집 불가다", () => {
+    expect(readMetadata(parseMdx("# 본문\n"))).toBeNull();
+    expect(readMetadata(parseMdx("export const metadata = { title: foo };\n"))).toMatchObject({ editable: false });
+  });
+
+  test("구간으로 나눌 수 없는 글은 null", () => {
+    const doc = parseMdx("# 본문\n\nexport const metadata = { title: 'a' };\n");
+    expect(doc.ok).toBe(false);
+    expect(readMetadata(doc)).toBeNull();
+    expect(metadataText(doc)).toBeNull();
+  });
+});
+
+describe("lookupMetadata", () => {
+  const metadata = { title: "a", other: { status: "draft", list: [1] }, tags: ["x"], empty: null };
+
+  test("점으로 이은 키의 값을 찾는다", () => {
+    expect(lookupMetadata(metadata, "title")).toEqual({ kind: "found", value: "a" });
+    expect(lookupMetadata(metadata, "other.status")).toEqual({ kind: "found", value: "draft" });
+    expect(lookupMetadata(metadata, "empty")).toEqual({ kind: "found", value: null });
+  });
+
+  test("키가 없으면 missing이다. 중간 키가 없어도 같다", () => {
+    expect(lookupMetadata(metadata, "description")).toEqual({ kind: "missing" });
+    expect(lookupMetadata(metadata, "other.createdAt")).toEqual({ kind: "missing" });
+    expect(lookupMetadata(metadata, "seo.title")).toEqual({ kind: "missing" });
+  });
+
+  test("중간 값이 객체가 아니면(문자열·배열·null) blocked다", () => {
+    expect(lookupMetadata(metadata, "title.x").kind).toBe("blocked");
+    expect(lookupMetadata(metadata, "tags.0").kind).toBe("blocked");
+    expect(lookupMetadata(metadata, "empty.x").kind).toBe("blocked");
+    expect(lookupMetadata(metadata, "other.list.0").kind).toBe("blocked");
+  });
+
+  test("프로토타입의 키는 없는 것으로 본다", () => {
+    expect(lookupMetadata(metadata, "toString")).toEqual({ kind: "missing" });
+    expect(lookupMetadata(metadata, "other.constructor")).toEqual({ kind: "missing" });
+  });
+});
+
 describe.each(fixtureSources)("픽스처 metadata: $name", (source) => {
   const fixtures = loadFixtures(source.name);
 
@@ -60,9 +108,10 @@ describe.each(fixtureSources)("픽스처 metadata: $name", (source) => {
     const failures: Record<string, string[]> = {};
     let parsed = 0;
     for (const f of fixtures!) {
-      const doc = parseMdx(f.source, source.syntax);
-      const text = doc.ok ? doc.head.find((s) => s.kind === "metadata")?.text : undefined;
-      const result = text ? parseMetadata(text) : { editable: false as const, reason: "metadata 없음" };
+      const result = readMetadata(parseMdx(f.source, source.syntax)) ?? {
+        editable: false as const,
+        reason: "metadata 없음",
+      };
       if (result.editable) parsed++;
       else (failures[result.reason] ??= []).push(f.path);
     }
