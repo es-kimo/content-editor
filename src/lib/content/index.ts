@@ -17,6 +17,14 @@ export {
 } from "./create-post";
 export { fetchBlobTexts, fetchTree, listPosts, matchPosts, type PostListItem, type TreeEntry } from "./posts";
 export {
+  previewMessage,
+  previewOrigin,
+  trustsPreviewMessage,
+  uploadPreviewMessage,
+  type PreviewMessage,
+  type PreviewUpload,
+} from "./preview";
+export {
   editorKeys,
   editorModes,
   findCollection,

@@ -99,6 +99,8 @@ export const editorConfigSchema = z.strictObject({
   syntax: z
     .strictObject({ gfm: z.boolean().default(false), math: z.boolean().default(false) })
     .default({ gfm: false, math: false }),
+  /** 사이트의 미리보기 페이지 주소. 있으면 내부 미리보기 대신 이 페이지를 iframe으로 띄운다. */
+  preview: z.url({ protocol: /^https?$/, message: "http 또는 https 주소여야 한다" }).optional(),
   collections: z
     .array(collection)
     .min(1)

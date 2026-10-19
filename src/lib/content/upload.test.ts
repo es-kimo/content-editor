@@ -91,22 +91,25 @@ const SOURCE = 'import image1 from "./1.png";\n\n<Image src={image1} alt="" />\n
 function addAll(images: { extension: string; content: Uint8Array }[], files: string[] = []) {
   let plan = { doc: parseMdx(SOURCE), images: [] as { file: string; content: Uint8Array }[] };
   const tags: string[] = [];
+  const added: string[] = [];
   for (const image of images) {
-    const added = addUpload(plan, image, files);
-    if (!added.ok) throw new Error(added.problem);
-    plan = added.plan;
-    tags.push(added.tag);
+    const result = addUpload(plan, image, files);
+    if (!result.ok) throw new Error(result.problem);
+    plan = result.plan;
+    tags.push(result.tag);
+    added.push(result.file);
   }
-  return { plan, tags };
+  return { plan, tags, added };
 }
 
 describe("addUpload", () => {
   test("넣을 때마다 겹치지 않는 이름을 고르고 Image 태그를 돌려준다", () => {
-    const { plan, tags } = addAll([
+    const { plan, tags, added } = addAll([
       { extension: "png", content: PNG },
       { extension: "jpg", content: JPEG },
     ]);
     expect(tags).toEqual(['<Image src={image2} alt="" />', '<Image src={image3} alt="" />']);
+    expect(added).toEqual(["2.png", "3.jpg"]);
     expect(plan.images.map((image) => image.file)).toEqual(["2.png", "3.jpg"]);
     expect(readImageImports(plan.doc).map((image) => image.path)).toEqual(["./1.png", "./2.png", "./3.jpg"]);
   });

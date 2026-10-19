@@ -163,6 +163,21 @@ describe("parseEditorConfig", () => {
     }
   });
 
+  test("preview는 없거나 http·https 주소여야 한다", () => {
+    expect(okConfig(validateEditorConfig(minimal)).preview).toBeUndefined();
+    expect(okConfig(validateEditorConfig({ ...minimal, preview: "https://khryu.dev/preview" })).preview).toBe(
+      "https://khryu.dev/preview",
+    );
+    for (const preview of ["khryu.dev/preview", "/preview", "javascript:alert(1)", "", 1]) {
+      const result = validateEditorConfig({ ...minimal, preview });
+      expect(!result.ok && result.issues.map((issue) => issue.path), String(preview)).toEqual(["preview"]);
+    }
+  });
+
+  test("yjshd 예시에는 preview가 없어 내부 미리보기를 쓴다", () => {
+    expect(okConfig(parseEditorConfig(readExample("yjshd"))).preview).toBeUndefined();
+  });
+
   test("editor는 정해진 값 중 하나여야 한다", () => {
     expect(collectionIssues({ editor: "markdown" })).toEqual([
       { path: "collections[0].editor", message: '"wysiwyg", "source" 중 하나여야 한다 (받은 값: "markdown")' },

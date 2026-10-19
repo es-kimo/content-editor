@@ -38,7 +38,7 @@ export function uploadExtension(mimeType: string): string | null {
 }
 
 /** 확장자와 맞는 형식인지 파일 앞 바이트로 본다. 브라우저가 보낸 MIME 형식이나 이름은 믿지 않는다. */
-function sniffFormat(content: Uint8Array): UploadFormat | null {
+export function sniffFormat(content: Uint8Array): UploadFormat | null {
   const ascii = (start: number, end: number) => String.fromCharCode(...content.subarray(start, end));
   if (content[0] === 0x89 && ascii(1, 4) === "PNG") return "image/png";
   if (content[0] === 0xff && content[1] === 0xd8 && content[2] === 0xff) return "image/jpeg";
@@ -84,7 +84,7 @@ export function addUpload(
   plan: UploadPlan,
   image: { extension: string; content: Uint8Array },
   files: string[],
-): { ok: true; plan: UploadPlan; tag: string } | Exclude<UploadCheck, { ok: true }> {
+): { ok: true; plan: UploadPlan; tag: string; file: string } | Exclude<UploadCheck, { ok: true }> {
   if (!(Object.values(UPLOAD_IMAGE_TYPES) as string[]).includes(image.extension)) {
     return { ok: false, reason: "image", file: `.${image.extension}`, problem: "format" };
   }
@@ -92,7 +92,7 @@ export function addUpload(
   const images = [...plan.images, { file: added.file, content: image.content }];
   const check = checkUploads(images);
   if (!check.ok) return check;
-  return { ok: true, plan: { doc: added.doc, images }, tag: added.tag };
+  return { ok: true, plan: { doc: added.doc, images }, tag: added.tag, file: added.file };
 }
 
 /** 넣은 이미지 중 저장할 본문에서 쓰는 것. 넣은 뒤 본문에서 지운 이미지는 커밋하지 않는다. */
