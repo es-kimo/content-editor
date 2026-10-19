@@ -6,6 +6,8 @@ import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 
 import { previewMdx, type PreviewImages, type Syntax } from "@/lib/mdx-doc";
 
+import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
+
 /** 편집 중인 MDX를 마크다운으로 그려 보는 미리보기. 누르면 열리고, 열린 동안 입력을 따라 다시 그린다. */
 export function BodyPreview({
   markdown,
@@ -25,7 +27,7 @@ export function BodyPreview({
         type="button"
         aria-pressed={open}
         onClick={() => setOpen(!open)}
-        className="w-fit rounded border px-3 py-1 text-sm aria-pressed:bg-black aria-pressed:text-white dark:aria-pressed:bg-white dark:aria-pressed:text-black"
+        className={`w-fit ${TOGGLE_BUTTON_CLASS}`}
       >
         미리보기
       </button>

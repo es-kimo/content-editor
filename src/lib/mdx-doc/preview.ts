@@ -107,13 +107,20 @@ function tagLabel(node: MdxJsxFlowElement | MdxJsxTextElement): string {
 }
 
 function imageSource(node: MdxJsxFlowElement | MdxJsxTextElement, images: PreviewImages): string | undefined {
-  const src = node.attributes.find((a) => a.type === "mdxJsxAttribute" && a.name === "src");
-  if (src?.type !== "mdxJsxAttribute" || typeof src.value !== "object" || src.value === null) return undefined;
-  const name = src.value.value.trim();
+  const src = attributeValue(node, "src");
+  if (typeof src !== "object" || src === null) return undefined;
+  const name = src.value.trim();
   return Object.hasOwn(images, name) ? images[name] : undefined;
 }
 
 function stringAttribute(node: MdxJsxFlowElement | MdxJsxTextElement, name: string): string | undefined {
-  const attribute = node.attributes.find((a) => a.type === "mdxJsxAttribute" && a.name === name);
-  return attribute?.type === "mdxJsxAttribute" && typeof attribute.value === "string" ? attribute.value : undefined;
+  const value = attributeValue(node, name);
+  return typeof value === "string" ? value : undefined;
+}
+
+function attributeValue(node: MdxJsxFlowElement | MdxJsxTextElement, name: string) {
+  for (const attribute of node.attributes) {
+    if (attribute.type === "mdxJsxAttribute" && attribute.name === name) return attribute.value;
+  }
+  return undefined;
 }
