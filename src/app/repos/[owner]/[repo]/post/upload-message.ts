@@ -4,7 +4,7 @@ import { MAX_UPLOAD_BYTES, type UploadProblem } from "@/lib/content/upload";
 export function uploadMessage(file: string, problem: UploadProblem): string {
   switch (problem) {
     case "format":
-      return `${file}: png·jpg·webp 이미지만 넣을 수 있다.`;
+      return `${file}: png·jpg·webp 이미지가 아니어서 넣지 않았다. 이 세 형식 중 하나로 바꿔 다시 넣는다.`;
     case "size":
       return `${file}: 한 번에 저장하는 이미지가 모두 ${MAX_UPLOAD_BYTES / 1024 / 1024}MB를 넘는다. 일부를 먼저 저장한 뒤 나머지를 넣는다.`;
     case "name":
