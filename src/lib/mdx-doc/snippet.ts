@@ -1,14 +1,12 @@
 import type { Program } from "estree";
-import type { MdxJsxFlowElement, MdxJsxTextElement } from "mdast-util-mdx";
 
+import { attributeValue, stringAttribute, type JsxElement } from "./jsx";
 import { parseMarkdown, type Syntax } from "./split";
 
 /** 본문에 넣을 컴포넌트 템플릿. inline은 문장 안에, block은 앞뒤를 빈 줄로 띄워 넣는다. */
 export type ComponentSnippet = { text: string; kind: "inline" | "block" };
 
 export type InsertedSnippet = { source: string; cursor: number };
-
-type JsxElement = MdxJsxFlowElement | MdxJsxTextElement;
 
 const MERMAID_TEMPLATE = "<Mermaid chart={`\nflowchart TD\n    A[시작] --> B[끝]\n`} />";
 
@@ -97,18 +95,9 @@ function jsxElements(node: object): JsxElement[] {
   return found;
 }
 
-function attribute(element: JsxElement, name: string) {
-  return element.attributes.find((a) => a.type === "mdxJsxAttribute" && a.name === name);
-}
-
-function stringAttribute(element: JsxElement, name: string): string | null {
-  const value = attribute(element, name)?.value;
-  return typeof value === "string" ? value : null;
-}
-
 /** `ids={["1", "2"]}`처럼 문자열 리터럴만 담은 배열 속성. 다른 모양의 원소는 건너뛴다. */
 function stringArrayAttribute(element: JsxElement, name: string): string[] {
-  const value = attribute(element, name)?.value;
+  const value = attributeValue(element, name);
   if (typeof value !== "object" || value === null) return [];
   const program = value.data?.estree as Program | undefined;
   const statement = program?.body[0];
@@ -118,6 +107,6 @@ function stringArrayAttribute(element: JsxElement, name: string): string[] {
   );
 }
 
-function numericId(value: string | null): number | null {
-  return value !== null && /^\d+$/.test(value) ? Number(value) : null;
+function numericId(value: string | undefined): number | null {
+  return value !== undefined && /^\d+$/.test(value) ? Number(value) : null;
 }
