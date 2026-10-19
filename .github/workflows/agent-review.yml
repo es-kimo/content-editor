@@ -27,6 +27,9 @@ env:
   CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
   CI_RUN_ID: ${{ github.event.workflow_run.id }}
   MAX_FIX: ${{ vars.AGENT_MAX_FIX || '2' }}
+  AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}
+  EFFORT_REVIEW: ${{ vars.AGENT_EFFORT_REVIEW || 'medium' }}
+  EFFORT_FIX: ${{ vars.AGENT_EFFORT_FIX || 'medium' }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
@@ -99,10 +102,13 @@ jobs:
           github_token: ${{ github.token }}
           prompt: "`.github/agent/review.md`의 지시를 따른다. 이슈는 `.agent/issue.md`, 변경은 `.agent/diff.patch`에 있다."
           claude_args: >-
+            --model ${{ env.AGENT_MODEL }}
+            --fallback-model sonnet
+            --effort ${{ env.EFFORT_REVIEW }}
             --max-turns 40
             --json-schema '${{ env.review_schema }}'
-            --allowedTools "Read,Glob,Grep,Bash(pnpm test),Bash(pnpm test *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(ls *)"
-            --disallowedTools "Edit,Write"
+            --allowedTools "Read,Glob,Grep,Bash(pnpm test),Bash(pnpm test *),Bash(pnpm lint),Bash(pnpm format:check),Bash(pnpm typecheck),Bash(pnpm build),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(ls *)"
+            --disallowedTools "Edit,Write,Bash(pnpm fixtures:sync),Bash(pnpm fixtures:sync *)"
 
       - name: 리뷰 결과 처리
         id: verdict
@@ -111,13 +117,21 @@ jobs:
           PR: ${{ steps.pr.outputs.number }}
           ISSUE: ${{ steps.pr.outputs.issue }}
           RESULT: ${{ steps.review.outputs.structured_output }}
+          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
           FIXES: ${{ steps.prep.outputs.fixes }}
         run: |
           RESULT="${RESULT:-null}"
           verdict=$(echo "$RESULT" | jq -r '.verdict // "error"')
+          info=$(node scripts/agent/classify-run.mts "$EXEC_FILE")
+          echo "실행 결과: $info"
           if [ "$verdict" = "error" ]; then
+            if [ "$(echo "$info" | jq -r .kind)" = "limit" ]; then
+              # 한도는 사람 확인 대상이 아니다. 다음 cron이 이 리뷰 실행을 다시 돌린다.
+              gh pr edit "$PR" -R "$REPO" --add-label agent-retry
+              exit 0
+            fi
             gh pr comment "$PR" -R "$REPO" --body "<!-- agent:review-error -->
-          리뷰 단계가 결과를 내지 못함 (사용량 한도·턴 상한·오류 가능) · [실행 로그]($RUN_URL)"
+          리뷰 단계가 결과를 내지 못함 ($(echo "$info" | jq -r '"\(.kind): \(.detail)"')) · [실행 로그]($RUN_URL)"
             gh pr edit "$PR" -R "$REPO" --add-label needs-human
             exit 0
           fi
@@ -126,12 +140,14 @@ jobs:
             echo "## 에이전트 리뷰: $verdict"; echo
             echo "$RESULT" | jq -r '.summary'; echo
             echo "$RESULT" | jq -r '.findings[] | "- `\(.file)\(if .line then ":\(.line)" else "" end)` \(.problem)\n  - 수정: \(.fix)"'
-            echo; echo "[실행 로그]($RUN_URL)"
+            echo; echo "모델: $(echo "$info" | jq -r '.models | join(", ")') · effort: $EFFORT_REVIEW · [실행 로그]($RUN_URL)"
           } > .agent/review.md
           gh pr comment "$PR" -R "$REPO" --body-file .agent/review.md
 
           if [ "$verdict" = "approve" ]; then
             gh pr merge "$PR" -R "$REPO" --auto --merge --delete-branch
+            # merge되면 이슈가 닫힌다. 진행 중 라벨은 여기서 정리한다.
+            gh issue edit "$ISSUE" -R "$REPO" --remove-label "in progress" || true
             exit 0
           fi
           if [ "$FIXES" -ge "$MAX_FIX" ]; then
@@ -169,9 +185,13 @@ jobs:
           github_token: ${{ github.token }}
           prompt: "`.github/agent/fix.md`의 지시를 따른다. 이슈는 `.agent/issue.md`, 고칠 내용은 `.agent/feedback.md`에 있다."
           claude_args: >-
+            --model ${{ env.AGENT_MODEL }}
+            --fallback-model sonnet
+            --effort ${{ env.EFFORT_FIX }}
             --max-turns 60
             --json-schema '${{ env.work_schema }}'
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git status),Bash(git status *),Bash(git diff *),Bash(git add *),Bash(git commit *),Bash(git log *),Bash(git show *),Bash(ls *)"
+            --disallowedTools "Bash(pnpm fixtures:sync),Bash(pnpm fixtures:sync *)"
 
       - name: 수정 push
         if: steps.verdict.outputs.fix == 'true' || steps.cigate.outputs.fix == 'true'
@@ -180,10 +200,17 @@ jobs:
           ISSUE: ${{ steps.pr.outputs.issue }}
           RESULT: ${{ steps.fix.outputs.structured_output }}
           OUTCOME: ${{ steps.fix.outcome }}
+          EXEC_FILE: ${{ steps.fix.outputs.execution_file }}
         run: |
           RESULT="${RESULT:-null}"
           status=$(echo "$RESULT" | jq -r '.status // "failed"')
           new=$(git rev-list --count "$HEAD_SHA"..HEAD)
+          info=$(node scripts/agent/classify-run.mts "$EXEC_FILE")
+          echo "실행 결과: $info"
+          if [ "$(echo "$info" | jq -r .kind)" = "limit" ]; then
+            gh pr edit "$PR" -R "$REPO" --add-label agent-retry
+            exit 0
+          fi
           reason=""
           if [ "$OUTCOME" = "success" ] && [ "$status" = "done" ] && [ "$new" -gt 0 ]; then
             # claude-code-action이 git 인증을 GITHUB_TOKEN으로 바꿔 두므로 push 전에 PAT로 되돌린다.
@@ -195,14 +222,14 @@ jobs:
 
           $(echo "$RESULT" | jq -r '.summary')
 
-          [실행 로그]($RUN_URL)"
+          모델: $(echo "$info" | jq -r '.models | join(", ")') · effort: $EFFORT_FIX · [실행 로그]($RUN_URL)"
               exit 0
             fi
             reason="수정은 끝났지만 push에 실패 (실행 로그 확인)"
           fi
           [ -z "$reason" ] && reason=$(echo "$RESULT" | jq -r '.blocked_reason // .summary // empty')
           gh pr comment "$PR" -R "$REPO" --body "<!-- agent:fix-failed -->
-          수정 실패 (status: ${status}, 결과: ${OUTCOME}, 새 커밋 ${new}개) · [실행 로그]($RUN_URL)
+          수정 실패 (status: ${status}, 결과: ${OUTCOME}, $(echo "$info" | jq -r .kind), 새 커밋 ${new}개) · [실행 로그]($RUN_URL)
 
           ${reason}"
           gh pr edit "$PR" -R "$REPO" --add-label needs-human
