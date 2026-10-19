@@ -5,11 +5,12 @@ import type { ReactNode } from "react";
 import { prepareRepoPage, type RepoContext } from "@/app/_lib/repo-page";
 import { readSession, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
+import { PRIMARY_BUTTON_CLASS } from "@/app/_lib/ui";
 import type { Collection, EditorConfig } from "@/lib/editor-config";
 
 export function LoginLink() {
   return (
-    <a href="/api/auth/login" className="w-fit rounded bg-black px-4 py-2 text-white dark:bg-white dark:text-black">
+    <a href="/api/auth/login" className={PRIMARY_BUTTON_CLASS}>
       GitHub로 로그인
     </a>
   );

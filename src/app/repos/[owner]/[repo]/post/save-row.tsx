@@ -1,3 +1,5 @@
+import { PRIMARY_BUTTON_CLASS } from "@/app/_lib/ui";
+
 import type { SaveState } from "./actions";
 
 /** 글 화면 편집 영역과 새 글 화면의 저장 버튼과 저장 결과. */
@@ -15,11 +17,7 @@ export function SaveRow({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-fit rounded bg-black px-4 py-2 text-white disabled:opacity-60 dark:bg-white dark:text-black"
-      >
+      <button type="submit" disabled={pending} className={PRIMARY_BUTTON_CLASS}>
         {pending ? "저장 중…" : label}
       </button>
       {state.status === "error" && <p className="text-sm text-red-600">{state.message}</p>}

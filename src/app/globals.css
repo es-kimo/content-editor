@@ -22,7 +22,6 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 /* Tailwind preflight가 제목·목록 모양을 지워 WYSIWYG 본문과 미리보기에서 구조가 보이지 않으므로 되돌린다. */
@@ -57,7 +56,8 @@ body {
   @apply border-zinc-300;
 }
 .body-preview img {
-  @apply h-auto max-w-full;
+  height: auto;
+  max-width: 100%;
 }
 .body-preview code {
   @apply font-mono;
