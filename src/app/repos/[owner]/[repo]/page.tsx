@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { CollectionTabs, LoginLink, loadRepoConfig, newPostHref, postHref, repoHref } from "@/app/_lib/repo";
-import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
-import { assertRepoAllowed } from "@/app/_lib/site";
-import { listPosts, timed, type PostListItem } from "@/lib/content";
-import { createGitHubClient, isUnauthorized } from "@/lib/github";
+import { CollectionTabs, newPostHref, openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
+import type { SearchParams } from "@/app/_lib/session";
+import { listPosts, timed } from "@/lib/content";
 
 type Params = Promise<{ owner: string; repo: string }>;
 
@@ -22,28 +20,21 @@ export default function RepoPage({ params, searchParams }: { params: Params; sea
 async function PostList({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const { owner, repo: name } = await params;
   const repo = `${owner}/${name}`;
-  await assertRepoAllowed(repo);
   const selected = (await searchParams).collection;
 
-  const accessToken = await pageAccessToken(
+  const page = await openRepoPage(
+    repo,
     searchParams,
     repoHref(repo, typeof selected === "string" ? selected : undefined),
+    async ({ client, config }) => {
+      const collection = config.collections.find((c) => c.name === selected) ?? config.collections[0];
+      const { value: posts, ms: elapsed } = await timed(() => listPosts(client, repo, config, collection));
+      return { collection, posts, elapsed, calls: client.calls };
+    },
   );
-  if (!accessToken) return <LoginLink />;
-  const loaded = await loadRepoConfig(repo, accessToken);
-  if (!loaded.ok) return loaded.view;
-  const { config } = loaded;
-
-  const collection = config.collections.find((c) => c.name === selected) ?? config.collections[0];
-  const client = createGitHubClient(accessToken, fetch);
-  let posts: PostListItem[];
-  let elapsed: number;
-  try {
-    ({ value: posts, ms: elapsed } = await timed(() => listPosts(client, repo, config, collection)));
-  } catch (e) {
-    if (isUnauthorized(e)) return <LoginLink />;
-    throw e;
-  }
+  if (!page.ok) return page.view;
+  const { config } = page;
+  const { collection, posts, elapsed, calls } = page.value;
 
   return (
     <>
@@ -58,7 +49,7 @@ async function PostList({ params, searchParams }: { params: Params; searchParams
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-2">
           <p className="text-sm text-zinc-500">
-            {collection.name} {posts.length}편 · API 호출 {client.calls}번 · {elapsed}ms
+            {collection.name} {posts.length}편 · API 호출 {calls}번 · {elapsed}ms
           </p>
           <Link href={newPostHref(repo, collection.name)} className="text-sm underline">
             새 글

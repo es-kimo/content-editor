@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { CONFIG_FILE, loadEditorConfig, type Collection, type EditorConfig } from "@/lib/editor-config";
-import { GitHubApiError, isUnauthorized } from "@/lib/github";
+import { prepareRepoPage, type RepoContext } from "@/app/_lib/repo-page";
+import { readSession, type SearchParams } from "@/app/_lib/session";
+import { assertRepoAllowed } from "@/app/_lib/site";
+import type { Collection, EditorConfig } from "@/lib/editor-config";
 
 export function LoginLink() {
   return (
@@ -46,30 +49,37 @@ export function CollectionTabs({
   );
 }
 
-/** 레포의 config를 읽는다. 쓸 수 없으면 화면에 보일 안내를 돌려준다. */
-export async function loadRepoConfig(
+/**
+ * 레포 화면의 준비 과정: 레포 허용 확인 → 세션 → config → `read`. 그릴 수 없으면 화면에 보일 안내를 돌려준다.
+ * 토큰이 만료됐으면 갱신 라우트로 보냈다가 `returnTo`로 돌아온다.
+ */
+export async function openRepoPage<T>(
   repo: string,
-  accessToken: string,
-): Promise<{ ok: true; config: EditorConfig } | { ok: false; view: ReactNode }> {
-  const fail = (message: ReactNode) => ({
-    ok: false as const,
-    view: (
-      <div className="flex flex-col gap-2">
-        <p className="text-red-600">{message}</p>
-        <Link href="/" className="text-sm underline">
-          처음으로
-        </Link>
-      </div>
-    ),
-  });
-  try {
-    const loaded = await loadEditorConfig(repo, accessToken, fetch);
-    if (loaded.kind === "ok") return { ok: true, config: loaded.config };
-    if (loaded.kind === "missing") return fail(`${repo} 루트에 ${CONFIG_FILE}이 없다.`);
-    return fail(`${CONFIG_FILE} 오류 ${loaded.issues.length}건. 처음 화면에서 내용을 확인한다.`);
-  } catch (e) {
-    if (isUnauthorized(e)) return { ok: false, view: <LoginLink /> };
-    if (e instanceof GitHubApiError) return fail(e.message);
-    throw e;
+  searchParams: SearchParams,
+  returnTo: string,
+  read: (context: RepoContext) => Promise<T>,
+): Promise<{ ok: true; config: EditorConfig; value: T } | { ok: false; view: ReactNode }> {
+  await assertRepoAllowed(repo);
+  const session = await readSession({ searchParams });
+  const page = await prepareRepoPage({ repo, session, returnTo, fetchFn: fetch, read });
+  switch (page.kind) {
+    case "refresh":
+      redirect(page.href);
+    case "login":
+      return { ok: false, view: <LoginLink /> };
+    case "config":
+      return {
+        ok: false,
+        view: (
+          <div className="flex flex-col gap-2">
+            <p className="text-red-600">{page.message}</p>
+            <Link href="/" className="text-sm underline">
+              처음으로
+            </Link>
+          </div>
+        ),
+      };
+    case "ok":
+      return { ok: true, config: page.config, value: page.value };
   }
 }
