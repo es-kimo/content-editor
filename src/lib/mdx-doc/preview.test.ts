@@ -98,8 +98,12 @@ describe("previewMdx", () => {
     expect(previewMdx("<div>닫히지 않음\n").ok).toBe(false);
   });
 
-  test("HTML 속성으로 스크립트를 넣을 수 없다", () => {
-    expect(html("[a](javascript:alert(1))\n")).not.toContain("javascript:");
+  test.each([
+    ["마크다운 링크", "[a](javascript:alert(1))\n"],
+    ["마크다운 이미지", "![a](javascript:alert(1))\n"],
+    ["HTML 링크", '<a href="javascript:alert(1)">a</a>\n'],
+  ])("javascript: 주소는 지운다: %s", (_name, source) => {
+    expect(html(source)).not.toContain("javascript:");
   });
 
   // 같은 탭에서 이동하면 편집 화면을 떠나 저장하지 않은 본문을 잃는다.
@@ -112,18 +116,20 @@ describe("previewMdx", () => {
 });
 
 describe("yjshd 공지 미리보기", () => {
-  const notice = loadFixtures("yjshd")?.find((f) => f.path.includes("2026년 1월 휴진 안내"));
+  const fixtures = loadFixtures("yjshd");
 
-  test.skipIf(!notice)("metadata 없이 제목과 문단만 사이트처럼 그린다", () => {
+  test.skipIf(!fixtures)("metadata 없이 제목과 문단만 사이트처럼 그린다", () => {
+    const notice = fixtures!.find((f) => f.path.includes("2026년 1월 휴진 안내"));
+    expect(notice).toBeDefined();
     const out = html(notice!.source);
     expect(out).toMatch(/^<h1>2026년 1월 휴진 안내<\/h1>\s*<p>안녕하세요.<\/p>/);
     expect(out.match(/<p>/g)).toHaveLength(6);
     expect(out).toContain("<p>연세정성내과 원장 류동열 배상</p>");
   });
 
-  const guide = loadFixtures("yjshd")?.find((f) => f.path.includes("진료 안내"));
-
-  test.skipIf(!guide)("진료 안내의 HTML 태그는 사이트처럼 HTML로, 컴포넌트만 자리 표시로 그린다", () => {
+  test.skipIf(!fixtures)("진료 안내의 HTML 태그는 사이트처럼 HTML로, 컴포넌트만 자리 표시로 그린다", () => {
+    const guide = fixtures!.find((f) => f.path.includes("진료 안내"));
+    expect(guide).toBeDefined();
     const out = html(guide!.source);
     expect(out.match(/<p class="my-4">/g)).toHaveLength(3);
     expect(out).not.toMatch(/<p>\s*<p/);
