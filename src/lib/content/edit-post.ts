@@ -27,15 +27,14 @@ export async function openForEdit(
 ): Promise<OpenForEditResult> {
   const post = await readPost(client, repo, config, path);
   if (!post) return { ok: false, reason: "not-found" };
-  if (post.sha !== baseSha) return { ok: false, reason: "changed", path: post.path, expected: baseSha, actual: post.sha };
+  if (post.sha !== baseSha)
+    return { ok: false, reason: "changed", path: post.path, expected: baseSha, actual: post.sha };
   if (!post.doc.ok) return { ok: false, reason: "not-editable", message: post.doc.message };
   return { ok: true, post: post as EditablePost };
 }
 
 export type CommitEditResult =
-  | CommitResult
-  | { ok: false; reason: "unchanged" }
-  | { ok: false; reason: "compile"; error: MdxError };
+  CommitResult | { ok: false; reason: "unchanged" } | { ok: false; reason: "compile"; error: MdxError };
 
 /** 고친 doc을 컴파일 검사한 뒤 커밋한다. doc이 원래 doc 그대로면 커밋하지 않는다. */
 export async function commitEdit(

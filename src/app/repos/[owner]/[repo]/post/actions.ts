@@ -15,7 +15,13 @@ import {
   type SaveBodyResult,
   type SaveMetadataResult,
 } from "@/lib/content";
-import { CONFIG_FILE, ConfigLoadError, loadEditorConfig, type Collection, type EditorConfig } from "@/lib/editor-config";
+import {
+  CONFIG_FILE,
+  ConfigLoadError,
+  loadEditorConfig,
+  type Collection,
+  type EditorConfig,
+} from "@/lib/editor-config";
 import { readFormData } from "@/lib/metadata-form";
 
 export type SaveState =
