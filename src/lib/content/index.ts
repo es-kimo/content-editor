@@ -8,6 +8,15 @@ export {
   type ExpectedFile,
   type SavePostInput,
 } from "./commit";
+export {
+  createPost,
+  listSubmenus,
+  needsSubmenu,
+  postSlug,
+  type CreatePostField,
+  type CreatePostInput,
+  type CreatePostResult,
+} from "./create-post";
 export { fetchBlobTexts, fetchTree, listPosts, matchPosts, type PostListItem, type TreeEntry } from "./posts";
 export {
   editorKeys,
