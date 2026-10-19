@@ -21,6 +21,7 @@ export {
   editorModes,
   findCollection,
   readPost,
+  sourceComponents,
   type EditorMode,
   type EditorModes,
   type Post,

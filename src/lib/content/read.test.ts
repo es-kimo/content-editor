@@ -3,10 +3,10 @@ import { describe, expect, test } from "vitest";
 import type { EditorConfig } from "@/lib/editor-config";
 import { createGitHubClient } from "@/lib/github";
 import { printMdx } from "@/lib/mdx-doc";
-import { testConfig } from "@/test/config";
+import { blogConfig, testConfig, yjshdConfig } from "@/test/config";
 import { blobSha, fakeGitHub, type FakeFile } from "@/test/fake-github";
 
-import { editorModes, readPost } from "./read";
+import { editorModes, readPost, sourceComponents } from "./read";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";
@@ -162,5 +162,19 @@ describe("editorModes", () => {
 
   test("metadata export가 없는 글은 두 모드를 오갈 수 있다", async () => {
     expect(editorModes(await open("# 본문\n"))).toEqual({ initial: "wysiwyg", sourceOnly: null });
+  });
+});
+
+describe("sourceComponents", () => {
+  const components = (config: EditorConfig, name: string) =>
+    sourceComponents(config.collections.find((c) => c.name === name)!);
+
+  test("원문 모드 삽입 버튼은 config components 순서대로 보인다", () => {
+    expect(components(blogConfig(), "글")).toEqual(["Footnote", "FootnoteRef", "Mermaid", "TOC"]);
+  });
+
+  test("업로드 흐름이 따로 있는 Image는 원문 모드 삽입 버튼에서 뺀다", () => {
+    expect(components(yjshdConfig(), "게시판")).toEqual([]);
+    expect(components(yjshdConfig(), "강좌")).toEqual(["Video"]);
   });
 });
