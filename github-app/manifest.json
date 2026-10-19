@@ -1,0 +1,22 @@
+{
+  "name": "es-kimo content-editor",
+  "url": "https://content-editor-khryu.vercel.app",
+  "description": "Git 레포의 MDX 글을 웹에서 편집하고 커밋하는 에디터 (es-kimo/content-editor)",
+  "public": false,
+  "callback_urls": [
+    "http://localhost:3000/api/auth/callback",
+    "https://content-editor-khryu.vercel.app/api/auth/callback",
+    "https://editor.khryu.dev/api/auth/callback",
+    "https://editor.yonsei-jshd.com/api/auth/callback"
+  ],
+  "hook_attributes": {
+    "url": "https://content-editor-khryu.vercel.app/api/github/webhook",
+    "active": false
+  },
+  "default_permissions": {
+    "contents": "write",
+    "metadata": "read"
+  },
+  "default_events": [],
+  "request_oauth_on_install": false
+}

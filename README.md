@@ -76,3 +76,22 @@ Agent report (07:00 KST)    지난 24시간 결과를 `agent-report` 이슈에 �
 | `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `high` / `medium` / `medium`                                                               |
 
 수동 실행: `gh workflow run agent-implement.yml -f issue=<번호>`
+
+## GitHub App
+
+에디터 로그인과 레포 커밋에 쓰는 앱은 [es-kimo-content-editor](https://github.com/apps/es-kimo-content-editor)다. 설정은 `github-app/manifest.json`에 있다.
+
+- 권한: Contents 쓰기, Metadata 읽기. webhook 꺼짐
+- 콜백 URL: 접속 도메인마다 `/api/auth/callback`
+- 설치: `es-kimo/site`, `es-kimo/yjshd`
+- 환경변수: `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `SESSION_SECRET` (Vercel production·development, 로컬 `.env.local`)
+
+GitHub 설정 화면에서 앱 권한이나 콜백 URL을 바꾸면 `manifest.json`도 같이 고친다. manifest는 앱을 만들 때만 쓰이고, 이후 변경은 자동으로 반영되지 않는다.
+
+앱을 새로 만들 때 (다른 계정용이거나 다시 만들 때):
+
+```bash
+node scripts/github-app/create.mjs   # http://localhost:8787/ 을 열어 GitHub에서 Create → 설치할 레포 선택
+```
+
+비밀값은 레포 루트의 `.env.local`과 `github-app.private-key.pem`(둘 다 gitignore, 권한 600)에 저장되고 출력되지 않는다. 같은 파일이 이미 있으면 덮어쓰지 않고 멈춘다. 만든 뒤 Settings → Optional features에서 User-to-server token expiration이 켜져 있는지 확인한다 (버튼이 Opt-out이면 켜진 상태).

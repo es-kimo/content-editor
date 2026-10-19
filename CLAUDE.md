@@ -22,7 +22,7 @@ pnpm format          # 포맷 자동 수정
 
 ## 금지
 
-- `.github/`, `CLAUDE.md`, `AGENTS.md`, `fixtures.config.json`, `scripts/sync-fixtures.mts`, `scripts/agent/` 수정
+- `.github/`, `CLAUDE.md`, `AGENTS.md`, `fixtures.config.json`, `scripts/sync-fixtures.mts`, `scripts/agent/`, `github-app/`, `scripts/github-app/` 수정
 - 테스트를 지우거나 `.skip`, `.only`, `skipIf`를 새로 넣어 통과시키기
 - 기대값을 실제 결과에 맞춰 바꾸기 (픽스처 기대 글 수 등)
 - 이슈 범위 밖의 리팩터링, 의존성 메이저 업그레이드
