@@ -21,19 +21,19 @@ export function EditorModeSwitch({
 
   return (
     <>
-      <nav className="flex gap-2" aria-label="본문 편집 모드">
+      <div className="flex gap-2" role="group" aria-label="본문 편집 모드">
         {(Object.keys(LABELS) as EditorMode[]).map((m) => (
           <button
             key={m}
             type="button"
-            aria-current={m === mode ? "true" : undefined}
+            aria-pressed={m === mode}
             onClick={() => setMode(m)}
-            className="rounded border px-3 py-1 text-sm aria-[current=true]:bg-black aria-[current=true]:text-white dark:aria-[current=true]:bg-white dark:aria-[current=true]:text-black"
+            className="rounded border px-3 py-1 text-sm aria-pressed:bg-black aria-pressed:text-white dark:aria-pressed:bg-white dark:aria-pressed:text-black"
           >
             {LABELS[m]}
           </button>
         ))}
-      </nav>
+      </div>
       {(Object.keys(editors) as EditorMode[]).map((m) => (
         <div key={m} hidden={m !== mode}>
           {editors[m]}
