@@ -64,10 +64,10 @@ export async function commitFiles(
   const base = repoPath(repo);
   const refPath = `${base}/git/refs/heads/${encodePath(branch)}`;
 
-  const ref = (await (await client.rest(`${base}/git/ref/heads/${encodePath(branch)}`)).json()) as {
-    object: { sha: string };
-  };
-  const parent = ref.object.sha;
+  const head = async () =>
+    ((await (await client.rest(`${base}/git/ref/heads/${encodePath(branch)}`)).json()) as { object: { sha: string } })
+      .object.sha;
+  const parent = await head();
 
   const current = await currentShas(
     client,
@@ -103,7 +103,11 @@ export async function commitFiles(
     await client.rest(refPath, { method: "PATCH", body: { sha: commit.sha, force: false } });
   } catch (error) {
     // 만든 커밋은 어느 ref에도 걸리지 않아 레포에 흔적을 남기지 않는다.
-    if (error instanceof GitHubApiError && error.status === 422) return { ok: false, reason: "not-fast-forward" };
+    if (!(error instanceof GitHubApiError && error.status === 422)) throw error;
+    // 422는 보호 브랜치 규칙 위반이나 ref 삭제에도 온다. 브랜치 끝이 실제로 움직였을 때만 다시 불러오라고 안내하고,
+    // 나머지는 원래 오류를 그대로 보여 준다.
+    const now = await head().catch(() => parent);
+    if (now !== parent) return { ok: false, reason: "not-fast-forward" };
     throw error;
   }
   return { ok: true, commit: commit.sha, parent };

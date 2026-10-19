@@ -244,6 +244,56 @@ describe("savePost", () => {
       savePost(client, REPO, config(), { path: POST, baseSha: blobSha(SOURCE), source: EDITED, title: "a" }),
     ).rejects.toMatchObject({ name: "GitHubApiError", status: 502 });
   });
+
+  const failingPatch = (status: number, message: string, moveBranch = false) => {
+    const { repo } = setup();
+    const client = createGitHubClient("t", async (input, init) => {
+      if (init?.method !== "PATCH") return repo.fetch(input, init);
+      if (moveBranch) repo.pushElsewhere([{ path: OTHER, content: "# 끼어든 커밋\n" }]);
+      return Response.json({ message }, { status });
+    });
+    return { repo, client };
+  };
+  const input = { path: POST, baseSha: blobSha(SOURCE), source: EDITED, title: "a" };
+
+  test("ref 갱신이 422가 아닌 이유로 실패하면 브랜치가 움직였어도 그 오류를 던진다", async () => {
+    const { repo, client } = failingPatch(502, "Server Error", true);
+    await expect(savePost(client, REPO, config(), input)).rejects.toMatchObject({
+      name: "GitHubApiError",
+      status: 502,
+    });
+    expect(repo.log().map((c) => c.message)).toEqual(["다른 곳에서 고침", "init"]);
+  });
+
+  test("ref 갱신이 422여도 브랜치 끝이 그대로면(보호 브랜치 등) not-fast-forward로 감추지 않고 던진다", async () => {
+    const { repo, client } = failingPatch(422, "Protected branch update failed for refs/heads/main.");
+    const head = repo.head();
+    await expect(savePost(client, REPO, config(), input)).rejects.toMatchObject({
+      name: "GitHubApiError",
+      status: 422,
+      message: expect.stringContaining("git/refs/heads/main 실패: HTTP 422"),
+    });
+    expect(repo.head()).toBe(head);
+  });
+
+  test("ref 갱신 중 브랜치가 사라져 422가 오면 원래 오류를 던진다", async () => {
+    const { repo } = setup();
+    const client = createGitHubClient("t", async (url, init) => {
+      if (init?.method === "PATCH") {
+        // 브랜치를 지운 것처럼 이후 ref 조회는 404, PATCH는 GitHub처럼 422를 준다.
+        return Response.json({ message: "Reference does not exist" }, { status: 422 });
+      }
+      if (String(url).includes("/git/ref/") && repo.fetch.mock.calls.some(([, i]) => i?.method === "POST")) {
+        return Response.json({ message: "Not Found" }, { status: 404 });
+      }
+      return repo.fetch(url, init);
+    });
+    await expect(savePost(client, REPO, config(), input)).rejects.toMatchObject({
+      name: "GitHubApiError",
+      status: 422,
+      message: expect.stringContaining("git/refs/heads/main 실패: HTTP 422"),
+    });
+  });
 });
 
 describe("commitFiles", () => {
