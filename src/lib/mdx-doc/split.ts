@@ -29,7 +29,10 @@ type MicromarkExtension = NonNullable<Options["extensions"]>[number];
 type MdastExtension = NonNullable<Options["mdastExtensions"]>[number];
 type EsmStatement = (Statement | ModuleDeclaration) & { start: number; end: number };
 
-export function parseMdx(source: string, syntax: Syntax = {}): MdxDoc {
+export type MdastRoot = ReturnType<typeof fromMarkdown>;
+
+/** 사이트와 같은 문법으로 MDX를 mdast로 읽는다. 문법 오류면 throw한다. */
+export function parseMarkdown(source: string, syntax: Syntax = {}): MdastRoot {
   const extensions: MicromarkExtension[] = [mdxjs()];
   const mdastExtensions: MdastExtension[] = [mdxFromMarkdown()];
   if (syntax.gfm) {
@@ -40,10 +43,13 @@ export function parseMdx(source: string, syntax: Syntax = {}): MdxDoc {
     extensions.push(math());
     mdastExtensions.push(mathFromMarkdown());
   }
+  return fromMarkdown(source, { extensions, mdastExtensions });
+}
 
+export function parseMdx(source: string, syntax: Syntax = {}): MdxDoc {
   let children;
   try {
-    children = fromMarkdown(source, { extensions, mdastExtensions }).children;
+    children = parseMarkdown(source, syntax).children;
   } catch (error) {
     return { ok: false, reason: "parse-error", message: (error as Error).message, source };
   }
