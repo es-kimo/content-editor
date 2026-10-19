@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { addImage, addImageAs, findUnusedImageImports, readImageImports } from "./images";
+import { addImage, addImageAs, findUnusedImageImports, isImageFile, readImageImports } from "./images";
 import { parseMdx, printMdx } from "./split";
 
 describe.each(fixtureSources)("픽스처 이미지 import: $name", (source) => {
@@ -70,6 +70,22 @@ describe.each(fixtureSources)("픽스처 이미지 import: $name", (source) => {
 
 const sample =
   'import image from "./image.png";\n\nexport const metadata = { title: "t" };\n\n<Image src={image} alt="a" />\n';
+
+describe("isImageFile", () => {
+  test.each([
+    ["1.png", true],
+    ["a.JPEG", true],
+    ["b.webp", true],
+    ["c.svg", true],
+    ["./img/d.gif", true],
+    ["page.mdx", false],
+    ["png", false],
+    ["notes.txt", false],
+    ["./dir.png/a", false],
+  ])("%s → %s", (name, expected) => {
+    expect(isImageFile(name)).toBe(expected);
+  });
+});
 
 describe("readImageImports", () => {
   test("이미지가 아닌 import와 이름 없는 import는 제외한다", () => {

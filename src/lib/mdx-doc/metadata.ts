@@ -1,6 +1,8 @@
 import { parse } from "acorn";
 import type { Expression, Program } from "estree";
 
+import type { MdxDoc } from "./split";
+
 export type MetadataValue = string | number | boolean | null | MetadataValue[] | { [key: string]: MetadataValue };
 
 export type MetadataResult =
@@ -8,7 +10,44 @@ export type MetadataResult =
   /** 폼으로 편집할 수 없는 metadata. 그 글은 원문 모드에서만 편집한다. */
   | { editable: false; reason: string };
 
+export type MetadataLookup =
+  | { kind: "found"; value: MetadataValue }
+  | { kind: "missing" }
+  /** 중간 키가 객체가 아니어서 그 안의 값을 읽거나 넣을 수 없다. */
+  | { kind: "blocked"; reason: string };
+
 class Unsupported extends Error {}
+
+/** doc의 metadata 구간 원문. 구간으로 나눌 수 없는 글이거나 metadata export가 없으면 null. */
+export function metadataText(doc: MdxDoc): string | null {
+  if (!doc.ok) return null;
+  return doc.head.find((segment) => segment.kind === "metadata")?.text ?? null;
+}
+
+/**
+ * doc의 metadata를 읽는다. 구간으로 나눌 수 없는 글이거나 metadata export가 없으면 null,
+ * export는 있지만 폼으로 읽을 수 없으면 `editable: false`.
+ */
+export function readMetadata(doc: MdxDoc): MetadataResult | null {
+  const text = metadataText(doc);
+  return text === null ? null : parseMetadata(text);
+}
+
+/** 점으로 이은 키(`other.createdAt`)의 값. */
+export function lookupMetadata(metadata: { [key: string]: MetadataValue }, key: string): MetadataLookup {
+  const parts = key.split(".");
+  let node = metadata;
+  for (const [i, part] of parts.entries()) {
+    if (!Object.hasOwn(node, part)) return { kind: "missing" };
+    const value = node[part]!;
+    if (i === parts.length - 1) return { kind: "found", value };
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return { kind: "blocked", reason: `${parts.slice(0, i + 1).join(".")}가 객체가 아니다` };
+    }
+    node = value;
+  }
+  return { kind: "missing" };
+}
 
 /** `export const metadata = {...}` 문장 하나(HeadSegment의 metadata text)를 JS 값으로 읽는다. */
 export function parseMetadata(text: string): MetadataResult {

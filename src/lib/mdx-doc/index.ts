@@ -1,12 +1,12 @@
 export { parseMdx, printMdx } from "./split";
 export type { HeadSegment, MdxDoc, Syntax } from "./split";
 export { editedBody, sameBodyStructure, setBody } from "./body";
-export { parseMetadata } from "./metadata";
+export { lookupMetadata, metadataText, parseMetadata, readMetadata } from "./metadata";
 export { setMetadata } from "./metadata-print";
 export { newMdx } from "./new-doc";
-export { addImage, addImageAs, findUnusedImageImports, readImageImports } from "./images";
+export { addImage, addImageAs, findUnusedImageImports, isImageFile, readImageImports } from "./images";
 export type { AddedImage, AddImageOptions, ImageImport } from "./images";
-export type { MetadataResult, MetadataValue } from "./metadata";
+export type { MetadataLookup, MetadataResult, MetadataValue } from "./metadata";
 export { previewMdx } from "./preview";
 export type { MdxPreview, PreviewImages } from "./preview";
 export { checkMdx } from "./check";
