@@ -1,6 +1,8 @@
 import type { Collection, MetadataField } from "@/lib/editor-config";
 import { lookupMetadata, type MetadataValue } from "@/lib/mdx-doc";
 
+import { datetimeInput, datetimeValue } from "./datetime";
+
 export type MetadataObject = { [key: string]: MetadataValue };
 
 /** 폼 입력 하나. 직렬화할 수 있는 값만 담아 클라이언트 컴포넌트에 그대로 넘긴다. */
@@ -127,11 +129,8 @@ function toInput(field: MetadataField, value: MetadataValue): string | null {
     case "text":
     case "select":
       return typeof value === "string" ? value : null;
-    case "datetime": {
-      if (typeof value !== "string") return null;
-      const parsed = parseDatetime(value);
-      return parsed ? formatLocal(parsed) : null;
-    }
+    case "datetime":
+      return typeof value === "string" ? datetimeInput(value) : null;
     // 제출할 때 줄마다 trim하고 빈 줄을 버리므로, 그렇게 해도 그대로 돌아오는 배열만 폼에 싣는다.
     case "string[]":
       return Array.isArray(value) &&
@@ -168,45 +167,7 @@ function fromInput(
           .map((line) => line.trim())
           .filter((line) => line !== ""),
       };
-    case "datetime": {
-      if (raw.trim() === "") return { ok: true, value: undefined };
-      const parsed = parseDatetime(raw.trim());
-      if (!parsed) return { ok: false, message: `날짜 형식이 아니다: ${raw}` };
-      const original = typeof current === "string" ? parseDatetime(current) : null;
-      if (original && formatLocal(original) === formatLocal(parsed)) return { ok: true, value: current };
-      return { ok: true, value: formatDatetime(parsed, original) };
-    }
+    case "datetime":
+      return datetimeValue(raw, current);
   }
-}
-
-type Datetime = { date: string; hour: string; minute: string; second: string | null; ms: string | null; z: boolean };
-
-const DATETIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z)?$/;
-
-function parseDatetime(value: string): Datetime | null {
-  const match = DATETIME.exec(value);
-  if (!match) return null;
-  const [, date, hour, minute, second, ms, z] = match;
-  const day = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== date) return null;
-  if (Number(hour) > 23 || Number(minute) > 59 || Number(second ?? 0) > 59) return null;
-  return { date: date!, hour: hour!, minute: minute!, second: second ?? null, ms: ms ?? null, z: z !== undefined };
-}
-
-/** `<input type="datetime-local" step="1">` 값. 초까지만 다룬다. */
-function formatLocal(d: Datetime): string {
-  return `${d.date}T${d.hour}:${d.minute}:${d.second ?? "00"}`;
-}
-
-/**
- * 원래 값의 형식(초, 밀리초, `Z`)을 따라 쓴다. 원래 값이 없으면 사이트 글 대부분이 쓰는 `YYYY-MM-DDTHH:mm:ssZ`.
- * 폼 값은 시간대 변환 없이 적힌 숫자 그대로 쓴다. 기존 글은 `Z`가 붙어 있어도 날짜만 의미가 있는 자정 값이라,
- * 브라우저 시간대로 바꾸면 날짜가 하루 밀린다.
- */
-function formatDatetime(d: Datetime, original: Datetime | null): string {
-  const style = original ?? { second: "00", ms: null, z: true };
-  let text = `${d.date}T${d.hour}:${d.minute}`;
-  if (style.second !== null || (d.second !== null && d.second !== "00")) text += `:${d.second ?? "00"}`;
-  if (style.ms !== null) text += `.${(d.ms ?? "0").padEnd(style.ms.length, "0")}`;
-  return style.z ? `${text}Z` : text;
 }
