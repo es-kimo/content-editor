@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
+import { Fragment, Suspense } from "react";
 
+import { LoginLink, repoHref } from "@/app/_lib/repo";
 import {
   GitHubAuthError,
   loadAccount,
@@ -47,14 +49,6 @@ async function AccountSection({ searchParams }: { searchParams: SearchParams }) 
     throw e;
   }
   return <AccountView account={account} accessToken={page.session.accessToken} />;
-}
-
-function LoginLink() {
-  return (
-    <a href="/api/auth/login" className="w-fit rounded bg-black px-4 py-2 text-white dark:bg-white dark:text-black">
-      GitHub로 로그인
-    </a>
-  );
 }
 
 function AccountView({ account, accessToken }: { account: Account; accessToken: string }) {
@@ -114,7 +108,15 @@ async function ConfigStatus({ repo, accessToken }: { repo: string; accessToken: 
     case "ok":
       return (
         <p className="text-sm text-zinc-500">
-          브랜치 {loaded.config.branch} · 컬렉션 {loaded.config.collections.map((c) => c.name).join(", ")}
+          브랜치 {loaded.config.branch} · 컬렉션{" "}
+          {loaded.config.collections.map((c, i) => (
+            <Fragment key={c.name}>
+              {i > 0 && ", "}
+              <Link href={repoHref(repo, c.name)} className="underline">
+                {c.name}
+              </Link>
+            </Fragment>
+          ))}
         </p>
       );
     case "invalid":
