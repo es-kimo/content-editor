@@ -5,7 +5,7 @@ import { printMdx } from "@/lib/mdx-doc";
 import { blobSha, fakeGitHub, type FakeFile } from "@/test/fake-github";
 
 import { createGitHubClient } from "./client";
-import { isImageFile, readPost } from "./read";
+import { editorModes, isImageFile, readPost } from "./read";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";
@@ -133,6 +133,37 @@ describe("readPost", () => {
   test("404가 아닌 실패는 던진다", async () => {
     const client = createGitHubClient("t", async () => Response.json({ message: "Server Error" }, { status: 502 }));
     await expect(readPost(client, REPO, config, POST)).rejects.toMatchObject({ status: 502 });
+  });
+});
+
+describe("editorModes", () => {
+  const open = async (source: string, collectionConfig: EditorConfig = config) => {
+    const client = createGitHubClient("t", fakeGitHub(REPO, "main", [{ path: POST, content: source }]));
+    return (await readPost(client, REPO, collectionConfig, POST))!;
+  };
+
+  test("폼으로 읽을 수 있는 글은 컬렉션의 editor 모드로 열고 두 모드를 오갈 수 있다", async () => {
+    expect(editorModes(await open(SOURCE))).toEqual({ initial: "wysiwyg", sourceOnly: null });
+
+    const sourceFirst = {
+      ...config,
+      collections: config.collections.map((c) => ({ ...c, editor: "source" as const })),
+    };
+    expect(editorModes(await open(SOURCE, sourceFirst))).toEqual({ initial: "source", sourceOnly: null });
+  });
+
+  test("metadata를 폼으로 읽을 수 없는 글은 원문 모드로만 연다", async () => {
+    const modes = editorModes(await open("export const metadata = { title: someVariable };\n\n본문\n"));
+    expect(modes).toMatchObject({ initial: "source", sourceOnly: { reason: "metadata" } });
+  });
+
+  test("구간으로 나눌 수 없는 글은 원문 모드로만 연다", async () => {
+    const modes = editorModes(await open("# 본문\n\nexport const metadata = { title: 'a' };\n"));
+    expect(modes).toMatchObject({ initial: "source", sourceOnly: { reason: "doc" } });
+  });
+
+  test("metadata export가 없는 글은 두 모드를 오갈 수 있다", async () => {
+    expect(editorModes(await open("# 본문\n"))).toEqual({ initial: "wysiwyg", sourceOnly: null });
   });
 });
 

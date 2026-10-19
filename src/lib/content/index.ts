@@ -9,7 +9,18 @@ export {
   type SavePostInput,
 } from "./commit";
 export { fetchBlobTexts, fetchTree, listPosts, matchPosts, type PostListItem, type TreeEntry } from "./posts";
-export { editorKeys, findCollection, IMAGE_EXTENSIONS, isImageFile, readPost, type Post, type PostImage } from "./read";
+export {
+  editorKeys,
+  editorModes,
+  findCollection,
+  IMAGE_EXTENSIONS,
+  isImageFile,
+  readPost,
+  type EditorMode,
+  type EditorModes,
+  type Post,
+  type PostImage,
+} from "./read";
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
 export { saveSource, type SaveSourceInput, type SaveSourceResult } from "./save-source";
 export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";

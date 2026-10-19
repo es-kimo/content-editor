@@ -107,6 +107,25 @@ function metadataSegment(doc: MdxDoc) {
   return doc.ok ? doc.head.find((s) => s.kind === "metadata") : undefined;
 }
 
+export type EditorMode = Collection["editor"];
+
+export type EditorModes =
+  | { initial: EditorMode; sourceOnly: null }
+  /** `doc`: 구간으로 나눌 수 없는 글. `metadata`: metadata를 폼으로 읽을 수 없는 글 (`editable: false`). */
+  | { initial: "source"; sourceOnly: { reason: "doc" | "metadata"; message: string } };
+
+/**
+ * 글 화면에서 처음 열 본문 편집 모드와, 원문 모드만 쓸 수 있는 글인지.
+ * metadata를 폼으로 읽을 수 없는 글은 WYSIWYG로 본문을 저장할 수는 있어도 metadata를 고칠 곳이 원문뿐이라 원문 모드로만 연다.
+ */
+export function editorModes(post: Post): EditorModes {
+  if (!post.doc.ok) return { initial: "source", sourceOnly: { reason: "doc", message: post.doc.message } };
+  if (post.metadata && !post.metadata.editable) {
+    return { initial: "source", sourceOnly: { reason: "metadata", message: post.metadata.reason } };
+  }
+  return { initial: post.collection.editor, sourceOnly: null };
+}
+
 /**
  * 글 화면의 편집 영역마다 그 영역의 원본에서 만든 key.
  * 한 영역을 저장하면 sha가 바뀌어도 다른 영역의 key는 그대로라, 저장하지 않은 다른 영역의 입력이 다시 마운트로 사라지지 않는다.
