@@ -1,11 +1,12 @@
-import { Text } from "@codemirror/state";
+import { history, undo } from "@codemirror/commands";
+import { EditorState, Text } from "@codemirror/state";
 import { IterMode, type SyntaxNode, type Tree } from "@lezer/common";
 import { describe, expect, test } from "vitest";
 
 import { parseMdx, type Syntax } from "@/lib/mdx-doc";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { compileDiagnostics, mdxLanguage } from "./mdx-source";
+import { compileDiagnostics, insertComponent, mdxLanguage } from "./mdx-source";
 
 const SOURCE = `import { toc } from "./toc";
 
@@ -94,6 +95,45 @@ describe("compileDiagnostics", () => {
     expect(rest).toEqual([]);
     expect(diagnostic).toMatchObject({ severity: "error" });
     expect(broken.slice(diagnostic!.from, diagnostic!.to)).toBe("<TOC items={toc +} />");
+  });
+});
+
+describe("insertComponent", () => {
+  const FOOTNOTED = `${SOURCE}\n인증서는 자동으로 갱신된다<Footnote id="1">1</Footnote>.\n`;
+
+  const select = (doc: string, from: number, to = from) =>
+    EditorState.create({ doc, selection: { anchor: from, head: to }, extensions: [history()] });
+
+  test("선택 영역을 템플릿으로 바꾸고 각주 번호는 편집 중인 원문에서 이어 매긴다", () => {
+    const at = FOOTNOTED.indexOf("비용");
+    const state = select(FOOTNOTED, at, at + "비용".length);
+
+    const next = state.update(insertComponent(state, "Footnote", {})).state;
+
+    expect(next.doc.toString()).toBe(FOOTNOTED.replace("비용", '<Footnote id="2">2</Footnote>'));
+    expect(next.selection.main.head).toBe(at + '<Footnote id="2">2</Footnote>'.length);
+  });
+
+  test("block 템플릿은 문단 사이에 빈 줄로 띄워 넣는다", () => {
+    const state = select(SOURCE, SOURCE.indexOf("<TOC"));
+
+    const next = state.update(insertComponent(state, "Mermaid", {})).state;
+
+    expect(next.doc.toString()).toContain(`# GitHub Pages의 HTTPS\n\n<Mermaid chart={\``);
+    expect(next.doc.toString()).toContain("`} />\n\n<TOC items={toc} />");
+  });
+
+  test("넣은 템플릿은 실행 취소 한 번에 넣기 전 원문으로 돌아간다", () => {
+    const at = SOURCE.indexOf("원이다.") + "원이다.".length;
+    let state = select(SOURCE, at);
+    state = state.update(insertComponent(state, "TOC", {})).state;
+    expect(state.doc.toString()).not.toBe(SOURCE);
+
+    const undone = undo({ state, dispatch: (tr) => (state = tr.state) });
+
+    expect(undone).toBe(true);
+    expect(state.doc.toString()).toBe(SOURCE);
+    expect(state.selection.main.head).toBe(at);
   });
 });
 
