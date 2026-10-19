@@ -2,7 +2,8 @@
 
 import { startTransition, useActionState, useState } from "react";
 
-import { postSlug } from "@/lib/content/slug";
+import { newPostPath, postSlug } from "@/lib/content/slug";
+import type { Collection } from "@/lib/editor-config";
 
 import { SaveRow } from "../post/save-row";
 import type { CreateState } from "./actions";
@@ -10,12 +11,11 @@ import type { CreateState } from "./actions";
 const inputClass = "rounded border px-2 py-1 text-sm";
 
 export function NewPostForm({
-  folder,
+  collection,
   submenus,
   action,
 }: {
-  /** 글 폴더가 들어갈 경로. 입력한 제목으로 만들 폴더 이름 앞에 보인다. */
-  folder: string;
+  collection: Collection;
   /** 하위 메뉴가 있는 컬렉션이면 고를 수 있는 하위 메뉴. 없으면 null. */
   submenus: string[] | null;
   action: (state: CreateState, data: FormData) => Promise<CreateState>;
@@ -24,7 +24,12 @@ export function NewPostForm({
   const [title, setTitle] = useState("");
   const [submenu, setSubmenu] = useState("");
   const fieldErrors = state.status === "error" ? (state.fields ?? {}) : {};
-  const slug = postSlug(title);
+  // 아직 입력하지 않은 자리는 자리 이름으로 채워, 만들 글이 어디에 생길지 처음부터 보여 준다.
+  const path = newPostPath(
+    collection,
+    postSlug(title) ?? "(제목을 입력한다)",
+    submenus ? submenu || "(하위 메뉴)" : undefined,
+  );
 
   return (
     <form
@@ -72,10 +77,7 @@ export function NewPostForm({
           onChange={(event) => setTitle(event.target.value)}
           className={inputClass}
         />
-        <span className="text-xs break-all text-zinc-500">
-          폴더 {folder}/{submenus && `${submenu || "(하위 메뉴)"}/`}
-          {slug ?? "(제목을 입력한다)"}
-        </span>
+        <span className="text-xs break-all text-zinc-500">경로 {path}</span>
         {fieldErrors.title && <span className="text-xs text-red-600">{fieldErrors.title}</span>}
       </label>
       <SaveRow label="만들기" pending={pending} state={state} />

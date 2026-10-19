@@ -1,4 +1,6 @@
-// 새 글 화면이 입력하는 동안 폴더 이름을 보여 주려고 브라우저에서도 쓴다. GitHub 클라이언트를 import하지 않는다.
+// 새 글 화면이 입력하는 동안 글 경로를 보여 주려고 브라우저에서도 쓴다. GitHub 클라이언트를 import하지 않는다.
+
+import { compilePathPattern, type Collection } from "@/lib/editor-config";
 
 // 경로·URL·Windows 파일 이름에 쓸 수 없거나 뜻이 달라지는 문자. 기존 mdx-cli 글도 `?`를 `_`로 바꿔 두었다.
 const UNSAFE = /[/\\?#%*:|"<>\p{Cc}]/gu;
@@ -18,4 +20,12 @@ export function postSlug(title: string): string | null {
   const encoder = new TextEncoder();
   while (encoder.encode(slug).length > MAX_SLUG_BYTES) slug = [...slug].slice(0, -1).join("").trimEnd();
   return slug === "" || /^_+$/.test(slug) ? null : slug;
+}
+
+/**
+ * 새 글의 파일 경로. 실제로 만드는 경로(createPost)와 새 글 화면이 미리 보여 주는 경로가 갈라지지 않게 둘 다 이것을 쓴다.
+ * 하위 메뉴는 컬렉션 경로에 `{submenu}`가 있을 때만 쓰인다.
+ */
+export function newPostPath(collection: Collection, slug: string, submenu?: string): string {
+  return compilePathPattern(collection.path).build({ slug, submenu });
 }

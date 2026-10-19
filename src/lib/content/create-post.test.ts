@@ -89,6 +89,19 @@ describe("createPost", () => {
     expect(repo.file("content/3.강좌/2.콩팥질환 정보/불면증이 심해요/page.mdx")).toBeDefined();
   });
 
+  test("하위 메뉴 뒤에 고정 단계가 있는 경로 패턴이면 그 단계 아래에 만든다", async () => {
+    const custom = {
+      ...config,
+      collections: [{ ...lecture!, path: "content/3.강좌/{submenu}/posts/{slug}/page.mdx" }],
+    };
+    const { repo, client } = setup([{ path: "content/3.강좌/공지/posts/첫 글/page.mdx", content: "# 첫 글\n" }]);
+
+    const result = await createPost(client, REPO, custom, { collection: "강좌", title: "새 글", submenu: "공지" }, NOW);
+
+    expect(result).toMatchObject({ ok: true, path: "content/3.강좌/공지/posts/새 글/page.mdx" });
+    expect(repo.file("content/3.강좌/공지/posts/새 글/page.mdx")).toBeDefined();
+  });
+
   test("같은 폴더가 이미 있으면 만들지 않는다", async () => {
     const { repo, client } = setup();
 

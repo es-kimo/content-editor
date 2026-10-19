@@ -1,11 +1,11 @@
-import { compilePathPattern, type Collection, type EditorConfig } from "@/lib/editor-config";
+import type { Collection, EditorConfig } from "@/lib/editor-config";
 import { newMdx } from "@/lib/mdx-doc";
 import { newMetadata } from "@/lib/metadata-form";
 
 import type { GitHubClient } from "./client";
 import { savePost } from "./commit";
 import { fetchTree, matchPosts } from "./posts";
-import { postSlug } from "./slug";
+import { newPostPath, postSlug } from "./slug";
 
 /** 새 글에 하위 메뉴를 골라야 하는 컬렉션인지. */
 export function needsSubmenu(collection: Collection): boolean {
@@ -78,7 +78,7 @@ export async function createPost(
     }
   }
 
-  const path = compilePathPattern(collection.path).build({ slug, submenu });
+  const path = newPostPath(collection, slug, submenu);
   const result = await savePost(client, repo, config, {
     path,
     baseSha: null,

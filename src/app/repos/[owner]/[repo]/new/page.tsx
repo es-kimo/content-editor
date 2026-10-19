@@ -5,7 +5,6 @@ import { CollectionTabs, isUnauthorized, LoginLink, loadRepoConfig, newPostHref,
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
 import { createGitHubClient, listSubmenus, needsSubmenu } from "@/lib/content";
-import { compilePathPattern } from "@/lib/editor-config";
 
 import { createPostAction } from "./actions";
 import { NewPostForm } from "./new-post-form";
@@ -68,7 +67,7 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
         <NewPostForm
           // 컬렉션을 바꾸면 입력과 결과를 새로 시작한다.
           key={collection.name}
-          folder={compilePathPattern(collection.path).prefix}
+          collection={collection}
           submenus={submenus}
           action={createPostAction.bind(null, repo, collection.name)}
         />
