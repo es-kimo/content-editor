@@ -28,33 +28,68 @@ export function readImageImports(doc: MdxDoc): ImageImport[] {
   });
 }
 
+export type AddImageOptions = {
+  extension: string;
+  component: string;
+  alt?: string;
+  /** 글 폴더에 이미 있는 파일 이름. import하지 않은 파일도 덮어쓰지 않게 피한다. */
+  files?: string[];
+};
+
 /**
  * 겹치지 않는 변수명(`imageN`)·파일명(`N.ext`)으로 이미지를 추가한다.
  * 기존 글의 `image`, `image.png` 같은 이름은 그대로 두고 번호만 이어 붙인다.
  */
-// JSX 문자열 속성은 백슬래시 이스케이프를 해석하지 않고 문자 참조만 해석한다
-function escapeJsxAttribute(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
-}
-
-export function addImage(doc: MdxDoc, options: { extension: string; component: string; alt?: string }): AddedImage {
+export function addImage(doc: MdxDoc, options: AddImageOptions): AddedImage {
   if (!doc.ok) throw new Error("구간으로 나눌 수 없는 글에는 이미지를 추가할 수 없다");
   const extension = options.extension.replace(/^\./, "").toLowerCase();
   if (!IMAGE_EXTENSION.test(`.${extension}`)) throw new Error(`지원하지 않는 이미지 확장자: ${extension}`);
 
+  const isFree = freeNumber(doc, options.files);
+  let n = 1;
+  while (!isFree(n, extension)) n += 1;
+  return insertImage(doc, n, extension, options);
+}
+
+/**
+ * `addImage`가 골랐던 파일 이름(`N.ext`)으로 같은 이미지를 다시 추가한다.
+ * 브라우저에서 고른 이름을 서버가 다시 읽은 원본에 적용할 때 쓴다. 그 번호를 이미 쓰고 있거나 `N.ext` 꼴이 아니면 null.
+ */
+export function addImageAs(doc: MdxDoc, file: string, options: Omit<AddImageOptions, "extension">): AddedImage | null {
+  if (!doc.ok) return null;
+  const match = /^([1-9]\d*)\.([a-z]+)$/.exec(file);
+  if (!match || !IMAGE_EXTENSION.test(file)) return null;
+  const n = Number(match[1]);
+  if (!freeNumber(doc, options.files)(n, match[2])) return null;
+  return insertImage(doc, n, match[2], options);
+}
+
+/** 번호 N에 대해 변수명 `imageN`을 head·본문에서 쓰지 않고, 파일 `N.ext`를 import하지 않았고 글 폴더에도 없는지. */
+function freeNumber(doc: Extract<MdxDoc, { ok: true }>, folder: string[] = []) {
   const taken = new Set<string>();
-  const files = new Set<string>();
+  const files = new Set(folder.map((name) => name.toLowerCase()));
   for (const segment of doc.head) {
     if (segment.kind === "gap") continue;
     for (const word of segment.text.match(/[\p{ID_Continue}$]+/gu) ?? []) taken.add(word);
   }
   for (const image of readImageImports(doc)) files.add(image.path.replace(/^\.\//, "").toLowerCase());
+  return (n: number, extension: string) =>
+    !taken.has(`image${n}`) && !files.has(`${n}.${extension}`) && !isUsedInBody(doc.body, `image${n}`);
+}
 
-  let n = 1;
-  while (taken.has(`image${n}`) || files.has(`${n}.${extension}`) || isUsedInBody(doc.body, `image${n}`)) n += 1;
+// JSX 문자열 속성은 백슬래시 이스케이프를 해석하지 않고 문자 참조만 해석한다
+function escapeJsxAttribute(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+}
+
+function insertImage(
+  doc: Extract<MdxDoc, { ok: true }>,
+  n: number,
+  extension: string,
+  options: { component: string; alt?: string },
+): AddedImage {
   const name = `image${n}`;
   const file = `${n}.${extension}`;
-
   const importText = formatImport(doc.head, name, `./${file}`);
   const tag = `<${options.component} src={${name}} alt="${escapeJsxAttribute(options.alt ?? "")}" />`;
   return { doc: { ...doc, head: insertImport(doc.head, importText) }, name, file, tag };

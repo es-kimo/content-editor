@@ -4,6 +4,7 @@ import { checkMdx, printMdx, type MdxDoc, type MdxError, type MetadataValue } fr
 import type { GitHubClient } from "./client";
 import { savePost, type CommitResult } from "./commit";
 import { readPost, type Post } from "./read";
+import type { UploadImage } from "./upload";
 
 export type EditablePost = Post & { doc: Extract<MdxDoc, { ok: true }> };
 
@@ -51,7 +52,7 @@ export async function openForEdit(
 export type CommitEditResult =
   CommitResult | { ok: false; reason: "unchanged" } | { ok: false; reason: "compile"; error: MdxError };
 
-/** 고친 doc을 컴파일 검사한 뒤 커밋한다. doc이 원래 doc 그대로면 커밋하지 않는다. */
+/** 고친 doc을 컴파일 검사한 뒤 `images`와 함께 커밋한다. doc이 원래 doc 그대로면 커밋하지 않는다. */
 export async function commitEdit(
   client: GitHubClient,
   repo: string,
@@ -59,9 +60,10 @@ export async function commitEdit(
   post: EditablePost,
   doc: MdxDoc,
   title: MetadataValue | undefined,
+  images: UploadImage[] = [],
 ): Promise<CommitEditResult> {
   if (doc === post.doc) return { ok: false, reason: "unchanged" };
-  return commitSource(client, repo, config, post, printMdx(doc), title);
+  return commitSource(client, repo, config, post, printMdx(doc), title, images);
 }
 
 /** 글을 연 시점의 metadata 제목. metadata를 고치지 않는 저장이 커밋 제목에 쓴다. */
@@ -69,7 +71,7 @@ export function currentTitle(post: Post): MetadataValue | undefined {
   return post.metadata?.editable ? post.metadata.value.title : undefined;
 }
 
-/** 고친 원문 전체를 컴파일 검사한 뒤 커밋한다. 원래 원문과 같으면 커밋하지 않는다. */
+/** 고친 원문 전체를 컴파일 검사한 뒤 `images`와 함께 커밋한다. 원래 원문과 같으면 커밋하지 않는다. */
 export async function commitSource(
   client: GitHubClient,
   repo: string,
@@ -77,6 +79,7 @@ export async function commitSource(
   post: Post,
   source: string,
   title: MetadataValue | undefined,
+  images: UploadImage[] = [],
 ): Promise<CommitEditResult> {
   if (source === post.source) return { ok: false, reason: "unchanged" };
 
@@ -88,5 +91,6 @@ export async function commitSource(
     baseSha: post.sha,
     source,
     title: typeof title === "string" && title.trim() !== "" ? title : (post.params.slug ?? post.path),
+    images: images.map(({ file, content }) => ({ name: file, content })),
   });
 }

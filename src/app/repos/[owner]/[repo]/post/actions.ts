@@ -26,6 +26,8 @@ import {
 } from "@/lib/editor-config";
 import { readFormData } from "@/lib/metadata-form";
 
+import { uploadMessage } from "./upload-message";
+
 export type SaveState =
   | { status: "idle" }
   | { status: "error"; message: string; fields?: { [key: string]: string } }
@@ -92,6 +94,8 @@ async function runSave(
       return error(`원문 모드에서만 고칠 수 있는 글이다: ${result.message}`);
     case "not-found":
       return error("글을 찾을 수 없다.");
+    case "image":
+      return error(uploadMessage(result.file, result.problem));
   }
 }
 
@@ -108,15 +112,21 @@ export async function saveMetadataAction(
   );
 }
 
-/** WYSIWYG 본문 저장. */
+/** WYSIWYG 본문 저장. `body`와, 본문에 넣은 이미지를 파일 이름이 `N.ext`인 `image` 파일로 받는다. */
 export async function saveBodyAction(
   repo: string,
   path: string,
   baseSha: string,
   _prev: SaveState,
-  body: string,
+  data: FormData,
 ): Promise<SaveState> {
-  return runSave(repo, path, ({ client, config }) => saveBody(client, repo, config, { path, baseSha, body }));
+  const body = data.get("body");
+  if (typeof body !== "string") return error("본문을 읽을 수 없다. 새로고침한 뒤 다시 저장한다.");
+  const files = data.getAll("image").filter((value): value is File => value instanceof File);
+  const images = await Promise.all(
+    files.map(async (file) => ({ file: file.name, content: new Uint8Array(await file.arrayBuffer()) })),
+  );
+  return runSave(repo, path, ({ client, config }) => saveBody(client, repo, config, { path, baseSha, body, images }));
 }
 
 /** 원문 모드 저장. 파일 전체를 받는다. */
