@@ -3,6 +3,7 @@
 입력
 
 - `.agent/issue.md`: 구현할 이슈의 제목, 본문, 코멘트
+- `.agent/resume.md`: 있으면 이전 시도가 중간에 멈춘 것이다. 브랜치에 이미 그 커밋이 있다. 처음부터 다시 만들지 말고, `git log -p origin/main..HEAD`로 한 일을 확인한 뒤 남은 완료 기준부터 이어 간다. "자동 저장" 커밋은 검증되지 않은 미완 변경이니 검사를 통과하게 고친다.
 - `.agent/wiki/`: 레포 wiki. 이슈 본문의 PRD·작업 방식 링크는 여기서 읽는다 (`PRD.md`, `작업-방식.md`)
 - `CLAUDE.md`: 레포 규칙. 반드시 따른다.
 - `docs/review/architecture.md`, `docs/review/testing.md`, `docs/review/design.md`: 리뷰가 쓰는 기준. 구현 전에 읽는다.
@@ -12,13 +13,15 @@
 1. `.agent/issue.md`를 읽고 완료 기준을 목록으로 정리한다.
 2. `docs/review/architecture.md`의 "재사용해야 하는 것"과 관련 모듈의 `index.ts`를 읽는다. 만들려는 함수·타입·상수마다 레포에 같은 일을 하는 코드가 있는지 grep으로 찾고, 있으면 그것을 쓰거나 고쳐 쓴다.
 3. 구현하고, 완료 기준마다 테스트를 쓴다. 테스트는 `docs/review/testing.md`의 경계와 도우미를 따른다. 실제 글 픽스처(`fixtures/`)가 있으면 전체로 검증한다.
+   - 실행 턴에는 상한이 있고, 상한에 닿으면 커밋하지 않은 작업은 검증되지 않은 채로 남는다. 리뷰어가 하나씩 읽을 수 있는 단위(타입·순수 함수와 그 테스트 → 그것을 쓰는 연결부 → 화면처럼)가 끝날 때마다 바로 커밋한다.
+   - 커밋마다 그 단위의 테스트와 `pnpm typecheck`가 통과해야 한다. 전체 검사는 6단계에서 한 번 더 돌린다.
 4. 셀프 체크: 아래 스킬을 셀프 체크 모드로 자기 diff에 적용하고, blocking에 해당하는 것은 고친다.
    - `review-kit:maintainability-review`
    - `review-kit:test-review` (핵심 테스트 한두 개는 구현을 잠깐 망가뜨려 실패하는지 보고 되돌린다)
    - `review-kit:ui-consistency-review` (화면을 바꿨을 때만)
 5. 조사용으로 만든 임시 파일을 지운다 (`rm`, `git rm`). 커밋 전에 `git status`에 이번 작업과 무관한 파일이 없어야 한다. PR 본문에는 작업 환경 이야기를 적지 않는다.
 6. `pnpm format`을 돌린 뒤 `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm build`를 모두 통과시킨다.
-7. `CLAUDE.md`의 형식으로 커밋한다. push는 하지 않는다.
+7. 남은 변경(셀프 체크·포맷 수정)을 `CLAUDE.md`의 형식으로 커밋한다. push는 하지 않는다.
 
 멈춰야 할 때
 
@@ -27,7 +30,7 @@
 - 위 검사를 통과시킬 수 없다.
 - 기준 문서(`docs/review/`)를 바꿔야만 구현할 수 있다.
 
-이 경우 커밋하지 않고 `status: "blocked"`로 이유를 적는다.
+이 경우 더 진행하지 않고 `status: "blocked"`로 이유를 적는다.
 
 마지막 응답은 JSON 스키마를 따른다.
 
