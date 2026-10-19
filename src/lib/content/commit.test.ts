@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
 import { createGitHubClient } from "@/lib/github";
+import { testConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha } from "@/test/fake-github";
 
@@ -18,16 +18,7 @@ const EDITED = `import image1 from "./1.png";\nimport image2 from "./2.png";\n\n
 const png1 = new Uint8Array([137, 80, 78, 71, 0, 1, 2, 255]);
 const png2 = new Uint8Array([137, 80, 78, 71, 3, 4, 5, 254]);
 
-const config = (branch = "main"): EditorConfig => {
-  const result = parseEditorConfig(
-    JSON.stringify({
-      branch,
-      collections: [{ name: "게시판", path: "content/4.게시판/{slug}/page.mdx", editor: "wysiwyg" }],
-    }),
-  );
-  if (!result.ok) throw new Error("config 오류");
-  return result.config;
-};
+const config = (branch = "main") => testConfig([{ name: "게시판", path: "content/4.게시판/{slug}/page.mdx" }], branch);
 
 const setup = (branch = "main") => {
   const repo = fakeGitRepo(REPO, branch, [

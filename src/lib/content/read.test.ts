@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import type { EditorConfig } from "@/lib/editor-config";
 import { createGitHubClient } from "@/lib/github";
 import { printMdx } from "@/lib/mdx-doc";
+import { testConfig } from "@/test/config";
 import { blobSha, fakeGitHub, type FakeFile } from "@/test/fake-github";
 
 import { editorModes, readPost } from "./read";
@@ -22,19 +23,10 @@ export const metadata = {
 본문 <Image src={image1} alt="" />
 `;
 
-const config: EditorConfig = (() => {
-  const result = parseEditorConfig(
-    JSON.stringify({
-      branch: "main",
-      collections: [
-        { name: "게시판", path: "content/4.게시판/{slug}/page.mdx", editor: "wysiwyg" },
-        { name: "강좌", path: "content/3.강좌/{submenu}/{slug}/page.mdx", editor: "wysiwyg" },
-      ],
-    }),
-  );
-  if (!result.ok) throw new Error("config 오류");
-  return result.config;
-})();
+const config = testConfig([
+  { name: "게시판", path: "content/4.게시판/{slug}/page.mdx" },
+  { name: "강좌", path: "content/3.강좌/{submenu}/{slug}/page.mdx" },
+]);
 
 const png = new Uint8Array([137, 80, 78, 71]);
 

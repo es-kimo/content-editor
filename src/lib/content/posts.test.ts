@@ -3,8 +3,9 @@ import path from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import { parseEditorConfig } from "@/lib/editor-config";
 import { createGitHubClient, type GitHubClient } from "@/lib/github";
+import { testConfig } from "@/test/config";
 import { fakeGitHub } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
@@ -14,16 +15,8 @@ const REPO = "es-kimo/yjshd";
 
 const meta = (fields: string) => `export const metadata = { ${fields} };\n\n# 본문\n`;
 
-const boardConfig = (branch = "main"): EditorConfig => {
-  const result = parseEditorConfig(
-    JSON.stringify({
-      branch,
-      collections: [{ name: "게시판", path: "content/4.게시판/{slug}/page.mdx", editor: "wysiwyg" }],
-    }),
-  );
-  if (!result.ok) throw new Error("config 오류");
-  return result.config;
-};
+const boardConfig = (branch = "main") =>
+  testConfig([{ name: "게시판", path: "content/4.게시판/{slug}/page.mdx" }], branch);
 
 const listBoard = (client: GitHubClient, config = boardConfig()) =>
   listPosts(client, REPO, config, config.collections[0]);

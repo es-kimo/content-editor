@@ -1,20 +1,13 @@
 import { describe, expect, test } from "vitest";
 
-import { parseEditorConfig, type Collection } from "@/lib/editor-config";
+import type { Collection } from "@/lib/editor-config";
 import type { MetadataValue } from "@/lib/mdx-doc";
+import { testConfig } from "@/test/config";
 
 import { applyForm, buildForm, FIELD_PREFIX, readFormData } from "./form";
 
-const collection = (metadata: Record<string, unknown>): Collection => {
-  const result = parseEditorConfig(
-    JSON.stringify({
-      branch: "main",
-      collections: [{ name: "게시판", path: "content/{slug}/page.mdx", metadata, editor: "wysiwyg" }],
-    }),
-  );
-  if (!result.ok) throw new Error(JSON.stringify(result.issues));
-  return result.config.collections[0]!;
-};
+const collection = (metadata: Collection["metadata"]): Collection =>
+  testConfig([{ name: "게시판", path: "content/{slug}/page.mdx", metadata }]).collections[0]!;
 
 const board = collection({
   title: { type: "string", label: "제목", required: true },
