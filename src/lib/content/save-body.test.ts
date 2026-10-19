@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
-import { addImage, checkMdx, editedBody, parseMdx, readImageImports } from "@/lib/mdx-doc";
+import { checkMdx, editedBody, parseMdx, readImageImports } from "@/lib/mdx-doc";
 import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha, type FakeFile } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
@@ -12,7 +12,7 @@ import { loadFixtures } from "@/test/fixtures";
 import { createGitHubClient } from "./client";
 import { editorKeys, findCollection, readPost } from "./read";
 import { saveBody } from "./save-body";
-import { IMAGE_COMPONENT, MAX_UPLOAD_BYTES, usedUploads } from "./upload";
+import { addUpload, MAX_UPLOAD_BYTES, usedUploads, type UploadPlan } from "./upload";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";
@@ -186,15 +186,19 @@ describe("saveBody 이미지", () => {
   const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 4, 5, 6]);
   const OLD_IMAGE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 9]);
 
-  /** 브라우저가 하는 일: 글 폴더 파일을 피해 이름을 고르고, 태그를 본문에 넣고, 본문에 남은 이미지만 보낸다. */
-  const upload = (source: string, folder: string[], contents: Uint8Array[], extensions: string[]) => {
-    let doc = parseMdx(source, config.syntax);
-    const added = contents.map((content, i) => {
-      const image = addImage(doc, { extension: extensions[i]!, component: IMAGE_COMPONENT, files: folder });
-      doc = image.doc;
-      return { file: image.file, tag: image.tag, content };
+  /** 편집 화면이 하는 일: 글 폴더 파일을 피해 이름을 고르고 본문에 넣을 태그를 받는다. */
+  const upload = (folder: string[]) => {
+    let plan: UploadPlan = { doc: parseMdx(SOURCE, config.syntax), images: [] };
+    const tags = [
+      { extension: "png", content: PNG },
+      { extension: "jpg", content: JPEG },
+    ].map((image) => {
+      const added = addUpload(plan, image, folder);
+      if (!added.ok) throw new Error(added.problem);
+      plan = added.plan;
+      return added.tag;
     });
-    return { doc, added };
+    return { plan, tags };
   };
 
   test("이미지 2장을 넣은 공지를 저장하면 커밋 1개에 mdx와 이미지 2개가 담기고 import가 글 폴더 파일을 가리킨다", async () => {
@@ -203,14 +207,15 @@ describe("saveBody 이미지", () => {
       { path: `${DIR}/1.png`, content: OLD_IMAGE },
     ]);
     const before = repo.head();
-    const { doc, added } = upload(SOURCE, ["1.png", "page.mdx"], [PNG, JPEG], ["png", "jpg"]);
-    const body = `${EDITED}\n${added[0]!.tag}\n\n${added[1]!.tag}\n`;
+    const post = (await readPost(client, REPO, config, POST))!;
+    const { plan, tags } = upload(post.images.map((image) => image.name));
+    const body = `${EDITED}\n${tags[0]}\n\n${tags[1]}\n`;
 
     const result = await saveBody(client, REPO, config, {
       path: POST,
-      baseSha: blobSha(SOURCE),
+      baseSha: post.sha,
       body,
-      images: usedUploads(doc, body, added),
+      images: usedUploads(plan, body),
     });
 
     expect(result).toEqual({ ok: true, commit: repo.head(), parent: before });
@@ -232,16 +237,16 @@ describe("saveBody 이미지", () => {
     expect((await checkMdx(saved, config.syntax)).ok).toBe(true);
   });
 
-  test("올린 뒤 본문에서 지운 이미지는 커밋하지 않는다", async () => {
+  test("넣은 뒤 본문에서 지운 이미지는 커밋하지 않는다", async () => {
     const { repo, client } = setup([{ path: POST, content: SOURCE }]);
-    const { doc, added } = upload(SOURCE, ["page.mdx"], [PNG, JPEG], ["png", "jpg"]);
-    const body = `${EDITED}\n${added[1]!.tag}\n`;
+    const { plan, tags } = upload([]);
+    const body = `${EDITED}\n${tags[1]}\n`;
 
     const result = await saveBody(client, REPO, config, {
       path: POST,
       baseSha: blobSha(SOURCE),
       body,
-      images: usedUploads(doc, body, added),
+      images: usedUploads(plan, body),
     });
 
     expect(result.ok).toBe(true);

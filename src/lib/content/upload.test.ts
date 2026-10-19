@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 
-import { addImage, parseMdx } from "@/lib/mdx-doc";
+import { parseMdx, readImageImports } from "@/lib/mdx-doc";
 
-import { checkUploads, fitImageSize, MAX_UPLOAD_BYTES, uploadExtension, usedUploads } from "./upload";
+import { addUpload, checkUploads, fitImageSize, MAX_UPLOAD_BYTES, uploadExtension, usedUploads } from "./upload";
 
 const ascii = (text: string) => [...text].map((c) => c.charCodeAt(0));
 const PNG = new Uint8Array([0x89, ...ascii("PNG\r\n\x1a\n"), 0, 0]);
@@ -78,15 +78,57 @@ describe("fitImageSize", () => {
   });
 });
 
+const SOURCE = 'import image1 from "./1.png";\n\n<Image src={image1} alt="" />\n';
+
+/** 이미지를 차례로 넣고 마지막 계획과 태그들을 돌려준다. 실패하면 던진다. */
+function addAll(images: { extension: string; content: Uint8Array }[], files: string[] = []) {
+  let plan = { doc: parseMdx(SOURCE), images: [] as { file: string; content: Uint8Array }[] };
+  const tags: string[] = [];
+  for (const image of images) {
+    const added = addUpload(plan, image, files);
+    if (!added.ok) throw new Error(added.problem);
+    plan = added.plan;
+    tags.push(added.tag);
+  }
+  return { plan, tags };
+}
+
+describe("addUpload", () => {
+  test("넣을 때마다 겹치지 않는 이름을 고르고 Image 태그를 돌려준다", () => {
+    const { plan, tags } = addAll([
+      { extension: "png", content: PNG },
+      { extension: "jpg", content: JPEG },
+    ]);
+    expect(tags).toEqual(['<Image src={image2} alt="" />', '<Image src={image3} alt="" />']);
+    expect(plan.images.map((image) => image.file)).toEqual(["2.png", "3.jpg"]);
+    expect(readImageImports(plan.doc).map((image) => image.path)).toEqual(["./1.png", "./2.png", "./3.jpg"]);
+  });
+
+  test("글 폴더에 이미 있는 파일 이름은 피한다", () => {
+    expect(addAll([{ extension: "png", content: PNG }], ["2.png"]).plan.images[0]?.file).toBe("3.png");
+  });
+
+  test("받지 않는 형식이나 합계 상한을 넘는 이미지는 넣지 않는다", () => {
+    const plan = { doc: parseMdx(SOURCE), images: [] };
+    expect(addUpload(plan, { extension: "gif", content: GIF }, [])).toMatchObject({ ok: false, problem: "format" });
+    expect(addUpload(plan, { extension: "png", content: JPEG }, [])).toMatchObject({ ok: false, problem: "format" });
+    const large = new Uint8Array(MAX_UPLOAD_BYTES / 2 + 1);
+    large.set(PNG);
+    const first = addUpload(plan, { extension: "png", content: large }, []);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(addUpload(first.plan, { extension: "png", content: large }, [])).toMatchObject({ problem: "size" });
+  });
+});
+
 describe("usedUploads", () => {
-  test("올린 뒤 본문에서 지운 이미지는 뺀다", () => {
-    const doc = parseMdx('import image1 from "./1.png";\n\n<Image src={image1} alt="" />\n');
-    const first = addImage(doc, { extension: "png", component: "Image" });
-    const second = addImage(first.doc, { extension: "jpg", component: "Image" });
-    const uploads = [{ file: first.file }, { file: second.file }];
+  test("넣은 뒤 본문에서 지운 이미지는 뺀다", () => {
+    const { plan, tags } = addAll([
+      { extension: "png", content: PNG },
+      { extension: "jpg", content: JPEG },
+    ]);
+    const body = `<Image src={image1} alt="" />\n\n${tags[1]}\n`;
 
-    const body = `<Image src={image1} alt="" />\n\n${second.tag}\n`;
-
-    expect(usedUploads(second.doc, body, uploads)).toEqual([{ file: "3.jpg" }]);
+    expect(usedUploads(plan, body).map((image) => image.file)).toEqual(["3.jpg"]);
   });
 });

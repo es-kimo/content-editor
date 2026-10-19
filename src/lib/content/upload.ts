@@ -1,4 +1,4 @@
-import { findUnusedImageImports, setBody, type MdxDoc } from "@/lib/mdx-doc";
+import { addImage, findUnusedImageImports, setBody, type MdxDoc } from "@/lib/mdx-doc";
 
 /** 본문에 넣는 이미지 컴포넌트. 사이트가 MDX 컴포넌트로 전역 등록해 두어 import하지 않는다. */
 export const IMAGE_COMPONENT = "Image";
@@ -73,11 +73,30 @@ export function fitImageSize(
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
+/** 편집 화면에서 넣은 이미지들과, 그 import를 모두 더한 doc. */
+export type UploadPlan = { doc: MdxDoc; images: UploadImage[] };
+
 /**
- * 올려 둔 이미지 중 저장할 본문에서 쓰는 것. 올린 뒤 본문에서 지운 이미지는 커밋하지 않는다.
- * @param doc 올린 이미지의 import를 모두 더한 doc
+ * 편집 화면에 이미지 하나를 넣는다. 이름을 고르고 검사한 뒤 본문에 넣을 태그를 돌려준다.
+ * @param files 글 폴더에 이미 있는 파일 이름
  */
-export function usedUploads<T extends { file: string }>(doc: MdxDoc, body: string, uploads: T[]): T[] {
-  const unused = new Set(findUnusedImageImports(setBody(doc, body)).map((image) => image.path));
-  return uploads.filter((upload) => !unused.has(`./${upload.file}`));
+export function addUpload(
+  plan: UploadPlan,
+  image: { extension: string; content: Uint8Array },
+  files: string[],
+): { ok: true; plan: UploadPlan; tag: string } | Exclude<UploadCheck, { ok: true }> {
+  if (!(Object.values(UPLOAD_IMAGE_TYPES) as string[]).includes(image.extension)) {
+    return { ok: false, reason: "image", file: `.${image.extension}`, problem: "format" };
+  }
+  const added = addImage(plan.doc, { extension: image.extension, component: IMAGE_COMPONENT, files });
+  const images = [...plan.images, { file: added.file, content: image.content }];
+  const check = checkUploads(images);
+  if (!check.ok) return check;
+  return { ok: true, plan: { doc: added.doc, images }, tag: added.tag };
+}
+
+/** 넣은 이미지 중 저장할 본문에서 쓰는 것. 넣은 뒤 본문에서 지운 이미지는 커밋하지 않는다. */
+export function usedUploads(plan: UploadPlan, body: string): UploadImage[] {
+  const unused = new Set(findUnusedImageImports(setBody(plan.doc, body)).map((image) => image.path));
+  return plan.images.filter((image) => !unused.has(`./${image.file}`));
 }

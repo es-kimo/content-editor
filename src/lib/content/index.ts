@@ -26,15 +26,14 @@ export { saveSource, type SaveSourceInput, type SaveSourceResult } from "./save-
 export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";
 export { summarizePost, type PostSummary } from "./summary";
 export {
-  checkUploads,
+  addUpload,
   fitImageSize,
   IMAGE_COMPONENT,
-  MAX_IMAGE_SIDE,
   MAX_UPLOAD_BYTES,
   UPLOAD_IMAGE_TYPES,
   uploadExtension,
   usedUploads,
-  type UploadCheck,
   type UploadImage,
+  type UploadPlan,
   type UploadProblem,
 } from "./upload";
