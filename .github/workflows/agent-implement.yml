@@ -31,6 +31,8 @@ env:
   MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS || '2' }}
   AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}
   EFFORT: ${{ vars.AGENT_EFFORT_IMPLEMENT || 'medium' }}
+  # 리뷰 기준 스킬(review-kit). 구현 중 셀프 체크에 리뷰와 같은 기준을 쓴다.
+  SKILLS_MARKETPLACE: ${{ vars.AGENT_SKILLS_MARKETPLACE || 'https://github.com/es-kimo/claude-skills.git' }}
 
 jobs:
   implement:
@@ -111,13 +113,15 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: "`.github/agent/implement.md`의 지시를 따른다. 구현할 이슈는 `.agent/issue.md`에 있다."
+          plugin_marketplaces: ${{ env.SKILLS_MARKETPLACE }}
+          plugins: review-kit@es-kimo
           claude_args: >-
             --model ${{ env.AGENT_MODEL }}
             --fallback-model sonnet
             --effort ${{ env.EFFORT }}
-            --max-turns 80
+            --max-turns 100
             --json-schema '${{ env.schema }}'
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git status),Bash(git status *),Bash(git diff *),Bash(git add *),Bash(git commit *),Bash(git log *),Bash(git show *),Bash(ls *)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Skill,Bash(git grep *),Bash(pnpm *),Bash(node *),Bash(git status),Bash(git status *),Bash(git diff *),Bash(git add *),Bash(git commit *),Bash(git log *),Bash(git show *),Bash(git rm *),Bash(git restore *),Bash(rm *),Bash(ls *)"
             --disallowedTools "Bash(pnpm fixtures:sync),Bash(pnpm fixtures:sync *)"
 
       - name: PR 열기 또는 실패 기록

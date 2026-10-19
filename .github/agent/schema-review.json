@@ -1,23 +1,41 @@
 {
   "type": "object",
   "properties": {
-    "verdict": { "type": "string", "enum": ["approve", "request_changes"] },
     "summary": { "type": "string" },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "criterion": { "type": "string" },
+          "met": { "type": "boolean" },
+          "evidence": { "type": "string" }
+        },
+        "required": ["criterion", "met", "evidence"],
+        "additionalProperties": false
+      }
+    },
     "findings": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["correctness", "maintainability", "test", "design", "scope", "writing"]
+          },
+          "severity": { "type": "string", "enum": ["blocking", "suggestion"] },
+          "title": { "type": "string" },
           "file": { "type": "string" },
           "line": { "type": "integer" },
           "problem": { "type": "string" },
           "fix": { "type": "string" }
         },
-        "required": ["file", "problem", "fix"],
+        "required": ["category", "severity", "title", "file", "problem", "fix"],
         "additionalProperties": false
       }
     }
   },
-  "required": ["verdict", "summary", "findings"],
+  "required": ["summary", "criteria", "findings"],
   "additionalProperties": false
 }

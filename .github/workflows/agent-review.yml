@@ -30,6 +30,8 @@ env:
   AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}
   EFFORT_REVIEW: ${{ vars.AGENT_EFFORT_REVIEW || 'high' }}
   EFFORT_FIX: ${{ vars.AGENT_EFFORT_FIX || 'medium' }}
+  # 리뷰 기준 스킬(review-kit). 레포에 따라 달라지지 않는 기준이라 별도 레포의 플러그인으로 받는다.
+  SKILLS_MARKETPLACE: ${{ vars.AGENT_SKILLS_MARKETPLACE || 'https://github.com/es-kimo/claude-skills.git' }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
@@ -78,6 +80,7 @@ jobs:
           mkdir -p .agent
           gh issue view "$ISSUE" -R "$REPO" --json title,body \
             --jq '"# #\(env.ISSUE) \(.title)\n\n\(.body)"' > .agent/issue.md
+          gh pr view "$PR" -R "$REPO" --json body --jq .body > .agent/pr.md
           # 이슈 본문은 설계를 PRD(wiki)에 맡기므로 wiki를 같이 넘긴다. 받지 못해도 실행은 계속한다.
           git clone --quiet --depth 1 "https://github.com/${REPO}.wiki.git" .agent/wiki \
             || echo "::warning::wiki를 받지 못했다"
@@ -103,14 +106,16 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
-          prompt: "`.github/agent/review.md`의 지시를 따른다. 이슈는 `.agent/issue.md`, 변경은 `.agent/diff.patch`에 있다."
+          prompt: "`.github/agent/review.md`의 지시를 따른다. 이슈는 `.agent/issue.md`, PR 본문은 `.agent/pr.md`, 변경은 `.agent/diff.patch`에 있다."
+          plugin_marketplaces: ${{ env.SKILLS_MARKETPLACE }}
+          plugins: review-kit@es-kimo
           claude_args: >-
             --model ${{ env.AGENT_MODEL }}
             --fallback-model sonnet
             --effort ${{ env.EFFORT_REVIEW }}
-            --max-turns 40
+            --max-turns 60
             --json-schema '${{ env.review_schema }}'
-            --allowedTools "Read,Glob,Grep,Bash(pnpm test),Bash(pnpm test *),Bash(pnpm lint),Bash(pnpm format:check),Bash(pnpm typecheck),Bash(pnpm build),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(ls *)"
+            --allowedTools "Read,Glob,Grep,Skill,Bash(git grep *),Bash(pnpm test),Bash(pnpm test *),Bash(pnpm lint),Bash(pnpm format:check),Bash(pnpm typecheck),Bash(pnpm build),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(ls *)"
             --disallowedTools "Edit,Write,Bash(pnpm fixtures:sync),Bash(pnpm fixtures:sync *)"
 
       - name: 리뷰 결과 처리
@@ -124,10 +129,9 @@ jobs:
           FIXES: ${{ steps.prep.outputs.fixes }}
         run: |
           RESULT="${RESULT:-null}"
-          verdict=$(echo "$RESULT" | jq -r '.verdict // "error"')
           info=$(node scripts/agent/classify-run.mts "$EXEC_FILE")
           echo "실행 결과: $info"
-          if [ "$verdict" = "error" ]; then
+          if ! echo "$RESULT" | jq -e '(.criteria | length) > 0 and (.findings | type) == "array"' > /dev/null 2>&1; then
             if [ "$(echo "$info" | jq -r .kind)" = "limit" ]; then
               # 한도는 사람 확인 대상이 아니다. 다음 cron이 이 리뷰 실행을 다시 돌린다.
               gh pr edit "$PR" -R "$REPO" --add-label agent-retry
@@ -138,11 +142,32 @@ jobs:
             gh pr edit "$PR" -R "$REPO" --add-label needs-human
             exit 0
           fi
+          # 판정은 모델이 아니라 여기서 정한다. blocking이 하나라도 있거나 완료 기준 하나라도 미충족이면 수정 요청이다.
+          blocking=$(echo "$RESULT" | jq '[.findings[] | select(.severity == "blocking")] | length')
+          unmet=$(echo "$RESULT" | jq '[.criteria[] | select(.met | not)] | length')
+          suggestions=$(echo "$RESULT" | jq '[.findings[] | select(.severity == "suggestion")] | length')
+          if [ "$blocking" -eq 0 ] && [ "$unmet" -eq 0 ]; then verdict=approve; title="승인"; else verdict=request_changes; title="수정 요청"; fi
+          render='
+            {correctness: "정확성", maintainability: "유지보수", test: "테스트", design: "화면", scope: "범위", writing: "글"} as $label
+            | def loc: "`\(.file)\(if .line then ":\(.line)" else "" end)`";
+            def blocking: [.findings[] | select(.severity == "blocking")];
+            def suggestions: [.findings[] | select(.severity == "suggestion")];
+            (.summary), "",
+            "**완료 기준**",
+            (.criteria[] | "- [\(if .met then "x" else " " end)] \(.criterion) — \(.evidence)"),
+            (if (blocking | length) > 0 then
+              "", "**고칠 것**",
+              (blocking | to_entries[] | "\(.key + 1). **[\($label[.value.category])] \(.value.title)** · \(.value | loc)\n   \(.value.problem)\n   → \(.value.fix)")
+            else empty end),
+            (if (suggestions | length) > 0 then
+              "", "<details><summary>제안 \(suggestions | length)건 (merge를 막지 않음)</summary>", "",
+              (suggestions[] | "- **[\($label[.category])] \(.title)** · \(loc) — \(.problem) → \(.fix)"),
+              "", "</details>"
+            else empty end)'
           {
             echo "<!-- agent:review-$verdict -->"
-            echo "## 에이전트 리뷰: $verdict"; echo
-            echo "$RESULT" | jq -r '.summary'; echo
-            echo "$RESULT" | jq -r '.findings[] | "- `\(.file)\(if .line then ":\(.line)" else "" end)` \(.problem)\n  - 수정: \(.fix)"'
+            echo "## 에이전트 리뷰: $title (blocking ${blocking} · 미충족 기준 ${unmet} · 제안 ${suggestions})"; echo
+            echo "$RESULT" | jq -r "$render"
             echo; echo "모델: $(echo "$info" | jq -r '.models | join(", ")') · effort: $EFFORT_REVIEW · [실행 로그]($RUN_URL)"
           } > .agent/review.md
           gh pr comment "$PR" -R "$REPO" --body-file .agent/review.md
@@ -159,7 +184,13 @@ jobs:
             gh issue edit "$ISSUE" -R "$REPO" --add-label needs-human
             exit 0
           fi
-          { echo "# 리뷰 지적"; echo; echo "$RESULT" | jq -r '.findings[] | "- \(.file)\(if .line then ":\(.line)" else "" end): \(.problem)\n  수정: \(.fix)"'; } > .agent/feedback.md
+          # 수정 에이전트에는 blocking과 미충족 기준만 넘긴다. 제안까지 넘기면 범위가 늘고 수정 횟수를 소모한다.
+          {
+            echo "# 리뷰 지적 (blocking)"; echo
+            echo "$RESULT" | jq -r '.findings[] | select(.severity == "blocking") | "- [\(.category)] \(.file)\(if .line then ":\(.line)" else "" end): \(.title)\n  \(.problem)\n  수정: \(.fix)"'
+            echo; echo "# 충족되지 않은 완료 기준"; echo
+            echo "$RESULT" | jq -r '.criteria[] | select(.met | not) | "- \(.criterion): \(.evidence)"'
+          } > .agent/feedback.md
           echo "fix=true" >> "$GITHUB_OUTPUT"
 
       - name: CI 실패 수정 한도 확인
@@ -187,13 +218,15 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: "`.github/agent/fix.md`의 지시를 따른다. 이슈는 `.agent/issue.md`, 고칠 내용은 `.agent/feedback.md`에 있다."
+          plugin_marketplaces: ${{ env.SKILLS_MARKETPLACE }}
+          plugins: review-kit@es-kimo
           claude_args: >-
             --model ${{ env.AGENT_MODEL }}
             --fallback-model sonnet
             --effort ${{ env.EFFORT_FIX }}
             --max-turns 60
             --json-schema '${{ env.work_schema }}'
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git status),Bash(git status *),Bash(git diff *),Bash(git add *),Bash(git commit *),Bash(git log *),Bash(git show *),Bash(ls *)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Skill,Bash(git grep *),Bash(pnpm *),Bash(node *),Bash(git status),Bash(git status *),Bash(git diff *),Bash(git add *),Bash(git commit *),Bash(git log *),Bash(git show *),Bash(git rm *),Bash(git restore *),Bash(rm *),Bash(ls *)"
             --disallowedTools "Bash(pnpm fixtures:sync),Bash(pnpm fixtures:sync *)"
 
       - name: 수정 push
