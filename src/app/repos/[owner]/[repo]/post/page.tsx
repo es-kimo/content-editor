@@ -5,12 +5,15 @@ import { Suspense } from "react";
 import { isUnauthorized, LoginLink, loadRepoConfig, postHref, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
-import { createGitHubClient, editorKeys, readPost, type Post } from "@/lib/content";
+import { createGitHubClient, editorKeys, editorModes, readPost, type Post } from "@/lib/content";
+import type { Syntax } from "@/lib/mdx-doc";
 import { buildForm } from "@/lib/metadata-form";
 
-import { saveBodyAction, saveMetadataAction } from "./actions";
+import { saveBodyAction, saveMetadataAction, saveSourceAction } from "./actions";
 import { BodyEditor } from "./body-editor";
+import { EditorModeSwitch } from "./editor-mode-switch";
 import { MetadataForm } from "./metadata-form";
+import { SourceEditor } from "./source-editor";
 
 type Params = Promise<{ owner: string; repo: string }>;
 
@@ -63,25 +66,7 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
 
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">본문</h2>
-        {post.doc.ok && post.collection.editor === "wysiwyg" ? (
-          // 다른 영역을 저장해도 고치던 본문이 남도록 key를 sha가 아닌 본문 원본으로 둔다.
-          <BodyEditor
-            key={editorKeys(post).body}
-            body={post.doc.body}
-            syntax={loaded.config.syntax}
-            components={post.collection.components}
-            action={saveBodyAction.bind(null, repo, post.path, post.sha)}
-          />
-        ) : post.doc.ok ? (
-          <pre className="overflow-x-auto rounded border p-3 text-sm whitespace-pre-wrap">{post.doc.body}</pre>
-        ) : (
-          <>
-            <p className="text-sm text-amber-600">
-              구간으로 나눌 수 없는 글이라 원문 전체를 보인다: {post.doc.message}
-            </p>
-            <pre className="overflow-x-auto rounded border p-3 text-sm whitespace-pre-wrap">{post.source}</pre>
-          </>
-        )}
+        <BodyView repo={repo} post={post} syntax={loaded.config.syntax} />
       </section>
 
       <section className="flex flex-col gap-2">
@@ -97,6 +82,52 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
         )}
       </section>
     </>
+  );
+}
+
+const SOURCE_ONLY = {
+  doc: "구간으로 나눌 수 없는 글이라 원문 모드로만 고친다",
+  metadata: "metadata를 폼으로 읽을 수 없는 글이라 원문 모드로만 고친다",
+};
+
+function BodyView({ repo, post, syntax }: { repo: string; post: Post; syntax: Syntax }) {
+  const modes = editorModes(post);
+  // 원문은 파일 전체라 어느 영역을 저장해도 바뀐다. 저장한 파일로 다시 열도록 key를 sha로 둔다.
+  const source = (
+    <SourceEditor
+      key={post.sha}
+      source={post.source}
+      syntax={syntax}
+      action={saveSourceAction.bind(null, repo, post.path, post.sha)}
+    />
+  );
+  if (modes.sourceOnly || !post.doc.ok) {
+    return (
+      <>
+        {modes.sourceOnly && (
+          <p className="text-sm text-amber-600">
+            {SOURCE_ONLY[modes.sourceOnly.reason]}: {modes.sourceOnly.message}
+          </p>
+        )}
+        {source}
+      </>
+    );
+  }
+  return (
+    <EditorModeSwitch
+      initial={modes.initial}
+      source={source}
+      wysiwyg={
+        // 다른 영역을 저장해도 고치던 본문이 남도록 key를 sha가 아닌 본문 원본으로 둔다.
+        <BodyEditor
+          key={editorKeys(post).body}
+          body={post.doc.body}
+          syntax={syntax}
+          components={post.collection.components}
+          action={saveBodyAction.bind(null, repo, post.path, post.sha)}
+        />
+      }
+    />
   );
 }
 
