@@ -11,3 +11,5 @@ export { previewMdx } from "./preview";
 export type { MdxPreview, PreviewImages } from "./preview";
 export { checkMdx } from "./check";
 export type { MdxCheck, MdxError } from "./check";
+export { componentSnippet, insertSnippet } from "./snippet";
+export type { ComponentSnippet, InsertedSnippet } from "./snippet";

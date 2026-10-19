@@ -2,6 +2,7 @@ import type { Element, ElementContent, Properties, Root, RootContent } from "has
 import type { MdxFlowExpression, MdxJsxFlowElement, MdxJsxTextElement, MdxTextExpression } from "mdast-util-mdx";
 import { defaultHandlers, toHast, type State } from "mdast-util-to-hast";
 
+import { attributeValue, stringAttribute } from "./jsx";
 import { parseMarkdown, type MdastRoot, type Syntax } from "./split";
 
 /** 미리보기에서 실제 그림으로 보일 이미지. import 변수명 → 이미지 주소. */
@@ -175,16 +176,4 @@ function imageSource(node: MdxJsxFlowElement | MdxJsxTextElement, images: Previe
   if (typeof src !== "object" || src === null) return undefined;
   const name = src.value.trim();
   return Object.hasOwn(images, name) ? images[name] : undefined;
-}
-
-function stringAttribute(node: MdxJsxFlowElement | MdxJsxTextElement, name: string): string | undefined {
-  const value = attributeValue(node, name);
-  return typeof value === "string" ? value : undefined;
-}
-
-function attributeValue(node: MdxJsxFlowElement | MdxJsxTextElement, name: string) {
-  for (const attribute of node.attributes) {
-    if (attribute.type === "mdxJsxAttribute" && attribute.name === name) return attribute.value;
-  }
-  return undefined;
 }
