@@ -64,6 +64,11 @@ export async function commitEdit(
   return commitSource(client, repo, config, post, printMdx(doc), title);
 }
 
+/** 글을 연 시점의 metadata 제목. metadata를 고치지 않는 저장이 커밋 제목에 쓴다. */
+export function currentTitle(post: Post): MetadataValue | undefined {
+  return post.metadata?.editable ? post.metadata.value.title : undefined;
+}
+
 /** 고친 원문 전체를 컴파일 검사한 뒤 커밋한다. 원래 원문과 같으면 커밋하지 않는다. */
 export async function commitSource(
   client: GitHubClient,

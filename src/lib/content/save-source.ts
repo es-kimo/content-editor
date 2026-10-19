@@ -1,7 +1,7 @@
 import type { EditorConfig } from "@/lib/editor-config";
 
 import type { GitHubClient } from "./client";
-import { commitSource, openPost, type CommitEditResult, type OpenPostResult } from "./edit-post";
+import { commitSource, currentTitle, openPost, type CommitEditResult, type OpenPostResult } from "./edit-post";
 
 export type SaveSourceInput = {
   path: string;
@@ -25,7 +25,5 @@ export async function saveSource(
 ): Promise<SaveSourceResult> {
   const opened = await openPost(client, repo, config, input.path, input.baseSha);
   if (!opened.ok) return opened;
-  const { post } = opened;
-  const title = post.metadata?.editable ? post.metadata.value.title : undefined;
-  return commitSource(client, repo, config, post, input.source, title);
+  return commitSource(client, repo, config, opened.post, input.source, currentTitle(opened.post));
 }

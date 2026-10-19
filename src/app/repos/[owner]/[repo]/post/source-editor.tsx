@@ -6,6 +6,7 @@ import { startTransition, useActionState, useRef } from "react";
 import type { Syntax } from "@/lib/mdx-doc";
 
 import type { SaveState } from "./actions";
+import { SaveRow } from "./save-row";
 
 const CodeMirrorSourceEditor = dynamic(() => import("./codemirror-source-editor"), {
   ssr: false,
@@ -42,17 +43,7 @@ export function SourceEditor({
           edited.current = next;
         }}
       />
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={pending}
-          className="w-fit rounded bg-black px-4 py-2 text-white disabled:opacity-60 dark:bg-white dark:text-black"
-        >
-          {pending ? "저장 중…" : "원문 저장"}
-        </button>
-        {state.status === "error" && <p className="text-sm text-red-600">{state.message}</p>}
-        {state.status === "unchanged" && <p className="text-sm text-zinc-500">바뀐 내용이 없어 커밋하지 않았다.</p>}
-      </div>
+      <SaveRow label="원문 저장" pending={pending} state={state} unchanged="바뀐 내용이 없어 커밋하지 않았다." />
     </form>
   );
 }
