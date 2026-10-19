@@ -12,7 +12,7 @@ import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
 export function BodyPreview({
   markdown,
   syntax,
-  images = {},
+  images,
 }: {
   markdown: string;
   syntax: Syntax;
@@ -36,8 +36,9 @@ export function BodyPreview({
   );
 }
 
-function Preview({ markdown, syntax, images }: { markdown: string; syntax: Syntax; images: PreviewImages }) {
+function Preview({ markdown, syntax, images }: { markdown: string; syntax: Syntax; images?: PreviewImages }) {
   // 긴 글에서 입력이 밀리지 않도록 그리기는 입력보다 늦게 따라간다.
+  // images에 기본값 객체를 두면 렌더마다 참조가 바뀌어 useMemo가 매번 다시 파싱하므로 undefined 그대로 넘긴다.
   const deferred = useDeferredValue(markdown);
   const preview = useMemo(() => previewMdx(deferred, syntax, images), [deferred, syntax, images]);
 
