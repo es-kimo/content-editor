@@ -1,6 +1,6 @@
 import { compilePathPattern, type Collection, type EditorConfig, type PathParams } from "@/lib/editor-config";
+import { GitHubApiError, repoPath, splitRepo, type GitHubClient } from "@/lib/github";
 
-import { GitHubApiError, repoPath, splitRepo, type GitHubClient } from "./client";
 import { summarizePost, type PostSummary } from "./summary";
 
 export type TreeEntry = { path: string; type: "blob" | "tree" | "commit"; sha: string; size?: number };

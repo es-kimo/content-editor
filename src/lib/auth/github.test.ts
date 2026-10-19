@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { createGitHubClient, GitHubApiError, isUnauthorized } from "@/lib/github";
 import { formBody, json, mockFetch } from "@/test/mock-fetch";
 
 import { loadAccount } from "./account";
@@ -125,15 +126,15 @@ describe("GitHub API", () => {
 
   test("사용자 정보를 토큰으로 조회한다", async () => {
     const fetch = mockFetch(api({ "/user": { login: "es-kimo", name: null, avatar_url: "a", html_url: "h" } }));
-    expect((await getUser("ghu_t", fetch)).login).toBe("es-kimo");
+    expect((await getUser(createGitHubClient("ghu_t", fetch))).login).toBe("es-kimo");
     expect(new Headers(fetch.mock.calls[0][1]?.headers).get("authorization")).toBe("Bearer ghu_t");
   });
 
-  test("401이면 상태를 담아 실패한다", async () => {
+  test("401이면 다시 로그인해야 하는 오류로 실패한다", async () => {
     const fetch = mockFetch(() => json({ message: "Bad credentials" }, 401));
-    const error = await getUser("bad", fetch).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(GitHubAuthError);
-    expect((error as GitHubAuthError).status).toBe(401);
+    const error = await loadAccount("bad", fetch).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(GitHubApiError);
+    expect(isUnauthorized(error)).toBe(true);
   });
 
   test("사용자, 설치, 설치별 레포를 모은다", async () => {

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import { createGitHubClient } from "@/lib/github";
 import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha } from "@/test/fake-github";
 
-import { createGitHubClient } from "./client";
 import { commitFiles, postCommitMessage, savePost } from "./commit";
 import { readPost } from "./read";
 

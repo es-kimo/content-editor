@@ -4,12 +4,12 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import { createGitHubClient } from "@/lib/github";
 import { checkMdx, editedBody, parseMdx, readImageImports } from "@/lib/mdx-doc";
 import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha, type FakeFile } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
-import { createGitHubClient } from "./client";
 import { editorKeys, findCollection, readPost } from "./read";
 import { saveBody } from "./save-body";
 import { addUpload, MAX_UPLOAD_BYTES, usedUploads, type UploadPlan } from "./upload";

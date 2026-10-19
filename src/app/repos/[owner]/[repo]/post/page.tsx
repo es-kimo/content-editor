@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import { isUnauthorized, LoginLink, loadRepoConfig, postHref, repoHref } from "@/app/_lib/repo";
+import { LoginLink, loadRepoConfig, postHref, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
-import { createGitHubClient, editorKeys, editorModes, IMAGE_COMPONENT, readPost, type Post } from "@/lib/content";
+import { editorKeys, editorModes, IMAGE_COMPONENT, readPost, type Post } from "@/lib/content";
+import { createGitHubClient, isUnauthorized } from "@/lib/github";
 import type { Syntax } from "@/lib/mdx-doc";
 import { buildForm } from "@/lib/metadata-form";
 

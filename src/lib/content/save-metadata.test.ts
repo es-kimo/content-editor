@@ -4,13 +4,13 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import { createGitHubClient } from "@/lib/github";
 import { parseMdx, parseMetadata, type MetadataValue } from "@/lib/mdx-doc";
 import { buildForm } from "@/lib/metadata-form";
 import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
-import { createGitHubClient } from "./client";
 import { editorKeys, findCollection, readPost } from "./read";
 import { saveMetadata } from "./save-metadata";
 

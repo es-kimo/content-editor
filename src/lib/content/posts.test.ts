@@ -4,10 +4,10 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
+import { createGitHubClient, type GitHubClient } from "@/lib/github";
 import { fakeGitHub } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
-import { createGitHubClient, type GitHubClient } from "./client";
 import { fetchTree, listPosts } from "./posts";
 
 const REPO = "es-kimo/yjshd";

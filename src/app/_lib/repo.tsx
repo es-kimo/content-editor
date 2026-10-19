@@ -1,15 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { GitHubAuthError } from "@/lib/auth";
-import { GitHubApiError } from "@/lib/content";
-import {
-  CONFIG_FILE,
-  ConfigLoadError,
-  loadEditorConfig,
-  type Collection,
-  type EditorConfig,
-} from "@/lib/editor-config";
+import { CONFIG_FILE, loadEditorConfig, type Collection, type EditorConfig } from "@/lib/editor-config";
+import { GitHubApiError, isUnauthorized } from "@/lib/github";
 
 export function LoginLink() {
   return (
@@ -53,11 +46,6 @@ export function CollectionTabs({
   );
 }
 
-/** 토큰이 폐기됐거나 앱 권한이 해제돼 다시 로그인해야 하는 오류인지. */
-export function isUnauthorized(error: unknown): boolean {
-  return (error instanceof GitHubApiError || error instanceof GitHubAuthError) && error.status === 401;
-}
-
 /** 레포의 config를 읽는다. 쓸 수 없으면 화면에 보일 안내를 돌려준다. */
 export async function loadRepoConfig(
   repo: string,
@@ -80,8 +68,8 @@ export async function loadRepoConfig(
     if (loaded.kind === "missing") return fail(`${repo} 루트에 ${CONFIG_FILE}이 없다.`);
     return fail(`${CONFIG_FILE} 오류 ${loaded.issues.length}건. 처음 화면에서 내용을 확인한다.`);
   } catch (e) {
-    if (e instanceof ConfigLoadError && e.status === 401) return { ok: false, view: <LoginLink /> };
-    if (e instanceof ConfigLoadError) return fail(e.message);
+    if (isUnauthorized(e)) return { ok: false, view: <LoginLink /> };
+    if (e instanceof GitHubApiError) return fail(e.message);
     throw e;
   }
 }

@@ -1,8 +1,8 @@
 import type { Collection, EditorConfig } from "@/lib/editor-config";
+import type { GitHubClient } from "@/lib/github";
 import { newMdx } from "@/lib/mdx-doc";
 import { newMetadata } from "@/lib/metadata-form";
 
-import type { GitHubClient } from "./client";
 import { savePost } from "./commit";
 import { fetchTree, matchPosts } from "./posts";
 import { newPostPath, postSlug } from "./slug";

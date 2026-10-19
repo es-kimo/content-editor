@@ -1,7 +1,6 @@
 import { compilePathPattern, type Collection, type EditorConfig, type PathParams } from "@/lib/editor-config";
+import { encodePath, GitHubApiError, repoPath, type GitHubClient } from "@/lib/github";
 import { parseMdx, parseMetadata, type MdxDoc, type MetadataResult } from "@/lib/mdx-doc";
-
-import { encodePath, GitHubApiError, repoPath, type GitHubClient } from "./client";
 
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"] as const;
 

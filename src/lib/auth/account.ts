@@ -1,3 +1,5 @@
+import { createGitHubClient } from "@/lib/github";
+
 import {
   getUser,
   listInstallationRepositories,
@@ -15,15 +17,13 @@ export type Account = {
 
 /** 로그인한 사용자와 그 사용자가 접근할 수 있는 설치 레포를 모은다. */
 export async function loadAccount(accessToken: string, fetchFn: Fetch): Promise<Account> {
-  const [user, installations] = await Promise.all([
-    getUser(accessToken, fetchFn),
-    listInstallations(accessToken, fetchFn),
-  ]);
+  const client = createGitHubClient(accessToken, fetchFn);
+  const [user, installations] = await Promise.all([getUser(client), listInstallations(client)]);
   const withRepos = await Promise.all(
     installations.map(async (i) => ({
       id: i.id,
       account: i.account?.login ?? null,
-      repositories: await listInstallationRepositories(accessToken, i.id, fetchFn),
+      repositories: await listInstallationRepositories(client, i.id),
     })),
   );
   return { user, installations: withRepos };

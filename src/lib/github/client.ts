@@ -13,6 +13,11 @@ export class GitHubApiError extends Error {
   }
 }
 
+/** 토큰이 폐기됐거나 앱 권한이 해제돼 다시 로그인해야 하는 오류인지. */
+export function isUnauthorized(error: unknown): boolean {
+  return error instanceof GitHubApiError && error.status === 401;
+}
+
 export type RestOptions = { accept?: string; method?: "GET" | "POST" | "PATCH"; body?: unknown };
 
 export type GitHubClient = {
@@ -65,13 +70,6 @@ export function createGitHubClient(accessToken: string, fetchFn: Fetch): GitHubC
       return body.data;
     },
   };
-}
-
-/** 작업에 걸린 시간을 함께 돌려준다. 화면에 API 호출 수와 걸린 시간을 기록하는 데 쓴다. */
-export async function timed<T>(work: () => Promise<T>): Promise<{ value: T; ms: number }> {
-  const started = performance.now();
-  const value = await work();
-  return { value, ms: Math.round(performance.now() - started) };
 }
 
 /** `owner/name`을 나눈다. */
