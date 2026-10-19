@@ -40,7 +40,7 @@ jobs:
           BASE: origin/${{ github.base_ref }}
         run: |
           changed=$(git diff --name-only "$BASE"...HEAD)
-          bad=$(echo "$changed" | grep -E '^(\.github/|CLAUDE\.md$|AGENTS\.md$|fixtures\.config\.json$|scripts/sync-fixtures\.mts$|scripts/agent/)' || true)
+          bad=$(echo "$changed" | grep -E '^(\.github/|CLAUDE\.md$|AGENTS\.md$|fixtures\.config\.json$|scripts/sync-fixtures\.mts$|scripts/agent/|scripts/github-app/|github-app/)' || true)
           disabled=$(git diff "$BASE"...HEAD -- '*.test.ts' '*.test.mts' | grep -E '^\+.*\b(test|it|describe)\.(skip|only|todo)\(' || true)
           if [ -n "$bad" ]; then echo "::error::에이전트 PR이 수정할 수 없는 파일:"; echo "$bad"; fi
           if [ -n "$disabled" ]; then echo "::error::새로 추가된 skip/only/todo:"; echo "$disabled"; fi
