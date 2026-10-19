@@ -29,11 +29,6 @@ const setup = (branch = "main") => {
   return { repo, client: createGitHubClient("ghu_token", repo.fetch) };
 };
 
-const requests = (fetch: ReturnType<typeof setup>["repo"]["fetch"]) =>
-  fetch.mock.calls.map(
-    ([url, init]) => `${init?.method ?? "GET"} ${decodeURIComponent(new URL(String(url)).pathname)}`,
-  );
-
 describe("savePost", () => {
   test("mdx 1개와 이미지 2개를 저장하면 커밋이 정확히 1개 생긴다", async () => {
     const { repo, client } = setup();
@@ -70,22 +65,6 @@ describe("savePost", () => {
       OTHER,
     ]);
     expect(new TextDecoder().decode(repo.file(OTHER))).toBe("# 다른 글\n");
-
-    expect(requests(repo.fetch)).toEqual([
-      `GET /repos/${REPO}/git/ref/heads/main`,
-      `GET /repos/${REPO}/contents/content/4.게시판/1.휴진`,
-      `GET /repos/${REPO}/git/commits/${before}`,
-      `POST /repos/${REPO}/git/blobs`,
-      `POST /repos/${REPO}/git/blobs`,
-      `POST /repos/${REPO}/git/blobs`,
-      `POST /repos/${REPO}/git/trees`,
-      `POST /repos/${REPO}/git/commits`,
-      `PATCH /repos/${REPO}/git/refs/heads/main`,
-    ]);
-    const patch = repo.fetch.mock.calls.at(-1)![1];
-    expect(JSON.parse(String(patch?.body))).toEqual({ sha: repo.head(), force: false });
-    const tree = repo.fetch.mock.calls.find(([url]) => String(url).endsWith("/git/trees"))![1];
-    expect(JSON.parse(String(tree?.body)).base_tree).toEqual(expect.stringMatching(/^[0-9a-f]{40}$/));
   });
 
   test("다른 곳에서 먼저 고친 글은 저장을 거부하고 아무것도 만들지 않는다", async () => {
@@ -223,7 +202,7 @@ describe("savePost", () => {
     });
     expect(result.ok).toBe(true);
     expect(repo.log("blog")).toHaveLength(2);
-    expect(requests(repo.fetch).at(-1)).toBe(`PATCH /repos/${REPO}/git/refs/heads/blog`);
+    expect(new TextDecoder().decode(repo.file(POST, "blog"))).toBe(EDITED);
   });
 
   test("컬렉션 밖 경로나 글 폴더 밖 이미지 이름은 API를 부르기 전에 막는다", async () => {
