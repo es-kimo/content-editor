@@ -25,28 +25,58 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Tailwind preflight가 제목·목록 모양을 지워 WYSIWYG 본문에서 구조가 보이지 않으므로 되돌린다. */
-.body-editor-content {
+/* Tailwind preflight가 제목·목록 모양을 지워 WYSIWYG 본문과 미리보기에서 구조가 보이지 않으므로 되돌린다. */
+.body-editor-content,
+.body-preview {
   @apply flex flex-col gap-3 p-3 text-sm;
 }
-.body-editor-content h1 {
+:is(.body-editor-content, .body-preview) h1 {
   @apply text-2xl font-semibold;
 }
-.body-editor-content h2 {
+:is(.body-editor-content, .body-preview) h2 {
   @apply text-xl font-semibold;
 }
-.body-editor-content h3 {
+:is(.body-editor-content, .body-preview) h3 {
   @apply text-lg font-semibold;
 }
-.body-editor-content ul {
+:is(.body-editor-content, .body-preview) ul {
   @apply list-disc pl-5;
 }
-.body-editor-content ol {
+:is(.body-editor-content, .body-preview) ol {
   @apply list-decimal pl-5;
 }
-.body-editor-content a {
+:is(.body-editor-content, .body-preview) a {
   @apply underline;
 }
-.body-editor-content blockquote {
+:is(.body-editor-content, .body-preview) blockquote {
   @apply border-l-2 pl-3 text-zinc-500;
+}
+
+/* 미리보기에만 나오는 요소. WYSIWYG는 에디터가 직접 그린다. */
+.body-preview hr {
+  @apply border-zinc-300;
+}
+.body-preview img {
+  @apply h-auto max-w-full;
+}
+.body-preview code {
+  @apply font-mono;
+}
+.body-preview pre {
+  @apply overflow-x-auto rounded border p-3;
+}
+.body-preview table {
+  @apply border-collapse;
+}
+.body-preview :is(th, td) {
+  @apply border px-2 py-1;
+}
+.body-preview .mdx-component {
+  @apply flex flex-col gap-3 rounded border border-dashed p-2;
+}
+.body-preview span.mdx-component {
+  @apply inline-flex gap-1 px-1 py-0;
+}
+.body-preview :is(.mdx-component-tag, .mdx-expression) {
+  @apply font-mono text-xs text-zinc-500;
 }

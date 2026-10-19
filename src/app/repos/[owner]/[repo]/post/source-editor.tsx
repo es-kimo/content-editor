@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { startTransition, useActionState, useRef } from "react";
+import { startTransition, useActionState, useRef, useState } from "react";
 
 import type { Syntax } from "@/lib/mdx-doc";
 
 import type { SaveState } from "./actions";
+import { BodyPreview } from "./body-preview";
 import { SaveRow } from "./save-row";
 
 const CodeMirrorSourceEditor = dynamic(() => import("./codemirror-source-editor"), {
@@ -25,6 +26,7 @@ export function SourceEditor({
 }) {
   const [state, dispatch, pending] = useActionState(action, { status: "idle" });
   const edited = useRef(source);
+  const [current, setCurrent] = useState(source);
 
   return (
     <form
@@ -41,8 +43,10 @@ export function SourceEditor({
         syntax={syntax}
         onChange={(next) => {
           edited.current = next;
+          setCurrent(next);
         }}
       />
+      <BodyPreview markdown={current} syntax={syntax} />
       <SaveRow label="원문 저장" pending={pending} state={state} unchanged="바뀐 내용이 없어 커밋하지 않았다." />
     </form>
   );
