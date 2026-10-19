@@ -8,7 +8,7 @@ type Commit = { sha: string; tree: string; parents: string[]; message: string; a
 const hash = (value: unknown) => createHash("sha1").update(JSON.stringify(value)).digest("hex");
 
 /**
- * Git Data API(ref, commit, blob, tree)와 contents 폴더 목록을 메모리에서 흉내 내는 레포.
+ * Git Data API(ref, commit, blob, tree, 전체 트리 읽기)와 contents 폴더 목록을 메모리에서 흉내 내는 레포.
  * 트리는 경로 → blob sha 평면 맵으로 들고, ref 갱신은 실제 API처럼 fast-forward만 받는다.
  */
 export function fakeGitRepo(repo: string, branch: string, files: FakeFile[]) {
@@ -101,6 +101,14 @@ export function fakeGitRepo(repo: string, branch: string, files: FakeFile[]) {
       };
       if (!trees.has(tree) || parents.some((p) => !commits.has(p))) return json({ message: "없는 객체" }, 422);
       return json({ sha: putCommit(tree, parents, message, author ?? null) }, 201);
+    }
+
+    const recursiveTree = new RegExp(`^${base}/git/trees/(.+)\\?recursive=1$`).exec(href);
+    if (recursiveTree && method === "GET") {
+      const entries = treeAt(recursiveTree[1]);
+      if (!entries) return json({ message: "Not Found" }, 404);
+      const tree = [...entries].map(([path, sha]) => ({ path, type: "blob", sha, size: blobs.get(sha)!.length }));
+      return json({ sha: hash([...entries].sort()), tree, truncated: false });
     }
 
     const contents = new RegExp(`^${base}/contents/(.+)\\?ref=(.+)$`).exec(href);

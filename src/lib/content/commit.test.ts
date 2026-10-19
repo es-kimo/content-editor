@@ -210,6 +210,18 @@ describe("savePost", () => {
     expect(repo.log()).toHaveLength(2);
   });
 
+  test("새 글은 글 파일이 없어도 폴더가 이미 있으면 만들지 않는다", async () => {
+    const { repo, client } = setup();
+    repo.pushElsewhere([{ path: "content/4.게시판/3.새글/1.png", content: png1 }]);
+    const path = "content/4.게시판/3.새글/page.mdx";
+
+    const result = await savePost(client, REPO, config(), { path, baseSha: null, source: "# 새 글\n", title: "새 글" });
+
+    expect(result).toMatchObject({ ok: false, reason: "changed", path: "content/4.게시판/3.새글", expected: null });
+    expect(repo.file(path)).toBeUndefined();
+    expect(repo.log()).toHaveLength(2);
+  });
+
   test("config의 branch에 커밋한다", async () => {
     const { repo, client } = setup("blog");
     const result = await savePost(client, REPO, config("blog"), {

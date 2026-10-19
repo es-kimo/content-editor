@@ -3,6 +3,7 @@ export type { HeadSegment, MdxDoc, Syntax } from "./split";
 export { editedBody, sameBodyStructure, setBody } from "./body";
 export { parseMetadata } from "./metadata";
 export { setMetadata } from "./metadata-print";
+export { newMdx } from "./new-doc";
 export { addImage, addImageAs, findUnusedImageImports, readImageImports } from "./images";
 export type { AddedImage, AddImageOptions, ImageImport } from "./images";
 export type { MetadataResult, MetadataValue } from "./metadata";

@@ -1,7 +1,7 @@
 import type { Collection, MetadataField } from "@/lib/editor-config";
 import type { MetadataValue } from "@/lib/mdx-doc";
 
-type MetadataObject = { [key: string]: MetadataValue };
+export type MetadataObject = { [key: string]: MetadataValue };
 
 /** 폼 입력 하나. 직렬화할 수 있는 값만 담아 클라이언트 컴포넌트에 그대로 넘긴다. */
 export type FormField = {
@@ -110,7 +110,7 @@ function lookup(metadata: MetadataObject, key: string): Lookup {
   return { kind: "missing" };
 }
 
-function set(metadata: MetadataObject, key: string, value: MetadataValue) {
+export function set(metadata: MetadataObject, key: string, value: MetadataValue) {
   const parts = key.split(".");
   let node = metadata;
   for (const part of parts.slice(0, -1)) {

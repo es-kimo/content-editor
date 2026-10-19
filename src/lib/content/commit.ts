@@ -5,7 +5,7 @@ import { findCollection, isImageFile } from "./read";
 
 export type CommitFile = { path: string; content: string | Uint8Array };
 
-/** 커밋하기 전에 브랜치 끝에서 이 sha여야 하는 파일. `sha: null`은 파일이 없어야 한다는 뜻(새 글). */
+/** 커밋하기 전에 브랜치 끝에서 이 sha여야 하는 파일이나 폴더. `sha: null`은 그 경로가 없어야 한다는 뜻(새 글). */
 export type ExpectedFile = { path: string; sha: string | null };
 
 export type CommitResult =
@@ -19,7 +19,7 @@ type ContentsEntry = { type: string; name: string; sha: string };
 
 const parentDir = (filePath: string) => filePath.slice(0, filePath.lastIndexOf("/"));
 
-/** `ref`(커밋 sha) 시점의 파일 sha. 없으면 null. 같은 폴더의 파일은 목록 1번으로 본다. */
+/** `ref`(커밋 sha) 시점의 파일·폴더 sha. 없으면 null. 같은 폴더 안의 경로는 목록 1번으로 본다. */
 async function currentShas(
   client: GitHubClient,
   repo: string,
@@ -38,7 +38,7 @@ async function currentShas(
     }
     for (const path of paths.filter((p) => parentDir(p) === dir)) {
       const name = path.slice(dir.length + 1);
-      shas.set(path, entries.find((e) => e.type === "file" && e.name === name)?.sha ?? null);
+      shas.set(path, entries.find((e) => e.name === name)?.sha ?? null);
     }
   }
   return shas;
@@ -121,7 +121,7 @@ export function postCommitMessage(title: string): string {
 export type SavePostInput = {
   /** 글 파일 경로. config의 컬렉션 패턴에 맞아야 한다. */
   path: string;
-  /** 글을 열 때 받은 blob sha(`Post.sha`). 새 글이면 null. */
+  /** 글을 열 때 받은 blob sha(`Post.sha`). 새 글이면 null이고, 그때는 글 폴더가 아직 없어야 한다. */
   baseSha: string | null;
   source: string;
   title: string;
@@ -148,6 +148,7 @@ export async function savePost(
     branch: config.branch,
     message: postCommitMessage(input.title),
     files: [{ path: input.path, content: input.source }, ...images],
-    expected: [{ path: input.path, sha: input.baseSha }],
+    // 글 하나가 폴더 하나라, 새 글은 파일뿐 아니라 폴더도 없어야 다른 글의 이미지 폴더에 끼어들지 않는다.
+    expected: [{ path: input.path, sha: input.baseSha }, ...(input.baseSha === null ? [{ path: dir, sha: null }] : [])],
   });
 }
