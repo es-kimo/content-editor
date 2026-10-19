@@ -9,11 +9,14 @@ import { useEffect, useRef } from "react";
 
 import type { Syntax } from "@/lib/mdx-doc";
 
-import { compileDiagnostics, mdxLanguage } from "./mdx-source";
+import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
+import { compileDiagnostics, insertComponent, mdxLanguage } from "./mdx-source";
 
 export type CodeMirrorSourceEditorProps = {
   source: string;
   syntax: Syntax;
+  /** 삽입 버튼으로 보일 컴포넌트. `sourceComponents`의 결과. */
+  components: string[];
   onChange: (source: string) => void;
 };
 
@@ -23,8 +26,9 @@ const theme = EditorView.theme({
 });
 
 /** next/dynamic으로 브라우저에서만 불러온다. CodeMirror는 DOM이 있어야 만들 수 있다. */
-export default function CodeMirrorSourceEditor({ source, syntax, onChange }: CodeMirrorSourceEditorProps) {
+export default function CodeMirrorSourceEditor({ source, syntax, components, onChange }: CodeMirrorSourceEditorProps) {
   const parent = useRef<HTMLDivElement>(null);
+  const view = useRef<EditorView>(null);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -36,7 +40,7 @@ export default function CodeMirrorSourceEditor({ source, syntax, onChange }: Cod
   const { gfm, math } = syntax;
   useEffect(() => {
     const syntax = { gfm, math };
-    const view = new EditorView({
+    const created = new EditorView({
       parent: parent.current!,
       state: EditorState.create({
         doc: initial.current,
@@ -58,8 +62,32 @@ export default function CodeMirrorSourceEditor({ source, syntax, onChange }: Cod
         ],
       }),
     });
-    return () => view.destroy();
+    view.current = created;
+    return () => {
+      view.current = null;
+      created.destroy();
+    };
   }, [gfm, math]);
 
-  return <div ref={parent} className="rounded border" />;
+  const insert = (name: string) => {
+    const current = view.current;
+    if (!current) return;
+    current.dispatch(insertComponent(current.state, name, { gfm, math }));
+    current.focus();
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      {components.length > 0 && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="컴포넌트 넣기">
+          {components.map((name) => (
+            <button key={name} type="button" onClick={() => insert(name)} className={TOGGLE_BUTTON_CLASS}>
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+      <div ref={parent} className="rounded border" />
+    </div>
+  );
 }

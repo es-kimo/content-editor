@@ -3,6 +3,7 @@ import { repoPath, type GitHubClient } from "@/lib/github";
 import { isImageFile, metadataText, parseMdx, readMetadata, type MdxDoc, type MetadataResult } from "@/lib/mdx-doc";
 
 import { listDir } from "./contents";
+import { IMAGE_COMPONENT } from "./upload";
 
 export type PostImage = { name: string; path: string; sha: string; size: number };
 
@@ -94,6 +95,14 @@ export function editorModes(post: Post): EditorModes {
     return { initial: "source", sourceOnly: { reason: "metadata", message: post.metadata.reason } };
   }
   return { initial: post.collection.editor, sourceOnly: null };
+}
+
+/**
+ * 원문 모드 삽입 버튼에 보일 컴포넌트. config `components` 순서를 따른다.
+ * 이미지는 파일 업로드와 import까지 함께 넣어야 해서 템플릿만 넣는 버튼으로는 쓸 수 없으므로 뺀다.
+ */
+export function sourceComponents(collection: Collection): string[] {
+  return collection.components.filter((name) => name !== IMAGE_COMPONENT);
 }
 
 /**

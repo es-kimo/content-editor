@@ -1,11 +1,11 @@
 import { jsxLanguage } from "@codemirror/lang-javascript";
 import { commonmarkLanguage, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import type { Diagnostic } from "@codemirror/lint";
-import type { Text } from "@codemirror/state";
+import type { EditorState, Text, TransactionSpec } from "@codemirror/state";
 import { parseMixed } from "@lezer/common";
 import type { MarkdownConfig } from "@lezer/markdown";
 
-import { checkMdx, type MdxError, type Syntax } from "@/lib/mdx-doc";
+import { checkMdx, componentSnippet, insertSnippet, type MdxError, type Syntax } from "@/lib/mdx-doc";
 
 const ESM_START = /^(?:import|export)\b/;
 const OPEN_BRACE = 123;
@@ -73,6 +73,24 @@ function bracketBalance(text: string): number {
 /** 원문 모드의 MDX 문법 강조. gfm을 켠 레포는 표·취소선도 강조한다. */
 export function mdxLanguage(syntax: Syntax) {
   return markdown({ base: syntax.gfm ? markdownLanguage : commonmarkLanguage, extensions: mdxSyntax });
+}
+
+/**
+ * 선택 영역에 컴포넌트 템플릿을 넣는 트랜잭션. 템플릿과 각주 번호는 지금 편집 중인 원문으로 계산한다.
+ * 바뀐 구간 하나만 바꾸는 트랜잭션이라 실행 취소 한 번에 넣기 전으로 돌아간다.
+ */
+export function insertComponent(state: EditorState, name: string, syntax: Syntax): TransactionSpec {
+  const source = state.doc.toString();
+  const { from, to } = state.selection.main;
+  const inserted = insertSnippet(source, from, to, componentSnippet(name, source, syntax));
+  // insertSnippet은 선택 영역 앞뒤를 그대로 두므로, 바뀐 구간은 from부터 뒷부분 길이를 뺀 곳까지다.
+  const insert = inserted.source.slice(from, inserted.source.length - (source.length - to));
+  return {
+    changes: { from, to, insert },
+    selection: { anchor: inserted.cursor },
+    scrollIntoView: true,
+    userEvent: "input",
+  };
 }
 
 /** 저장 전 컴파일 검사. 오류는 그 줄 전체에 표시하고, 줄을 알 수 없으면 첫 줄에 둔다. */

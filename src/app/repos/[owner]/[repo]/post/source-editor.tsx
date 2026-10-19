@@ -18,10 +18,13 @@ const CodeMirrorSourceEditor = dynamic(() => import("./codemirror-source-editor"
 export function SourceEditor({
   source,
   syntax,
+  components,
   action,
 }: {
   source: string;
   syntax: Syntax;
+  /** 삽입 버튼으로 보일 컴포넌트. `sourceComponents`의 결과. */
+  components: string[];
   action: (state: SaveState, source: string) => Promise<SaveState>;
 }) {
   const [state, dispatch, pending] = useActionState(action, { status: "idle" });
@@ -41,6 +44,7 @@ export function SourceEditor({
       <CodeMirrorSourceEditor
         source={source}
         syntax={syntax}
+        components={components}
         onChange={(next) => {
           edited.current = next;
           setCurrent(next);

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell } from "@/app/_lib/ui";
-import { editorKeys, editorModes, IMAGE_COMPONENT, readPost, type Post } from "@/lib/content";
+import { editorKeys, editorModes, IMAGE_COMPONENT, readPost, sourceComponents, type Post } from "@/lib/content";
 import type { Syntax } from "@/lib/mdx-doc";
 import { buildForm } from "@/lib/metadata-form";
 
@@ -87,6 +87,7 @@ function BodyView({ repo, post, syntax }: { repo: string; post: Post; syntax: Sy
       key={post.sha}
       source={post.source}
       syntax={syntax}
+      components={sourceComponents(post.collection)}
       action={saveSourceAction.bind(null, repo, post.path, post.sha)}
     />
   );
