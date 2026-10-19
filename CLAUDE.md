@@ -22,13 +22,19 @@ pnpm format          # 포맷 자동 수정
 
 ## 금지
 
-- `.github/`, `CLAUDE.md`, `AGENTS.md`, `fixtures.config.json`, `scripts/sync-fixtures.mts`, `scripts/agent/`, `github-app/`, `scripts/github-app/` 수정
+- `.github/`, `CLAUDE.md`, `AGENTS.md`, `fixtures.config.json`, `scripts/sync-fixtures.mts`, `scripts/agent/`, `github-app/`, `scripts/github-app/`, `docs/review/`, `eslint.config.mjs` 수정
 - 테스트를 지우거나 `.skip`, `.only`, `skipIf`를 새로 넣어 통과시키기
 - 기대값을 실제 결과에 맞춰 바꾸기 (픽스처 기대 글 수 등)
 - 이슈 범위 밖의 리팩터링, 의존성 메이저 업그레이드
 - `main`에 직접 push, force push
 
 ## 코드 관례
+
+구조·테스트·화면의 기준은 [docs/review/](docs/review/)에 있다. 구현 전에 읽고, 리뷰도 이 기준으로 한다.
+
+- [architecture.md](docs/review/architecture.md): 모듈 의존 방향, 새로 만들기 전에 재사용할 것, 알려진 부채
+- [testing.md](docs/review/testing.md): 모듈별 테스트 경계와 도우미
+- [design.md](docs/review/design.md): 화면 토큰, 상태 표현, 문구 말투
 
 - TypeScript strict. `any` 대신 정확한 타입. 외부 라이브러리 타입은 그 패키지의 export에서 가져온다 (pnpm은 선언하지 않은 패키지를 import할 수 없다).
 - 주석과 테스트 이름은 한국어. 주석은 코드만 봐서는 알 수 없는 이유만 적는다.

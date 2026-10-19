@@ -62,7 +62,21 @@ Agent report (07:00 KST)    지난 24시간 결과를 `agent-report` 이슈에 �
 
 - 동시에 열린 에이전트 PR은 1개. 수정이 `AGENT_MAX_FIX`회를 넘거나 막히면 `needs-human`을 달고 멈춘다
 - 사용량 한도로 멈춘 실행은 실패로 세지 않는다. 구현은 다음 cron이 다시 고르고, 리뷰·수정은 PR에 `agent-retry`를 달아 다음 cron이 다시 돌린다 (`scripts/agent/classify.mts`가 실행 기록으로 판단)
-- 규칙: `CLAUDE.md`, 역할별 지시: `.github/agent/*.md`
+- 규칙: `CLAUDE.md`, 역할별 지시: `.github/agent/*.md`, 리뷰 기준: `docs/review/*.md`
+
+### 리뷰 기준
+
+리뷰는 완료 기준·정확성에 더해 유지보수성, 테스트 품질, 화면 일관성, PR 본문을 본다. 기준은 두 곳에 나뉘어 있다.
+
+| 기준                                                                  | 위치                                               | 고치는 사람                       |
+| --------------------------------------------------------------------- | -------------------------------------------------- | --------------------------------- |
+| 레포와 상관없는 일반 기준 (무엇을 보고, 무엇이 blocking인지)          | `review-kit` 플러그인 (`AGENT_SKILLS_MARKETPLACE`) | 사람                              |
+| 이 레포의 모듈 지도, 재사용할 것, 테스트 경계, 화면 토큰, 알려진 부채 | `docs/review/`                                     | 사람 (에이전트 PR은 guard가 막음) |
+| 기계로 잡을 수 있는 규칙 (mdx-doc 의존, GitHub API 직접 호출)         | `eslint.config.mjs`                                | 사람 (guard가 막음)               |
+
+- 구현·수정 에이전트는 커밋 전에 같은 스킬로 셀프 체크한다.
+- 리뷰는 지적마다 `blocking`/`suggestion`을 매긴다. 판정은 워크플로가 한다: blocking 0건이고 완료 기준이 모두 충족이면 승인(auto-merge), 아니면 수정 요청이다.
+- 수정 에이전트에는 blocking과 미충족 기준만 넘긴다. suggestion은 리뷰 코멘트에 접어 둔다.
 
 ### 이슈를 고르는 조건
 
@@ -92,6 +106,7 @@ cron이 돌 때마다 아래 순서로 확인하고, 하나라도 걸리면 그 
 | `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `2` / `2`                                                                                  |
 | `AGENT_MODEL`                                                         | variable | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR·리뷰 코멘트에 남는다 |
 | `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `medium` / `high` / `medium`                                                               |
+| `AGENT_SKILLS_MARKETPLACE`                                            | variable | 기본 `https://github.com/es-kimo/claude-skills.git`. `review-kit` 플러그인이 있는 마켓플레이스  |
 
 수동 실행: `gh workflow run agent-implement.yml -f issue=<번호>`
 
