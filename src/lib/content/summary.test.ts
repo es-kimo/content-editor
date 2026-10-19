@@ -35,6 +35,7 @@ describe("summarizePost", () => {
     expect(summarizePost("# 본문\n", {}, "slug")).toMatchObject({ title: "slug", problem: "metadata export가 없다" });
     const unreadable = summarizePost("export const metadata = { title: foo };\n", {}, "slug");
     expect(unreadable).toMatchObject({ title: "slug", titleFromMetadata: false });
+    expect(unreadable.problem).toEqual(expect.any(String));
     expect(unreadable.problem).not.toBe("metadata export가 없다");
   });
 
