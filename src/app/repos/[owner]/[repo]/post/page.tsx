@@ -55,7 +55,7 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
 
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">본문</h2>
-        <BodyView repo={repo} post={post} syntax={config.syntax} />
+        <BodyView repo={repo} post={post} syntax={config.syntax} preview={config.preview} />
       </section>
 
       <section className="flex flex-col gap-2">
@@ -79,7 +79,7 @@ const SOURCE_ONLY = {
   metadata: "metadata를 폼으로 읽을 수 없는 글이라 원문 모드로만 고친다",
 };
 
-function BodyView({ repo, post, syntax }: { repo: string; post: Post; syntax: Syntax }) {
+function BodyView({ repo, post, syntax, preview }: { repo: string; post: Post; syntax: Syntax; preview?: string }) {
   const modes = editorModes(post);
   // 원문은 파일 전체라 어느 영역을 저장해도 바뀐다. 저장한 파일로 다시 열도록 key를 sha로 둔다.
   const source = (
@@ -88,6 +88,7 @@ function BodyView({ repo, post, syntax }: { repo: string; post: Post; syntax: Sy
       source={post.source}
       syntax={syntax}
       components={sourceComponents(post.collection)}
+      preview={preview}
       action={saveSourceAction.bind(null, repo, post.path, post.sha)}
     />
   );
@@ -111,14 +112,16 @@ function BodyView({ repo, post, syntax }: { repo: string; post: Post; syntax: Sy
         // 다른 영역을 저장해도 고치던 본문이 남도록 key를 sha가 아닌 본문 원본으로 둔다.
         <BodyEditor
           key={editorKeys(post).body}
+          doc={post.doc}
           body={post.doc.body}
           syntax={syntax}
           components={post.collection.components}
           upload={
             post.collection.components.includes(IMAGE_COMPONENT)
-              ? { doc: post.doc, files: post.images.map((image) => image.name) }
+              ? { files: post.images.map((image) => image.name) }
               : null
           }
+          preview={preview}
           action={saveBodyAction.bind(null, repo, post.path, post.sha)}
         />
       }

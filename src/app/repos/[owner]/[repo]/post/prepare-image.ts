@@ -3,9 +3,11 @@ import { fitImageSize, uploadExtension } from "@/lib/content/upload";
 
 /**
  * 브라우저에서 고른 이미지를 올릴 바이트로 만든다. 긴 변이 상한보다 크면 같은 형식으로 줄인다.
- * 받지 않는 형식이거나 이미지로 읽을 수 없으면 null.
+ * 받지 않는 형식이거나 이미지로 읽을 수 없으면 null. 가로·세로는 올릴 이미지의 크기다.
  */
-export async function prepareImage(file: File): Promise<{ extension: string; content: Uint8Array } | null> {
+export async function prepareImage(
+  file: File,
+): Promise<{ extension: string; content: Uint8Array; width: number; height: number } | null> {
   const extension = uploadExtension(file.type);
   if (!extension) return null;
 
@@ -17,8 +19,9 @@ export async function prepareImage(file: File): Promise<{ extension: string; con
   }
   const size = fitImageSize(bitmap.width, bitmap.height);
   if (!size) {
+    const { width, height } = bitmap;
     bitmap.close();
-    return { extension, content: new Uint8Array(await file.arrayBuffer()) };
+    return { extension, content: new Uint8Array(await file.arrayBuffer()), width, height };
   }
 
   const canvas = new OffscreenCanvas(size.width, size.height);
@@ -28,5 +31,5 @@ export async function prepareImage(file: File): Promise<{ extension: string; con
   // webp로 인코딩하지 못하는 브라우저는 png로 내보내므로 확장자를 결과 형식에서 다시 정한다.
   const resizedExtension = uploadExtension(resized.type);
   if (!resizedExtension) return null;
-  return { extension: resizedExtension, content: new Uint8Array(await resized.arrayBuffer()) };
+  return { extension: resizedExtension, content: new Uint8Array(await resized.arrayBuffer()), ...size };
 }

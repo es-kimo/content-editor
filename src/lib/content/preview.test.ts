@@ -8,7 +8,8 @@ import { addUpload } from "./upload";
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 3, 4]);
 
-const SOURCE = 'import image1 from "./1.png";\n\nexport const metadata = { title: "글" };\n\n<Image src={image1} alt="" />\n';
+const SOURCE =
+  'import image1 from "./1.png";\n\nexport const metadata = { title: "글" };\n\n<Image src={image1} alt="" />\n';
 
 describe("previewMessage", () => {
   test("넣은 이미지를 import 변수명을 키로 바이트와 크기를 담고, 원문은 그대로 보낸다", async () => {
