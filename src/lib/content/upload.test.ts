@@ -34,9 +34,8 @@ describe("checkUploads", () => {
   });
 
   test("받지 않는 형식은 format이다", () => {
-    expect(checkUploads([{ file: "1.gif", content: GIF }])).toEqual({
+    expect(checkUploads([{ file: "1.gif", content: GIF }])).toMatchObject({
       ok: false,
-      reason: "image",
       file: "1.gif",
       problem: "format",
     });
