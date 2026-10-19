@@ -6,11 +6,13 @@ import { fixtureSources, loadFixtures } from "@/test/fixtures";
 import { previewMdx, type PreviewImages } from "./preview";
 import { parseMarkdown, type Syntax } from "./split";
 
-/** 글에 쓴 JSX 컴포넌트 이름. `<>…</>`는 뺀다. */
+/** 글에 쓴 사이트 컴포넌트 이름. 대문자로 시작하는 JSX 이름만 컴포넌트다. */
 function componentNames(node: object): Set<string> {
   const names = new Set<string>();
   const visit = (n: { type?: string; name?: string | null; children?: object[] }) => {
-    if ((n.type === "mdxJsxFlowElement" || n.type === "mdxJsxTextElement") && n.name) names.add(n.name);
+    if ((n.type === "mdxJsxFlowElement" || n.type === "mdxJsxTextElement") && n.name && /^[A-Z]/.test(n.name)) {
+      names.add(n.name);
+    }
     n.children?.forEach(visit);
   };
   visit(node);
@@ -53,6 +55,25 @@ describe("previewMdx", () => {
     );
   });
 
+  test("소문자 HTML 태그는 자리 표시 없이 사이트처럼 HTML 요소로 그린다", () => {
+    const out = html('<p className="my-4">진료 안내</p>\n\n<ul>\n  <li>당뇨병</li>\n</ul>\n\n줄<br />바꿈\n');
+    expect(out).toMatch(/^<p class="my-4">진료 안내<\/p>/);
+    expect(out).toMatch(/<ul>\s*<li>당뇨병<\/li>\s*<\/ul>/);
+    expect(out).toContain("<br>");
+    expect(out).not.toContain("mdx-component");
+  });
+
+  test("HTML 태그의 식 속성과 이벤트 속성은 옮기지 않는다", () => {
+    const out = html('<div style={{ padding: 16 }} onclick="alert(1)" title="안내">글</div>\n');
+    expect(out).toContain('<div title="안내">글</div>');
+  });
+
+  test("편집 화면에서 동작하는 HTML 태그는 자리 표시로 남긴다", () => {
+    const out = html('<button type="button">눌러</button>\n');
+    expect(out).toContain('data-component="button"');
+    expect(out).not.toContain("<button");
+  });
+
   test("src 변수가 images에 있는 컴포넌트는 그 주소의 그림으로 그린다", () => {
     const out = html('<Image src={image1} alt="새 장비" />\n', {}, { image1: "blob:http://localhost/1" });
     expect(out).toContain('<img src="blob:http://localhost/1" alt="새 장비">');
@@ -90,6 +111,17 @@ describe("yjshd 공지 미리보기", () => {
     expect(out).toMatch(/^<h1>2026년 1월 휴진 안내<\/h1>\s*<p>안녕하세요.<\/p>/);
     expect(out.match(/<p>/g)).toHaveLength(6);
     expect(out).toContain("<p>연세정성내과 원장 류동열 배상</p>");
+  });
+
+  const guide = loadFixtures("yjshd")?.find((f) => f.path.includes("진료 안내"));
+
+  test.skipIf(!guide)("진료 안내의 HTML 태그는 사이트처럼 HTML로, 컴포넌트만 자리 표시로 그린다", () => {
+    const out = html(guide!.source);
+    expect(out.match(/<p class="my-4">/g)).toHaveLength(3);
+    expect(out).not.toMatch(/<p>\s*<p/);
+    expect(out).toContain("<li>당뇨병</li>");
+    expect(out).toContain('data-component="Callout"');
+    expect(out).not.toMatch(/data-component="[a-z]/);
   });
 });
 
