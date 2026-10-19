@@ -26,6 +26,8 @@ import {
 } from "@/lib/editor-config";
 import { readFormData } from "@/lib/metadata-form";
 
+import { uploadMessage } from "./upload-message";
+
 export type SaveState =
   | { status: "idle" }
   | { status: "error"; message: string; fields?: { [key: string]: string } }
@@ -92,6 +94,8 @@ async function runSave(
       return error(`원문 모드에서만 고칠 수 있는 글이다: ${result.message}`);
     case "not-found":
       return error("글을 찾을 수 없다.");
+    case "image":
+      return error(uploadMessage(result.file, result.problem));
   }
 }
 

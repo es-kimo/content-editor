@@ -4,14 +4,15 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
-import { editedBody, parseMdx } from "@/lib/mdx-doc";
+import { addImage, checkMdx, editedBody, parseMdx, readImageImports } from "@/lib/mdx-doc";
 import { fakeGitRepo } from "@/test/fake-git";
-import { blobSha } from "@/test/fake-github";
+import { blobSha, type FakeFile } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
 import { createGitHubClient } from "./client";
 import { editorKeys, findCollection, readPost } from "./read";
 import { saveBody } from "./save-body";
+import { IMAGE_COMPONENT, MAX_UPLOAD_BYTES, usedUploads } from "./upload";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";
@@ -53,7 +54,7 @@ const EDITED = `# 11월 휴진 안내
 <Image src={image1} alt="" />
 `;
 
-const setup = (files: { path: string; content: string }[]) => {
+const setup = (files: FakeFile[]) => {
   const repo = fakeGitRepo(REPO, "main", [...files, { path: "README.md", content: "# yjshd\n" }]);
   return { repo, client: createGitHubClient("ghu_token", repo.fetch) };
 };
@@ -176,6 +177,129 @@ describe("saveBody", () => {
       body: EDITED,
     });
     expect(result).toEqual({ ok: false, reason: "not-found" });
+  });
+});
+
+describe("saveBody 이미지", () => {
+  const DIR = "content/4.게시판/1.휴진";
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 4, 5, 6]);
+  const OLD_IMAGE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 9]);
+
+  /** 브라우저가 하는 일: 글 폴더 파일을 피해 이름을 고르고, 태그를 본문에 넣고, 본문에 남은 이미지만 보낸다. */
+  const upload = (source: string, folder: string[], contents: Uint8Array[], extensions: string[]) => {
+    let doc = parseMdx(source, config.syntax);
+    const added = contents.map((content, i) => {
+      const image = addImage(doc, { extension: extensions[i]!, component: IMAGE_COMPONENT, files: folder });
+      doc = image.doc;
+      return { file: image.file, tag: image.tag, content };
+    });
+    return { doc, added };
+  };
+
+  test("이미지 2장을 넣은 공지를 저장하면 커밋 1개에 mdx와 이미지 2개가 담기고 import가 글 폴더 파일을 가리킨다", async () => {
+    const { repo, client } = setup([
+      { path: POST, content: SOURCE },
+      { path: `${DIR}/1.png`, content: OLD_IMAGE },
+    ]);
+    const before = repo.head();
+    const { doc, added } = upload(SOURCE, ["1.png", "page.mdx"], [PNG, JPEG], ["png", "jpg"]);
+    const body = `${EDITED}\n${added[0]!.tag}\n\n${added[1]!.tag}\n`;
+
+    const result = await saveBody(client, REPO, config, {
+      path: POST,
+      baseSha: blobSha(SOURCE),
+      body,
+      images: usedUploads(doc, body, added),
+    });
+
+    expect(result).toEqual({ ok: true, commit: repo.head(), parent: before });
+    expect(repo.log()).toHaveLength(2);
+    expect(repo.file(`${DIR}/2.png`)).toEqual(PNG);
+    expect(repo.file(`${DIR}/3.jpg`)).toEqual(JPEG);
+    expect(repo.file(`${DIR}/1.png`)).toEqual(OLD_IMAGE);
+    const saved = text(repo.file(POST));
+    expect(saved).toBe(
+      HEAD.replace(
+        'import image1 from "./1.png";',
+        'import image1 from "./1.png";\nimport image2 from "./2.png";\nimport image3 from "./3.jpg";',
+      ) + body,
+    );
+    // 사이트 빌드가 이미지를 찾으려면 import한 파일이 모두 글 폴더에 있어야 한다.
+    for (const image of readImageImports(parseMdx(saved, config.syntax))) {
+      expect(repo.file(`${DIR}/${image.path.slice(2)}`)).toBeDefined();
+    }
+    expect((await checkMdx(saved, config.syntax)).ok).toBe(true);
+  });
+
+  test("올린 뒤 본문에서 지운 이미지는 커밋하지 않는다", async () => {
+    const { repo, client } = setup([{ path: POST, content: SOURCE }]);
+    const { doc, added } = upload(SOURCE, ["page.mdx"], [PNG, JPEG], ["png", "jpg"]);
+    const body = `${EDITED}\n${added[1]!.tag}\n`;
+
+    const result = await saveBody(client, REPO, config, {
+      path: POST,
+      baseSha: blobSha(SOURCE),
+      body,
+      images: usedUploads(doc, body, added),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(repo.paths().filter((p) => p.startsWith(`${DIR}/`))).toEqual([`${DIR}/3.jpg`, POST]);
+    expect(text(repo.file(POST))).not.toContain("./2.png");
+  });
+
+  test("본문에서 쓰지 않는 이미지를 보내면 커밋하지 않는다", async () => {
+    const { repo, client } = setup([{ path: POST, content: SOURCE }]);
+    const before = repo.head();
+
+    const result = await saveBody(client, REPO, config, {
+      path: POST,
+      baseSha: blobSha(SOURCE),
+      body: EDITED,
+      images: [{ file: "2.png", content: PNG }],
+    });
+
+    expect(result).toEqual({ ok: false, reason: "image", file: "2.png", problem: "unused" });
+    expect(repo.head()).toBe(before);
+  });
+
+  test("글 폴더에 이미 있는 파일 이름이면 덮어쓰지 않고 커밋하지 않는다", async () => {
+    const { repo, client } = setup([
+      { path: POST, content: SOURCE },
+      { path: `${DIR}/2.png`, content: OLD_IMAGE },
+    ]);
+    const before = repo.head();
+
+    const result = await saveBody(client, REPO, config, {
+      path: POST,
+      baseSha: blobSha(SOURCE),
+      body: `${EDITED}\n<Image src={image2} alt="" />\n`,
+      images: [{ file: "2.png", content: PNG }],
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: "image", problem: "name" });
+    expect(repo.head()).toBe(before);
+    expect(repo.file(`${DIR}/2.png`)).toEqual(OLD_IMAGE);
+  });
+
+  test("형식이 다르거나 합계가 상한을 넘으면 커밋하지 않는다", async () => {
+    const { repo, client } = setup([{ path: POST, content: SOURCE }]);
+    const before = repo.head();
+    const body = `${EDITED}\n<Image src={image2} alt="" />\n`;
+    const save = (content: Uint8Array) =>
+      saveBody(client, REPO, config, {
+        path: POST,
+        baseSha: blobSha(SOURCE),
+        body,
+        images: [{ file: "2.png", content }],
+      });
+    const large = new Uint8Array(MAX_UPLOAD_BYTES + 1);
+    large.set(PNG);
+
+    expect(await save(JPEG)).toMatchObject({ reason: "image", problem: "format" });
+    expect(await save(large)).toMatchObject({ reason: "image", problem: "size" });
+    expect(repo.head()).toBe(before);
   });
 });
 
