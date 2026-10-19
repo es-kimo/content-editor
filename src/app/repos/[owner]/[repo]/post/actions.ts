@@ -11,9 +11,11 @@ import {
   findCollection,
   saveBody,
   saveMetadata,
+  saveSource,
   type GitHubClient,
   type SaveBodyResult,
   type SaveMetadataResult,
+  type SaveSourceResult,
 } from "@/lib/content";
 import {
   CONFIG_FILE,
@@ -36,6 +38,7 @@ const error = (message: string, fields?: { [key: string]: string }): SaveState =
 });
 
 type SaveContext = { client: GitHubClient; config: EditorConfig; collection: Collection };
+type SaveResult = SaveMetadataResult | SaveBodyResult | SaveSourceResult;
 
 /**
  * 저장 액션의 공통 흐름: 세션 → config → 저장 → 결과를 화면 상태로. 성공하면 새 sha로 글 화면을 다시 연다.
@@ -44,7 +47,7 @@ type SaveContext = { client: GitHubClient; config: EditorConfig; collection: Col
 async function runSave(
   repo: string,
   path: string,
-  save: (context: SaveContext) => Promise<SaveMetadataResult | SaveBodyResult>,
+  save: (context: SaveContext) => Promise<SaveResult>,
 ): Promise<SaveState> {
   await assertRepoAllowed(repo);
   // 갱신은 쿠키를 쓸 수 있는 라우트에서만 한다. 여기서 보내면 입력이 사라지므로 남은 토큰으로 시도하고 401이면 안내한다.
@@ -58,7 +61,7 @@ async function runSave(
   const accessToken = page.session.accessToken;
   const relogin = "로그인이 만료됐다. 다른 탭에서 다시 로그인한 뒤 저장한다.";
 
-  let result: SaveMetadataResult | SaveBodyResult;
+  let result: SaveResult;
   try {
     const loaded = await loadEditorConfig(repo, accessToken, fetch);
     if (loaded.kind !== "ok") return error(`${CONFIG_FILE}을 읽을 수 없다.`);
@@ -114,4 +117,15 @@ export async function saveBodyAction(
   body: string,
 ): Promise<SaveState> {
   return runSave(repo, path, ({ client, config }) => saveBody(client, repo, config, { path, baseSha, body }));
+}
+
+/** 원문 모드 저장. 파일 전체를 받는다. */
+export async function saveSourceAction(
+  repo: string,
+  path: string,
+  baseSha: string,
+  _prev: SaveState,
+  source: string,
+): Promise<SaveState> {
+  return runSave(repo, path, ({ client, config }) => saveSource(client, repo, config, { path, baseSha, source }));
 }

@@ -2,7 +2,7 @@ import type { EditorConfig } from "@/lib/editor-config";
 import { setBody } from "@/lib/mdx-doc";
 
 import type { GitHubClient } from "./client";
-import { commitEdit, openForEdit, type CommitEditResult, type OpenForEditResult } from "./edit-post";
+import { commitEdit, currentTitle, openForEdit, type CommitEditResult, type OpenForEditResult } from "./edit-post";
 
 export type SaveBodyInput = {
   path: string;
@@ -23,6 +23,5 @@ export async function saveBody(
   const opened = await openForEdit(client, repo, config, input.path, input.baseSha);
   if (!opened.ok) return opened;
   const { post } = opened;
-  const title = post.metadata?.editable ? post.metadata.value.title : undefined;
-  return commitEdit(client, repo, config, post, setBody(post.doc, input.body), title);
+  return commitEdit(client, repo, config, post, setBody(post.doc, input.body), currentTitle(post));
 }
