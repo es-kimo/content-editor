@@ -7,6 +7,17 @@ export function setBody(doc: MdxDoc, body: string): MdxDoc {
 }
 
 /**
+ * WYSIWYG 에디터에서 저장할 본문. 에디터는 글을 열기만 해도 본문을 다시 쓰므로(목록 기호, 빈 줄 등),
+ * 사용자가 고치지 않았거나 고친 뒤 처음 상태로 되돌렸으면 원본을 돌려줘 diff가 생기지 않게 한다.
+ * @param normalized 에디터가 글을 열며 다시 쓴 본문. 다시 쓰지 않았으면 null.
+ * @param edited 사용자가 고친 뒤의 본문. 고치지 않았으면 null.
+ */
+export function editedBody(original: string, normalized: string | null, edited: string | null): string {
+  if (edited === null || edited === (normalized ?? original)) return original;
+  return edited;
+}
+
+/**
  * 두 본문이 렌더링했을 때 같은 구조인지 본다. WYSIWYG 에디터가 다시 쓴 본문이 원본과 같은 글인지 판단하는 데 쓴다.
  * 목록 기호(`*`→`-`)나 강조 기호처럼 마크다운 표기만 다른 것은 같다고 본다. HTML은 글자 사이 공백을 하나로 보이므로
  * 텍스트의 연속 공백 차이도 같다고 본다. 둘 중 하나라도 읽을 수 없으면 다르다고 본다.

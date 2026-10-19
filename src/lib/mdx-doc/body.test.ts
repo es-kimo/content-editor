@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { sameBodyStructure, setBody } from "./body";
+import { editedBody, sameBodyStructure, setBody } from "./body";
 import { parseMdx, printMdx } from "./split";
 
 describe.each(fixtureSources)("픽스처 본문: $name", (source) => {
@@ -37,6 +37,25 @@ describe("setBody", () => {
   test("구간으로 나눌 수 없는 글은 바꾸지 않는다", () => {
     const doc = parseMdx("본문\n\nexport const a = 1;\n");
     expect(setBody(doc, "다른 본문\n")).toBe(doc);
+  });
+});
+
+describe("editedBody", () => {
+  const original = "* 하나\n* 둘\n";
+  const normalized = "- 하나\n- 둘\n";
+
+  test("열기만 하고 고치지 않았으면 에디터가 다시 쓴 본문 대신 원본을 저장한다", () => {
+    expect(editedBody(original, normalized, null)).toBe(original);
+  });
+
+  test("고쳤다가 처음 상태로 되돌렸으면 원본을 저장한다", () => {
+    expect(editedBody(original, normalized, normalized)).toBe(original);
+    expect(editedBody(original, null, original)).toBe(original);
+  });
+
+  test("고쳤으면 고친 본문을 저장한다", () => {
+    expect(editedBody(original, normalized, "- 하나\n- **둘**\n")).toBe("- 하나\n- **둘**\n");
+    expect(editedBody(original, null, "* 하나\n* 셋\n")).toBe("* 하나\n* 셋\n");
   });
 });
 
