@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { TechDetails } from "@/app/_lib/ui";
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
+import { imageFormTag } from "@/lib/content/insert-form";
 import { uploadPreviewMessage } from "@/lib/content/preview";
 import type { SaveState } from "@/lib/content/save-flow";
 import { MAX_IMAGE_SIDE, uploadImports } from "@/lib/content/upload";
@@ -83,7 +84,7 @@ export function BodyEditor({
   }
 
   const addImages = (files: File[], insert: (tags: string[]) => void) =>
-    uploads.add(files, ({ tags, problems }) => {
+    uploads.add(files, ({ images: added, problems }) => {
       setImages(uploads.plan.images.map(({ file, content }) => ({ file, size: content.byteLength })));
       for (const { name, image } of uploadImports(uploads.plan)) {
         if (!objectUrls.current.has(name)) {
@@ -92,7 +93,7 @@ export function BodyEditor({
       }
       setPreviewImages(Object.fromEntries(objectUrls.current));
       setImageProblem(problems.length > 0 ? problems.map((p) => uploadMessage(p.name, p.problem)).join(" ") : null);
-      insert(tags);
+      insert(added.map((image) => imageFormTag({ kind: "image", image, place: null }, "")));
     });
 
   return (

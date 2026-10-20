@@ -84,7 +84,7 @@ export function addUpload(
   plan: UploadPlan,
   image: { extension: string; content: Uint8Array },
   files: string[],
-): { ok: true; plan: UploadPlan; tag: string; file: string } | Exclude<UploadCheck, { ok: true }> {
+): { ok: true; plan: UploadPlan; tag: string; file: string; name: string } | Exclude<UploadCheck, { ok: true }> {
   if (!(Object.values(UPLOAD_IMAGE_TYPES) as string[]).includes(image.extension)) {
     return { ok: false, reason: "image", file: `.${image.extension}`, problem: "format" };
   }
@@ -92,13 +92,41 @@ export function addUpload(
   const images = [...plan.images, { file: added.file, content: image.content }];
   const check = checkUploads(images);
   if (!check.ok) return check;
-  return { ok: true, plan: { doc: added.doc, images }, tag: added.tag, file: added.file };
+  return { ok: true, plan: { doc: added.doc, images }, tag: added.tag, file: added.file, name: added.name };
 }
 
 /** 넣은 이미지 중 저장할 본문에서 쓰는 것. 넣은 뒤 본문에서 지운 이미지는 커밋하지 않는다. */
 export function usedUploads(plan: UploadPlan, body: string): UploadImage[] {
   const unused = new Set(findUnusedImageImports(setBody(plan.doc, body)).map((image) => image.path));
   return plan.images.filter((image) => !unused.has(`./${image.file}`));
+}
+
+/**
+ * 원문 편집에서 넣은 이미지 중 원문이 경로(`"./N.ext"`)로 가리키는 것. 쓰지 않는 import라도 가리키면 올린다.
+ * 원문 편집은 import까지 사용자가 고치므로, 가리키는 파일을 빼고 저장하면 사이트에서 글을 만들 수 없다.
+ */
+export function sourceUploads(images: UploadImage[], source: string): UploadImage[] {
+  return images.filter(({ file }) => source.includes(`"./${file}"`) || source.includes(`'./${file}'`));
+}
+
+/**
+ * 원문 저장에 함께 올릴 이미지를 검사한다. 형식·합계 크기에 더해, 넣을 때 고른 이름(`N.ext`)이고
+ * 글 폴더에 없는 파일이어야 하며(기존 파일을 덮어쓰지 않는다) 원문이 가리켜야 한다.
+ * @param folder 글 폴더에 이미 있는 파일 이름
+ */
+export function checkSourceUploads(images: UploadImage[], source: string, folder: string[]): UploadCheck {
+  const check = checkUploads(images);
+  if (!check.ok) return check;
+  const taken = new Set(folder.map((name) => name.toLowerCase()));
+  const referenced = new Set(sourceUploads(images, source).map(({ file }) => file));
+  for (const { file } of images) {
+    if (!/^[1-9]\d*\.[a-z]+$/.test(file) || taken.has(file))
+      return { ok: false, reason: "image", file, problem: "name" };
+    if (!referenced.has(file)) return { ok: false, reason: "image", file, problem: "unused" };
+    // 같은 이름을 두 번 보내면 나중 것이 앞의 것을 덮어쓰므로 받지 않는다.
+    taken.add(file);
+  }
+  return { ok: true };
 }
 
 /** 넣은 이미지마다 본문의 `src={변수}`에 쓰는 import 변수명. 미리보기가 아직 커밋하지 않은 이미지를 보여 줄 때 쓴다. */

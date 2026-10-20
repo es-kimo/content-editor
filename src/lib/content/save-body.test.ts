@@ -5,14 +5,14 @@ import { describe, expect, test } from "vitest";
 
 import { parseEditorConfig, type EditorConfig } from "@/lib/editor-config";
 import { createGitHubClient } from "@/lib/github";
-import { checkMdx, editedBody, parseMdx, readImageImports } from "@/lib/mdx-doc";
+import { checkMdx, editedBody, imageTag, parseMdx, readImageImports } from "@/lib/mdx-doc";
 import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha, type FakeFile } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
 import { editorKeys, findCollection, readPost } from "./read";
 import { saveBody } from "./save-body";
-import { addUpload, MAX_UPLOAD_BYTES, usedUploads, type UploadPlan } from "./upload";
+import { addUpload, IMAGE_COMPONENT, MAX_UPLOAD_BYTES, usedUploads, type UploadPlan } from "./upload";
 import { createUploadSession } from "./upload-session";
 
 const REPO = "es-kimo/yjshd";
@@ -270,7 +270,7 @@ describe("saveBody 이미지", () => {
         { name: "b.png", content: null },
         { name: "c.jpg", content: JPEG },
       ],
-      (added) => (tags = added.tags),
+      (added) => (tags = added.images.map(({ name }) => imageTag(IMAGE_COMPONENT, name, ""))),
     );
     const body = `${EDITED}\n${tags.join("\n\n")}\n`;
     const submission = session.submission(body);
@@ -286,6 +286,49 @@ describe("saveBody 이미지", () => {
     expect(result.ok).toBe(true);
     expect(repo.paths().filter((p) => p.startsWith(`${DIR}/`))).toEqual([`${DIR}/2.png`, `${DIR}/3.jpg`, POST]);
     expect(text(repo.file(POST))).toContain('<Image src={image1} alt="" />');
+  });
+
+  test("대체 텍스트를 넣어 적용한 이미지만 커밋되고, 폼을 취소한 이미지는 저장하지 않는다", async () => {
+    const { repo, client } = setup([
+      { path: POST, content: SOURCE },
+      { path: `${DIR}/1.png`, content: OLD_IMAGE },
+    ]);
+    const before = repo.head();
+    const post = (await readPost(client, REPO, config, POST))!;
+    const session = createUploadSession({
+      doc: post.doc,
+      files: post.images.map((image) => image.name),
+      prepare: async (file: { name: string; content: Uint8Array }) => ({
+        extension: file.name.split(".")[1]!,
+        content: file.content,
+        width: 1,
+        height: 1,
+      }),
+    });
+    // 편집 화면처럼 이미지마다 폼을 열고, 적용한 것만 대체 텍스트를 담은 태그로 본문에 넣는다.
+    let body = EDITED;
+    await session.add([{ name: "a.png", content: PNG }], ({ images: [image] }) => {
+      body += `\n${imageTag(IMAGE_COMPONENT, image!.name, '진료 "시간" 안내')}\n`;
+    });
+    await session.add([{ name: "b.jpg", content: JPEG }], () => {});
+    const submission = session.submission(body);
+    if (!submission.ok) throw new Error(submission.reason);
+
+    const result = await saveBody(client, REPO, config, {
+      path: POST,
+      baseSha: post.sha,
+      body,
+      images: submission.images,
+    });
+
+    expect(result).toEqual({ ok: true, commit: repo.head(), parent: before });
+    expect(repo.log()).toHaveLength(2);
+    expect(repo.paths().filter((p) => p.startsWith(`${DIR}/`))).toEqual([`${DIR}/1.png`, `${DIR}/2.png`, POST]);
+    expect(repo.file(`${DIR}/1.png`)).toEqual(OLD_IMAGE);
+    const saved = text(repo.file(POST));
+    expect(saved).toContain('import image2 from "./2.png";');
+    expect(saved).not.toContain("./3.jpg");
+    expect(saved).toContain('<Image src={image2} alt="진료 &quot;시간&quot; 안내" />');
   });
 
   test("본문에서 쓰지 않는 이미지를 보내면 커밋하지 않는다", async () => {

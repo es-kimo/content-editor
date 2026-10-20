@@ -69,13 +69,15 @@ export function SourceEditor({
       <p className="text-xs text-zinc-500">글 설정과 이미지 연결을 포함한 파일 전체를 고쳐요.</p>
       <InsertMenu
         disabled={formLocked}
-        items={insertMenuItems(components).map(({ kind, label }) => ({
-          label,
-          onSelect: (opener) => {
-            const at = editor.current?.selection();
-            if (at) forms.open({ kind, at, opened: edited.current }, opener);
-          },
-        }))}
+        items={insertMenuItems(components)
+          .flatMap(({ kind, label }) => (kind === "footnote" ? [{ kind, label }] : []))
+          .map(({ kind, label }) => ({
+            label,
+            onSelect: (opener) => {
+              const at = editor.current?.selection();
+              if (at) forms.open({ kind, at, opened: edited.current }, opener);
+            },
+          }))}
       />
       <InsertEntryList
         list={inserts}

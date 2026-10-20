@@ -97,8 +97,13 @@ function insertImage(
   const name = `image${n}`;
   const file = `${n}.${extension}`;
   const importText = formatImport(doc.head, name, `./${file}`);
-  const tag = `<${options.component} src={${name}} alt="${escapeJsxAttribute(options.alt ?? "")}" />`;
+  const tag = imageTag(options.component, name, options.alt ?? "");
   return { doc: { ...doc, head: insertImport(doc.head, importText) }, name, file, tag };
+}
+
+/** import 변수 `name`을 `src`로 쓰는 이미지 태그. 대체 텍스트는 JSX 문자열 속성으로 그대로 다시 읽히게 이스케이프한다. */
+export function imageTag(component: string, name: string, alt: string): string {
+  return `<${component} src={${name}} alt="${escapeJsxAttribute(alt)}" />`;
 }
 
 /**

@@ -2,6 +2,7 @@ import type { EditorConfig } from "@/lib/editor-config";
 import type { GitHubClient } from "@/lib/github";
 
 import { commitSource, currentTitle, openPost, type CommitEditResult, type OpenPostResult } from "./edit-post";
+import { checkSourceUploads, type UploadCheck, type UploadImage } from "./upload";
 
 export type SaveSourceInput = {
   path: string;
@@ -9,9 +10,12 @@ export type SaveSourceInput = {
   baseSha: string;
   /** 파일 전체 원문. import·metadata 같은 ESM도 포함한다. */
   source: string;
+  /** 원문 편집에서 넣은 새 이미지. 원문이 그 import를 이미 담고 있어 글 폴더에 저장만 하고 같은 커밋에 담는다. */
+  images?: UploadImage[];
 };
 
-export type SaveSourceResult = CommitEditResult | Exclude<OpenPostResult, { ok: true }>;
+export type SaveSourceResult =
+  CommitEditResult | Exclude<OpenPostResult, { ok: true }> | Exclude<UploadCheck, { ok: true }>;
 
 /**
  * 원문 모드에서 고친 파일 전체를 저장한다. 구간으로 나눌 수 없는 글이나 metadata를 폼으로 읽을 수 없는 글도 저장할 수 있다.
@@ -23,7 +27,15 @@ export async function saveSource(
   config: EditorConfig,
   input: SaveSourceInput,
 ): Promise<SaveSourceResult> {
+  const images = input.images ?? [];
   const opened = await openPost(client, repo, config, input.path, input.baseSha);
   if (!opened.ok) return opened;
-  return commitSource(client, repo, config, opened.post, input.source, currentTitle(opened.post));
+  const { post } = opened;
+  const check = checkSourceUploads(
+    images,
+    input.source,
+    post.images.map((image) => image.name),
+  );
+  if (!check.ok) return check;
+  return commitSource(client, repo, config, post, input.source, currentTitle(post), images);
 }

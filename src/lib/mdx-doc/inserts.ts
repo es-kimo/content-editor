@@ -1,7 +1,14 @@
 import type { MdxJsxTextElement } from "mdast-util-mdx";
 
 import { setBody } from "./body";
-import { addImage, escapeJsxAttribute, isImageFile, readImageImports, type AddImageOptions } from "./images";
+import {
+  addImage,
+  addImageAs,
+  escapeJsxAttribute,
+  isImageFile,
+  readImageImports,
+  type AddImageOptions,
+} from "./images";
 import { arrayAttribute, attributeValue, expressionAttribute, jsxElements, type JsxElement } from "./jsx";
 import {
   componentSnippet,
@@ -61,6 +68,7 @@ export type InsertList =
  * - invalid-text: 입력이 그대로 다시 읽히지 않는다 (줄바꿈, 앞뒤 공백, 빈 값 등)
  * - invalid-position: 그 위치에 넣으면 항목으로 읽히지 않는다 (코드 블록 안 등)
  * - toc-exists: 이미 목차가 있다
+ * - name-taken: 넣을 이미지의 파일 이름이나 변수명을 원문이 이미 쓴다
  */
 export type InsertEdit =
   | { ok: true; source: string; cursor: number }
@@ -73,7 +81,8 @@ export type InsertEdit =
         | "outside-body"
         | "invalid-text"
         | "invalid-position"
-        | "toc-exists";
+        | "toc-exists"
+        | "name-taken";
     };
 
 /** `file`은 글 폴더에 저장할 이미지 파일 이름이다. */
@@ -208,21 +217,25 @@ export function removeToc(
   return { ok: true, source: head + gap + rest, cursor: head.length + gap.length };
 }
 
+/** `file`을 주면 그 파일 이름(`N.ext`)으로 넣는다. 없으면 `addImage`가 고른다. */
+export type ImageAtOptions = AddImageOptions | (Omit<AddImageOptions, "extension"> & { file: string });
+
 /**
- * 선택 영역에 새 이미지를 block으로 넣고 그 이미지의 import를 더한다. 이름과 파일은 `addImage`가 고른다.
- * 원문의 다른 곳은 바꾸지 않는다.
+ * 선택 영역에 새 이미지를 block으로 넣고 그 이미지의 import를 더한다. 원문의 다른 곳은 바꾸지 않는다.
+ * 미리 고른 파일 이름의 번호를 원문이 이미 쓰고 있으면 넣지 않고 `name-taken`이다.
  */
 export function addImageAt(
   source: string,
   at: InsertSpan,
-  options: AddImageOptions,
+  options: ImageAtOptions,
   syntax: Syntax = {},
 ): ImageInsertEdit {
   const checked = checkPosition(source, at, syntax);
   if (!checked.ok) return checked;
   const { doc } = checked;
   const bodyStart = source.length - doc.body.length;
-  const added = addImage(doc, options);
+  const added = "file" in options ? addImageAs(doc, options.file, options) : addImage(doc, options);
+  if (!added) return { ok: false, reason: "name-taken" };
   const inserted = insertSnippet(doc.body, at.from - bodyStart, at.to - bodyStart, { kind: "block", text: added.tag });
   const edited = printMdx(setBody(added.doc, inserted.source));
   const cursor = edited.length - inserted.source.length + inserted.cursor;

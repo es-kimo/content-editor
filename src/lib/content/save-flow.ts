@@ -20,9 +20,12 @@ export type SaveState =
 const SAVED_AREAS: { [target in SaveTarget]: EditArea[] } = {
   metadata: ["metadata"],
   body: ["body", "images"],
-  source: ["source"],
+  source: ["source", "sourceImages"],
   new: ["title", "submenu"],
 };
+
+/** 원문 편집기는 파일 전체라 어느 영역을 저장해도 sha가 바뀌어 다시 열린다. */
+const SOURCE_AREAS: EditArea[] = ["source", "sourceImages"];
 
 /** 글 화면이 metadata 폼과 WYSIWYG 본문을 다시 열지 정하는 key. 원문은 파일 전체라 저장마다 다시 연다. */
 export type EditorKeys = { metadata: string; body: string };
@@ -41,9 +44,9 @@ export type SaveRequest =
 export function reopenedAreas(request: SaveRequest): EditArea[] {
   switch (request.target) {
     case "metadata":
-      return ["metadata", "source"];
+      return ["metadata", ...SOURCE_AREAS];
     case "body":
-      return ["body", "images", "source"];
+      return ["body", "images", ...SOURCE_AREAS];
     case "new":
       return SAVED_AREAS.new;
     case "source": {
@@ -52,7 +55,7 @@ export function reopenedAreas(request: SaveRequest): EditArea[] {
       return [
         ...(before.metadata !== after.metadata ? (["metadata"] as const) : []),
         ...(before.body !== after.body ? (["body", "images"] as const) : []),
-        "source",
+        ...SOURCE_AREAS,
       ];
     }
   }

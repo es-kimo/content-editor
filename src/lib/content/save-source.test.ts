@@ -1,12 +1,16 @@
 import { describe, expect, test } from "vitest";
 
 import { createGitHubClient } from "@/lib/github";
+import { addImageAt, parseMdx } from "@/lib/mdx-doc";
 import { blogConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
-import { blobSha } from "@/test/fake-github";
+import { blobSha, type FakeFile } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
+import { JPEG, PNG } from "@/test/upload-images";
 
 import { saveSource } from "./save-source";
+import { IMAGE_COMPONENT, sourceUploads } from "./upload";
+import { createUploadSession } from "./upload-session";
 
 const REPO = "es-kimo/site";
 const BRANCH = "blog";
@@ -45,7 +49,7 @@ export const metadata = {
 인증서 설정 없이 HTTPS가 동작한다<Footnote id="1" />. 수식 $a^2$도 쓴다.
 `;
 
-const setup = (files: { path: string; content: string }[]) => {
+const setup = (files: FakeFile[]) => {
   const repo = fakeGitRepo(REPO, BRANCH, [...files, { path: "README.md", content: "# site\n" }]);
   return { repo, client: createGitHubClient("ghu_token", repo.fetch) };
 };
@@ -129,6 +133,121 @@ describe("saveSource", () => {
       source: EDITED,
     });
     expect(result).toEqual({ ok: false, reason: "not-found" });
+  });
+});
+
+describe("saveSource 이미지", () => {
+  const DIR = "apps/blog/content/Computer-Science/github-pages";
+  const OLD_IMAGE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 9]);
+
+  /** 원문 편집처럼 이미지를 준비해 첨부에 더하고, 적용한 것만 선택 위치에 import와 태그로 넣는다. */
+  async function editWithImages(folder: string[]) {
+    const session = createUploadSession({
+      doc: parseMdx(SOURCE, config.syntax),
+      files: folder,
+      prepare: async (file: { name: string; content: Uint8Array }) => ({
+        extension: file.name.split(".")[1]!,
+        content: file.content,
+        width: 1,
+        height: 1,
+      }),
+      used: (plan, source) => sourceUploads(plan.images, source),
+    });
+    let source = SOURCE;
+    await session.add([{ name: "a.png", content: PNG }], ({ images: [image] }) => {
+      const at = source.indexOf("인증서");
+      const added = addImageAt(
+        source,
+        { from: at, to: at },
+        { file: image!.file, component: IMAGE_COMPONENT, alt: "인증서 화면" },
+        config.syntax,
+      );
+      if (!added.ok) throw new Error(added.reason);
+      source = added.source;
+    });
+    // 폼을 취소한 이미지. 원문에 넣지 않는다.
+    await session.add([{ name: "b.jpg", content: JPEG }], () => {});
+    return { session, source: () => source };
+  }
+
+  test("원문에 넣은 이미지는 원문과 함께 커밋 1개에 담기고, 취소한 이미지와 기존 파일은 그대로다", async () => {
+    const { repo, client } = setup([
+      { path: POST, content: SOURCE },
+      { path: `${DIR}/1.png`, content: OLD_IMAGE },
+    ]);
+    const before = repo.head(BRANCH);
+    const { session, source } = await editWithImages(["1.png"]);
+    const submission = session.submission(source());
+    if (!submission.ok) throw new Error(submission.reason);
+
+    const result = await saveSource(client, REPO, config, {
+      path: POST,
+      baseSha: blobSha(SOURCE),
+      source: source(),
+      images: submission.images,
+    });
+
+    expect(result).toEqual({ ok: true, commit: repo.head(BRANCH), parent: before });
+    expect(repo.log(BRANCH)).toHaveLength(2);
+    expect(text(repo.file(POST, BRANCH))).toBe(
+      SOURCE.replace('"./toc";\n', '"./toc";\nimport image2 from "./2.png";\n').replace(
+        "인증서",
+        '<Image src={image2} alt="인증서 화면" />\n\n인증서',
+      ),
+    );
+    expect(repo.file(`${DIR}/2.png`, BRANCH)).toEqual(PNG);
+    expect(repo.file(`${DIR}/1.png`, BRANCH)).toEqual(OLD_IMAGE);
+    expect(repo.paths(BRANCH).filter((p) => p.startsWith(`${DIR}/`))).toEqual([`${DIR}/1.png`, `${DIR}/2.png`, POST]);
+  });
+
+  test("원문이 가리키지 않는 이미지를 보내면 커밋하지 않는다", async () => {
+    const { repo, client } = setup([{ path: POST, content: SOURCE }]);
+    const before = repo.head(BRANCH);
+
+    const result = await saveSource(client, REPO, config, {
+      path: POST,
+      baseSha: blobSha(SOURCE),
+      source: EDITED,
+      images: [{ file: "2.png", content: PNG }],
+    });
+
+    expect(result).toEqual({ ok: false, reason: "image", file: "2.png", problem: "unused" });
+    expect(repo.head(BRANCH)).toBe(before);
+  });
+
+  test("글 폴더에 이미 있는 파일 이름이거나 넣을 때 고른 이름이 아니면 덮어쓰지 않고 커밋하지 않는다", async () => {
+    const { repo, client } = setup([
+      { path: POST, content: SOURCE },
+      { path: `${DIR}/2.png`, content: OLD_IMAGE },
+    ]);
+    const before = repo.head(BRANCH);
+    const save = (file: string) =>
+      saveSource(client, REPO, config, {
+        path: POST,
+        baseSha: blobSha(SOURCE),
+        source: `import image2 from "./${file}";\n${SOURCE}<Image src={image2} alt="" />\n`,
+        images: [{ file, content: PNG }],
+      });
+
+    expect(await save("2.png")).toMatchObject({ ok: false, reason: "image", problem: "name" });
+    expect(await save("../2.png")).toMatchObject({ ok: false, reason: "image", problem: "name" });
+    expect(repo.head(BRANCH)).toBe(before);
+    expect(repo.file(`${DIR}/2.png`, BRANCH)).toEqual(OLD_IMAGE);
+  });
+
+  test("형식이 다르면 커밋하지 않는다", async () => {
+    const { repo, client } = setup([{ path: POST, content: SOURCE }]);
+    const before = repo.head(BRANCH);
+
+    const result = await saveSource(client, REPO, config, {
+      path: POST,
+      baseSha: blobSha(SOURCE),
+      source: `import image2 from "./2.png";\n${SOURCE}`,
+      images: [{ file: "2.png", content: JPEG }],
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: "image", problem: "format" });
+    expect(repo.head(BRANCH)).toBe(before);
   });
 });
 
