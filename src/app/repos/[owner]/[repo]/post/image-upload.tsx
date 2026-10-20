@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 
 import { FormBlockedNotice, useFormFlow } from "@/app/_lib/unsaved";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 업로드 정책과 세션만 가져온다.
 import { UPLOAD_IMAGE_TYPES, uploadImports, type UploadImage, type UploadPlan } from "@/lib/content/upload";
+import type { FormArea } from "@/lib/content/save-flow";
 import { createUploadSession, type AddedUpload } from "@/lib/content/upload-session";
 import type { MdxDoc, PreviewImages } from "@/lib/mdx-doc";
 
@@ -13,29 +14,59 @@ import { IMAGE_ADD_BLOCKED, uploadMessage } from "./upload-message";
 
 type DropTarget = { preventDefault(): void; stopPropagation(): void };
 
-/** 이미지를 넣지 못한 이유. `invalid`는 받은 파일이 틀린 것, `blocked`·`form`은 지금 받을 수 없는 것이다. */
-type ImageProblem = { kind: "invalid" | "blocked"; message: string } | { kind: "form" };
+/** 이미지를 넣지 못한 이유. `invalid`는 받은 파일이 틀린 것, `blocked`는 지금 받을 수 없는 것이다. */
+type ImageProblem = { kind: "invalid" | "blocked"; message: string };
 
-/** 이미지를 넣지 못한 이유를 이미지를 받는 곳 옆에 보인다. 열린 폼 때문이면 다른 동작과 같은 안내를 쓴다. */
-export function ImageProblemNotice({ problem }: { problem: ImageProblem | null }) {
+type ImageUpload = ReturnType<typeof useImageUpload>;
+
+/**
+ * 이미지를 넣지 못한 이유를 이미지를 받는 곳 옆에 보인다. 열린 폼 때문이면 다른 동작과 같은 안내를 쓰고, 폼을 닫으면 함께 사라진다.
+ * 두 편집기가 모두 떠 있으므로 열린 폼이 있는 영역에만 보인다.
+ */
+export function ImageProblemNotice({ upload }: { upload: ImageUpload }) {
+  const { form } = useFormFlow();
+  if (form?.blocked === "image" && form.area === upload.area) return <FormBlockedNotice />;
+  const { problem } = upload;
   if (!problem) return null;
-  if (problem.kind === "form") return <FormBlockedNotice />;
   const color = problem.kind === "invalid" ? "text-red-600" : "text-amber-600";
   return <p className={`text-sm ${color}`}>{problem.message}</p>;
 }
 
 /**
+ * 첨부에 더한 이미지와 크기를 보인다.
+ * @param children 저장할 때 첨부를 어떻게 올리는지. 영역마다 무엇을 저장하는지가 달라 영역이 정한다.
+ */
+export function AttachedImagesNotice({ upload, children }: { upload: ImageUpload; children: ReactNode }) {
+  if (upload.attached.length === 0) return null;
+  return (
+    <p className="text-xs text-zinc-500">
+      넣은 이미지: {upload.attached.map(({ file, size }) => `${file} (${Math.ceil(size / 1024)}KB)`).join(", ")}.{" "}
+      {children}
+    </p>
+  );
+}
+
+/** 이미지를 준비하는 동안 저장 버튼 옆에 저장할 수 없는 이유를 보인다. */
+export function ImagePreparingNotice({ upload }: { upload: ImageUpload }) {
+  if (!upload.preparing) return null;
+  return <p className="text-sm text-zinc-500">이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 저장해 주세요.</p>;
+}
+
+/**
  * 일반 편집과 원문 편집이 같이 쓰는 이미지 받기. 파일 선택·붙여넣기·끌어 놓기로 받은 이미지를 하나 준비해 첨부에 더하고,
  * `onAdded`가 대체 텍스트 폼을 열게 한다. 준비를 시작해 폼이 열릴 때까지 준비 중이고, 그 뒤는 열린 폼이 저장을 막는다.
+ * @param area 이미지를 받는 편집 영역. 받은 이미지의 폼도 이 영역에 열린다.
  * @param used 편집 영역의 원문이 참조하는 첨부(`createUploadSession`).
  * @param onAdded 첨부에 더한 이미지로 폼을 연다. 열지 못하면 false. `opener`는 이미지를 받을 때 초점이 있던 요소다.
  */
 export function useImageUpload({
+  area,
   doc,
   files,
   used,
   onAdded,
 }: {
+  area: FormArea;
   doc: MdxDoc;
   files: string[];
   used?: (plan: UploadPlan, text: string) => UploadImage[];
@@ -67,7 +98,8 @@ export function useImageUpload({
 
   const add = (selected: File[], opener: HTMLElement | null) => {
     if (selected.length === 0) return;
-    if (forms.form) return setProblem({ kind: "form" });
+    // 막은 기록은 폼을 닫을 때 흐름이 지우므로, 남은 이유가 열린 폼 안내와 겹치지 않게 비운다.
+    if (forms.blocks("image")) return setProblem(null);
     // 저장 중이거나 다른 영역 입력을 버릴지 묻는 중에는 입력을 받지 않는다.
     if (!forms.canOpen) return;
     if (session.preparing) return setProblem({ kind: "blocked", message: IMAGE_ADD_BLOCKED.preparing });
@@ -103,6 +135,7 @@ export function useImageUpload({
   };
 
   return {
+    area,
     session,
     preparing,
     /** 넣지 못한 이유. 이미지를 받는 곳 옆에 보인다. */

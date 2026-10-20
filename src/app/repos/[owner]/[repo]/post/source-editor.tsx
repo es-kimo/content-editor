@@ -15,7 +15,7 @@ import { parseMdx, readInserts, type Syntax } from "@/lib/mdx-doc";
 import type { BodyImageUpload } from "./body-editor";
 import { BodyPreview } from "./body-preview";
 import type { SourceEditorHandle } from "./codemirror-source-editor";
-import { ImageProblemNotice, useImageUpload } from "./image-upload";
+import { AttachedImagesNotice, ImagePreparingNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
 import { SaveRow } from "./save-row";
 
@@ -62,6 +62,7 @@ export function SourceEditor({
   });
   const [opened] = useState(() => parseMdx(source, syntax));
   const images = useImageUpload({
+    area: "source",
     doc: opened,
     files: upload?.files ?? [],
     // 원문 편집은 import까지 사용자가 고치므로 원문이 가리키는 첨부를 모두 올린다.
@@ -130,13 +131,10 @@ export function SourceEditor({
           긴 변이 {MAX_IMAGE_SIDE}px보다 크면 줄여서 넣어요.
         </p>
       )}
-      {images.attached.length > 0 && (
-        <p className="text-xs text-zinc-500">
-          넣은 이미지: {images.attached.map(({ file, size }) => `${file} (${Math.ceil(size / 1024)}KB)`).join(", ")}.
-          원문을 저장할 때 글 폴더에 함께 저장하고, 원문에서 가져오지 않는 이미지는 올리지 않아요.
-        </p>
-      )}
-      <ImageProblemNotice problem={images.problem} />
+      <AttachedImagesNotice upload={images}>
+        원문을 저장할 때 글 폴더에 함께 저장하고, 원문에서 가져오지 않는 이미지는 올리지 않아요.
+      </AttachedImagesNotice>
+      <ImageProblemNotice upload={images} />
       <BodyPreview
         markdown={current}
         syntax={syntax}
@@ -151,9 +149,7 @@ export function SourceEditor({
             : undefined
         }
       />
-      {images.preparing && (
-        <p className="text-sm text-zinc-500">이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 저장해 주세요.</p>
-      )}
+      <ImagePreparingNotice upload={images} />
       <SaveRow label="원문 저장" save={save} disabled={images.preparing} />
     </form>
   );

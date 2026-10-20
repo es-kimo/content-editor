@@ -286,7 +286,7 @@ describe("원문 편집 이미지", () => {
     expect(app.file(path)).toBe(expected.source.replace('alt="진료 시간표"', 'alt="12월 진료 시간표"'));
   });
 
-  test("끌어 놓은 이미지도 폼을 거쳐 커서 자리에 넣는다", async () => {
+  test("끌어 놓은 이미지도 폼을 거쳐 커서 자리에 넣고, 폼이 열린 동안 받은 이미지는 막았다고 알린다", async () => {
     await openSource(POSTS.sourceDrop);
     const before = await sourceText();
     await sourceEditor().click();
@@ -295,7 +295,11 @@ describe("원문 편집 이미지", () => {
     await giveFiles(sourceEditor(), "drop");
     await imageForm().waitFor();
     expect(await sourceText()).toBe(before);
+    // 폼이 열린 동안 받은 이미지는 막고, 폼을 닫으면 그 안내도 사라진다.
+    await giveFiles(sourceEditor(), "drop");
+    await page.getByText(BLOCKED).waitFor();
     await applyAlt("끌어 놓은 사진");
+    expect(await page.getByText(BLOCKED).count()).toBe(0);
 
     expect(await sourceText()).toContain('import image2 from "./2.png";');
     expect(await sourceText()).toContain('<Image src={image2} alt="끌어 놓은 사진" />');

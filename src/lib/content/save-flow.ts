@@ -81,8 +81,8 @@ export type SavePhase =
 /** 넣기·수정 폼을 여는 편집 영역. 폼을 적용하면 이 영역의 미저장 변경이 된다. */
 export type FormArea = Extract<EditArea, "body" | "source">;
 
-/** 폼이 열려 있어 막은 동작. 저장 대상 또는 모드 전환. */
-export type FormBlocked = SaveTarget | "mode";
+/** 폼이 열려 있어 막은 동작. 저장 대상, 모드 전환, 이미지 받기. */
+export type FormBlocked = SaveTarget | "mode" | "image";
 
 /**
  * 적용하지 않은 넣기·수정 폼.
@@ -119,7 +119,7 @@ export type SaveFlow = {
   editForm(dirty: boolean): void;
   /** 적용·취소로 폼을 닫는다. 적용한 결과는 그 영역의 편집기가 미저장 변경으로 알린다. */
   closeForm(): void;
-  /** 폼이 열려 있으면 `action`을 막았다고 기록하고 true. 모드 전환처럼 저장 밖의 동작이 막을지 물을 때 쓴다. */
+  /** 폼이 열려 있으면 `action`을 막았다고 기록하고 true. 모드 전환·이미지 받기처럼 저장 밖의 동작이 막을지 물을 때 쓴다. */
   blockedByForm(action: FormBlocked): boolean;
   /** `다른 변경 버리고 저장`. 버리는 것은 저장이 성공해 화면이 다시 열릴 때뿐이다. */
   confirm(): void;

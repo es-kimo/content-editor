@@ -12,7 +12,7 @@ import { MAX_IMAGE_SIDE } from "@/lib/content/upload";
 import { editedBody, sameBodyStructure, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
 
 import { BodyPreview } from "./body-preview";
-import { ImageProblemNotice, useImageUpload } from "./image-upload";
+import { AttachedImagesNotice, ImagePreparingNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, useInsertForm } from "./insert-form";
 import type { BodyEditorHandle } from "./mdx-body-editor";
 import { SaveRow } from "./save-row";
@@ -84,6 +84,7 @@ export function BodyEditor({
     },
   });
   const images = useImageUpload({
+    area: "body",
     doc,
     files: upload?.files ?? [],
     onAdded: (image, opener) => forms.open({ kind: "image", image, place: null }, opener),
@@ -91,7 +92,7 @@ export function BodyEditor({
   // WYSIWYG로 고칠 수 없게 된 글은 입력을 저장하지 않으므로 미저장으로 알리지 않는다.
   useReportUnsaved("body", changed && problem === null);
   useReportUnsaved("images", images.session.unsaved(draft) && problem === null);
-  const { attached, doc: attachedDoc } = images;
+  const { doc: attachedDoc } = images;
   const inserts = useMemo(() => bodyInserts(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
 
   if (problem) {
@@ -162,13 +163,10 @@ export function BodyEditor({
           주세요. 긴 변이 {MAX_IMAGE_SIDE}px보다 크면 줄여서 넣어요.
         </p>
       )}
-      {attached.length > 0 && (
-        <p className="text-xs text-zinc-500">
-          넣은 이미지: {attached.map(({ file, size }) => `${file} (${Math.ceil(size / 1024)}KB)`).join(", ")}. 본문을
-          저장할 때 글 폴더에 함께 저장하고, 본문에서 지웠거나 넣지 않은 이미지는 올리지 않아요.
-        </p>
-      )}
-      <ImageProblemNotice problem={images.problem} />
+      <AttachedImagesNotice upload={images}>
+        본문을 저장할 때 글 폴더에 함께 저장하고, 본문에서 지웠거나 넣지 않은 이미지는 올리지 않아요.
+      </AttachedImagesNotice>
+      <ImageProblemNotice upload={images} />
       <BodyPreview
         markdown={current}
         syntax={syntax}
@@ -188,9 +186,7 @@ export function BodyEditor({
             : undefined
         }
       />
-      {images.preparing && (
-        <p className="text-sm text-zinc-500">이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 저장해 주세요.</p>
-      )}
+      <ImagePreparingNotice upload={images} />
       <SaveRow label="본문 저장" save={save} disabled={images.preparing} />
     </form>
   );

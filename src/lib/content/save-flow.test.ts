@@ -346,6 +346,19 @@ describe("적용하지 않은 폼", () => {
     expect(flow.getState().form?.blocked).toBe("mode");
   });
 
+  test("폼이 열려 있으면 이미지 받기를 막고, 폼을 닫으면 막은 기록도 함께 사라진다", () => {
+    const { flow } = setupFlow();
+    flow.openForm("body");
+
+    expect(flow.blockedByForm("image")).toBe(true);
+    expect(flow.getState().form?.blocked).toBe("image");
+
+    flow.closeForm();
+
+    expect(flow.getState().form).toBeNull();
+    expect(flow.blockedByForm("image")).toBe(false);
+  });
+
   test("폼을 적용하거나 취소해 닫으면 다시 저장할 수 있고 미저장 표시는 편집 영역이 알린 그대로다", async () => {
     const { flow } = setupFlow({ body: true });
     const submit = vi.fn(async () => SAVED);
