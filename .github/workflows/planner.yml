@@ -35,7 +35,7 @@ env:
 
 jobs:
   plan:
-    # 소유자의 글에만 반응한다. public 레포라 누구나 코멘트할 수 있고, 기획자가 만든 agent-ready 이슈는 그날 밤 구현된다.
+    # 소유자의 글에만 반응한다. public 레포라 누구나 코멘트할 수 있고, 기획자가 만든 agent-ready 이슈는 바로 구현된다.
     # 봇이 단 코멘트·라벨은 소유자 것이 아니라서 여기서 걸러진다.
     if: >-
       vars.PLANNER_ENABLED == 'true' && (

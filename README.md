@@ -51,16 +51,18 @@ pnpm fixtures:sync   # fixtures/<name>/ 아래에 page.mdx를 받는다 (gitigno
 
 ## 무인 에이전트 루프
 
-밤 시간대(01:00~06:30 KST)에 에이전트가 이슈를 하나씩 구현하고, 리뷰·수정을 거쳐 merge한다.
+에이전트가 이슈를 하나씩 구현하고, 리뷰·수정을 거쳐 merge한다. 하나가 merge되면 바로 다음 이슈를 골라, 마일스톤의 에이전트 이슈를 사람이 돌리지 않아도 끝까지 이어 간다.
 
 ```
-Agent implement (30분마다)  다음 이슈 1개 → agent/<이슈>-<실행> 브랜치 → 구현 → PR(label: agent)
+Agent implement             다음 이슈 1개 → agent/<이슈>-<실행> 브랜치 → 구현 → PR(label: agent)
+                            에이전트 PR merge, agent-ready 달림, needs-human 떨어짐, 30분마다(cron)에 돈다
 CI                           check + guard (agent/ 브랜치의 금지 변경 검사)
 Agent review (CI 완료 시)   실패: 로그로 수정 / 통과: 독립 리뷰 → 승인이면 auto-merge, 아니면 수정
 Agent report (07:00 KST)    지난 24시간 결과를 `agent-report` 이슈에 코멘트
 ```
 
-- 동시에 열린 에이전트 PR은 1개. 수정이 `AGENT_MAX_FIX`회를 넘거나 막히면 `needs-human`을 달고 멈춘다
+- 동시에 열린 에이전트 PR은 1개. 수정이 `AGENT_MAX_FIX`회를 넘거나 막히면 `needs-human`을 달고 멈춘다. 멈춘 PR은 1개에 세지 않으므로, 그 이슈에 의존하지 않는 다음 이슈는 계속 진행한다
+- 이 레포는 public이라 Actions 실행 시간이 무료다. private 레포에 같은 루프를 붙이면 job마다 1분 단위로 올림해 월 한도에서 빠지므로, 30분 cron만으로 하루 48분이 든다. 그때는 cron을 밤에만 돌리거나 간격을 늘린다
 - 사용량 한도로 멈춘 실행은 실패로 세지 않는다. 구현은 다음 cron이 다시 고르고, 리뷰·수정은 PR에 `agent-retry`를 달아 다음 cron이 다시 돌린다 (`scripts/agent/classify.mts`가 실행 기록으로 판단)
 - 규칙: `CLAUDE.md`, 역할별 지시: `.github/agent/*.md`, 리뷰 기준: `docs/review/*.md`
 
@@ -80,12 +82,12 @@ Agent report (07:00 KST)    지난 24시간 결과를 `agent-report` 이슈에 �
 
 ### 이슈를 고르는 조건
 
-cron이 돌 때마다 아래 순서로 확인하고, 하나라도 걸리면 그 회차는 아무것도 하지 않는다.
+실행될 때마다 아래 순서로 확인하고, 하나라도 걸리면 그 회차는 아무것도 하지 않는다.
 
 1. `AGENT_ENABLED`가 `true`다.
 2. `agent-retry` 라벨이 붙은 열린 PR이 없다. 있으면 새 이슈 대신 그 PR의 마지막 리뷰 실행을 다시 돌린다.
-3. `agent` 라벨이 붙은 열린 PR이 없다.
-4. (cron 실행만) 최근 12시간 동안 만든 `agent` PR이 `AGENT_MAX_PRS_PER_NIGHT`개 미만이다.
+3. `agent` 라벨이 붙은 열린 PR이 없다. `needs-human`이 붙은 PR은 세지 않는다.
+4. (자동 실행만) 최근 12시간 동안 만든 `agent` PR이 `AGENT_MAX_PRS_PER_NIGHT`개 미만이다. 이벤트로 이어 가다 무언가 잘못돼 PR을 계속 만드는 일을 막는다.
 5. 아래 조건을 모두 만족하는 이슈가 있다 (`scripts/agent/select.mts`).
    - 열려 있다.
    - `agent-ready` 라벨이 있다.
@@ -108,7 +110,7 @@ cron이 돌 때마다 아래 순서로 확인하고, 하나라도 걸리면 그 
 | `CLAUDE_CODE_OAUTH_TOKEN`                                             | secret   | `claude setup-token` (구독 사용)                                                                |
 | `AGENT_GH_TOKEN`                                                      | secret   | fine-grained PAT, 이 레포만, Contents·Pull requests·Issues 쓰기. Workflows 권한은 주지 않는다   |
 | `AGENT_ENABLED`                                                       | variable | `true`일 때만 돈다 (끄는 스위치)                                                                |
-| `AGENT_MAX_PRS_PER_NIGHT`                                             | variable | 기본 `6`. cron 실행에만 적용                                                                    |
+| `AGENT_MAX_PRS_PER_NIGHT`                                             | variable | 기본 `6`. 최근 12시간 PR 상한. 자동 실행(cron·이벤트)에만 적용                                  |
 | `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `2` / `2`                                                                                  |
 | `AGENT_MODEL`                                                         | variable | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR·리뷰 코멘트에 남는다 |
 | `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `medium` / `high` / `medium`                                                               |
