@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["comment", "title", "state", "wiki_message"],
+  "properties": {
+    "comment": {
+      "type": "string"
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "state": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["prd-draft"]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "wiki_message": {
+      "type": ["string", "null"]
+    }
+  }
+}

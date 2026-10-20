@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["notes", "comment", "wiki_message"],
+  "properties": {
+    "notes": {
+      "type": "string"
+    },
+    "comment": {
+      "type": "string"
+    },
+    "wiki_message": {
+      "type": ["string", "null"]
+    }
+  }
+}

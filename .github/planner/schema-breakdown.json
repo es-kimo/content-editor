@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["comment", "milestone_description", "issues", "wiki_message"],
+  "properties": {
+    "comment": {
+      "type": "string"
+    },
+    "milestone_description": {
+      "type": "string"
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "body", "labels", "agent"],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agent": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "wiki_message": {
+      "type": ["string", "null"]
+    }
+  }
+}
