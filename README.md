@@ -14,14 +14,15 @@ pnpm install
 pnpm dev            # http://localhost:3000
 ```
 
-| 명령                | 내용                                    |
-| ------------------- | --------------------------------------- |
-| `pnpm lint`         | ESLint                                  |
-| `pnpm format`       | Prettier로 전체 포맷                    |
-| `pnpm format:check` | 포맷 검사 (CI)                          |
-| `pnpm typecheck`    | 라우트 타입 생성(`next typegen`) 후 tsc |
-| `pnpm test`         | Vitest (`src/**/*.test.ts`)             |
-| `pnpm build`        | 프로덕션 빌드                           |
+| 명령                | 내용                                                                                                           |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `pnpm lint`         | ESLint                                                                                                         |
+| `pnpm format`       | Prettier로 전체 포맷                                                                                           |
+| `pnpm format:check` | 포맷 검사 (CI)                                                                                                 |
+| `pnpm typecheck`    | 라우트 타입 생성(`next typegen`) 후 tsc                                                                        |
+| `pnpm test`         | Vitest (`src/**/*.test.ts`)                                                                                    |
+| `pnpm build`        | 프로덕션 빌드                                                                                                  |
+| `pnpm e2e`          | 빌드한 앱을 가짜 GitHub로 띄워 Chrome으로 검증 (`e2e/`). `pnpm build` 뒤에 돌린다. Chrome 위치는 `CHROME_PATH` |
 
 PR마다 GitHub Actions가 `lint`, `format:check`, `typecheck`, `fixtures:sync`, `test`, `build`를 돌린다.
 
