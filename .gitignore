@@ -45,3 +45,6 @@ next-env.d.ts
 
 # agent work files
 /.agent/
+
+# 기획자 로컬 실행 폴더 (.github/planner/README.md)
+/.planner/
