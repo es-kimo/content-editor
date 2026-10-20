@@ -15,6 +15,14 @@ export {
   type CreatePostInput,
   type CreatePostResult,
 } from "./create-post";
+export {
+  createLeaveGuard,
+  leavingAreas,
+  traverseNeedsConfirm,
+  type Leave,
+  type LeaveGuard,
+  type LeaveGuardState,
+} from "./leave-guard";
 export { fetchBlobTexts, fetchTree, listPosts, matchPosts, type PostListItem, type TreeEntry } from "./posts";
 export {
   previewMessage,
