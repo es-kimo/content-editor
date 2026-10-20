@@ -4,7 +4,7 @@ import { Fragment, Suspense } from "react";
 import { LoginLink, repoHref } from "@/app/_lib/repo";
 import { pageAccessToken, type SearchParams } from "@/app/_lib/session";
 import { pageSiteScope } from "@/app/_lib/site";
-import { PageShell } from "@/app/_lib/ui";
+import { PageShell, TechDetails } from "@/app/_lib/ui";
 import { loadAccount, type Account } from "@/lib/auth";
 import { CONFIG_FILE, loadEditorConfig, type LoadedConfig } from "@/lib/editor-config";
 import { GitHubApiError, isUnauthorized } from "@/lib/github";
@@ -76,7 +76,8 @@ function RepoSection({ access, accessToken }: { access: RepoAccess<Repository>; 
         <section className="flex flex-col gap-2">
           <h2 className="font-medium">{access.repo}</h2>
           <p className="text-red-600">
-            이 계정은 {access.repo}에 접근할 권한이 없다. 레포 관리자에게 권한을 요청하거나 다른 계정으로 로그인한다.
+            이 계정은 {access.repo}에 접근할 권한이 없어요. 레포 관리자에게 권한을 요청하거나 다른 계정으로 로그인해
+            주세요.
           </p>
         </section>
       );
@@ -93,7 +94,7 @@ function RepoSection({ access, accessToken }: { access: RepoAccess<Repository>; 
         <section className="flex flex-col gap-2">
           <h2 className="font-medium">접근 가능한 레포</h2>
           {access.repos.length === 0 ? (
-            <p className="text-zinc-500">이 앱이 설치된 레포 중 접근할 수 있는 것이 없다.</p>
+            <p className="text-zinc-500">이 앱이 설치된 레포 중 열 수 있는 레포가 없어요.</p>
           ) : (
             <ul className="list-disc pl-5">
               {access.repos.map((r) => (
@@ -112,7 +113,7 @@ function RepoSection({ access, accessToken }: { access: RepoAccess<Repository>; 
 
 function RepoItem({ repo, accessToken }: { repo: Repository; accessToken: string }) {
   return (
-    <Suspense fallback={<p className="text-sm text-zinc-500">{CONFIG_FILE} 확인 중…</p>}>
+    <Suspense fallback={<p className="text-sm text-zinc-500">편집 설정 확인 중…</p>}>
       <ConfigStatus repo={repo.full_name} accessToken={accessToken} />
     </Suspense>
   );
@@ -123,16 +124,27 @@ async function ConfigStatus({ repo, accessToken }: { repo: string; accessToken: 
   try {
     loaded = await loadEditorConfig(repo, accessToken, fetch);
   } catch (e) {
-    if (e instanceof GitHubApiError) return <p className="text-sm text-red-600">{e.message}</p>;
+    if (e instanceof GitHubApiError) {
+      return (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm text-red-600">레포의 편집 설정을 읽지 못했어요. 잠시 뒤 다시 열어 주세요.</p>
+          <TechDetails items={[["오류 원문", e.message]]} />
+        </div>
+      );
+    }
     throw e;
   }
   switch (loaded.kind) {
     case "missing":
-      return <p className="text-sm text-zinc-500">레포 루트에 {CONFIG_FILE}이 없다.</p>;
+      return (
+        <p className="text-sm text-zinc-500">
+          레포 루트에 편집 설정 파일({CONFIG_FILE})이 없어요. 파일을 추가하면 글을 편집할 수 있어요.
+        </p>
+      );
     case "ok":
       return (
         <p className="text-sm text-zinc-500">
-          브랜치 {loaded.config.branch} · 컬렉션{" "}
+          브랜치 {loaded.config.branch} · 글 분류{" "}
           {loaded.config.collections.map((c, i) => (
             <Fragment key={c.name}>
               {i > 0 && ", "}
@@ -147,7 +159,7 @@ async function ConfigStatus({ repo, accessToken }: { repo: string; accessToken: 
       return (
         <div className="text-sm text-red-600">
           <p>
-            {CONFIG_FILE} 오류 {loaded.issues.length}건
+            편집 설정 파일({CONFIG_FILE})에 오류가 {loaded.issues.length}건 있어요. 아래 항목을 고쳐 주세요.
           </p>
           <ul className="list-disc pl-5">
             {loaded.issues.map((issue, i) => (

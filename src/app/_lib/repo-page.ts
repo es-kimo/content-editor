@@ -7,11 +7,11 @@ type Fetch = typeof fetch;
 
 export type RepoContext = { client: GitHubClient; config: EditorConfig };
 
-/** 레포 화면이 그릴 것. `login`은 로그인 링크, `refresh`는 그 주소로 이동, `config`는 안내 문구. */
+/** 레포 화면이 그릴 것. `login`은 로그인 링크, `refresh`는 그 주소로 이동, `config`는 안내 문구와 기술 상세의 원문. */
 export type RepoPage<T> =
   | { kind: "login" }
   | { kind: "refresh"; href: string }
-  | { kind: "config"; message: string }
+  | { kind: "config"; message: string; detail?: string }
   | { kind: "ok"; config: EditorConfig; value: T };
 
 /**
@@ -40,12 +40,26 @@ export async function prepareRepoPage<T>({
     loaded = await loadEditorConfig(repo, accessToken, fetchFn);
   } catch (e) {
     if (isUnauthorized(e)) return { kind: "login" };
-    if (e instanceof GitHubApiError) return { kind: "config", message: e.message };
+    if (e instanceof GitHubApiError) {
+      return {
+        kind: "config",
+        message: "레포의 편집 설정을 읽지 못했어요. 잠시 뒤 다시 열어 주세요.",
+        detail: e.message,
+      };
+    }
     throw e;
   }
-  if (loaded.kind === "missing") return { kind: "config", message: `${repo} 루트에 ${CONFIG_FILE}이 없다.` };
+  if (loaded.kind === "missing") {
+    return {
+      kind: "config",
+      message: `${repo}에 편집 설정 파일(${CONFIG_FILE})이 없어요. 레포 루트에 파일을 추가해 주세요.`,
+    };
+  }
   if (loaded.kind === "invalid") {
-    return { kind: "config", message: `${CONFIG_FILE} 오류 ${loaded.issues.length}건. 처음 화면에서 내용을 확인한다.` };
+    return {
+      kind: "config",
+      message: `레포의 편집 설정에 오류가 ${loaded.issues.length}건 있어요. 처음 화면에서 내용을 확인해 주세요.`,
+    };
   }
 
   try {

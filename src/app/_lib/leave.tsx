@@ -89,12 +89,12 @@ export function LeaveGuardProvider({
       {children}
       <ConfirmDialog
         open={pending !== null}
-        title="저장하지 않은 변경이 있다. 나가면 입력을 잃는다."
+        title="저장하지 않은 변경이 있어요. 나가면 입력이 사라져요."
         confirmLabel="변경 버리고 나가기"
         onKeep={() => guard.stay()}
         onConfirm={() => guard.leave()}
       >
-        <p className="text-sm">바뀐 영역: {areaNames(lost).join(", ")}</p>
+        <p className="text-sm">바뀐 곳: {areaNames(lost).join(", ")}</p>
       </ConfirmDialog>
     </LeaveGuardContext>
   );

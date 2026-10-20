@@ -14,7 +14,15 @@ import {
 
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
 import type { SaveState } from "@/lib/content/save-flow";
-import { FIELD_PREFIX, metadataFormChanged, splitTitleField, type FormField } from "@/lib/metadata-form";
+import { TechDetails } from "@/app/_lib/ui";
+import {
+  FIELD_PREFIX,
+  metadataFormChanged,
+  optionLabel,
+  REQUIRED_MESSAGE,
+  splitTitleField,
+  type FormField,
+} from "@/lib/metadata-form";
 
 import { SaveRow } from "./save-row";
 
@@ -91,7 +99,7 @@ export function MetadataForm({
       }
     },
     invalid: (field, input) => {
-      const message = input.validity.valueMissing ? "값을 입력해 주세요." : "형식에 맞게 입력해 주세요.";
+      const message = input.validity.valueMissing ? REQUIRED_MESSAGE : "형식에 맞게 입력해 주세요.";
       setInvalid((current) => ({
         version,
         errors: { ...(current.version === version ? current.errors : {}), [field.key]: message },
@@ -200,17 +208,32 @@ export function MetadataSettings() {
 
 function FieldRow({ field, input, error }: { field: FormField; input: ReactNode; error: string | undefined }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-sm font-medium">
-        {field.label}
-        {field.required && <span className="text-red-600"> *</span>}
-        <span className="ml-2 text-xs font-normal text-zinc-500">{field.key}</span>
-      </span>
-      {input}
-      {field.type === "string[]" && !field.locked && <span className="text-xs text-zinc-500">한 줄에 하나씩</span>}
-      {field.locked && <span className="text-xs text-amber-600">원문 모드에서만 고칠 수 있다: {field.locked}</span>}
-      {error && <span className="text-xs text-red-600">{error}</span>}
-    </label>
+    <div className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1">
+        <span className="text-sm font-medium">
+          {field.label}
+          {field.required && <span className="text-red-600"> *</span>}
+        </span>
+        {input}
+        {field.type === "string[]" && !field.locked && (
+          <span className="text-xs text-zinc-500">한 줄에 하나씩 입력해 주세요.</span>
+        )}
+        {field.locked && (
+          <span className="text-xs text-amber-600">
+            지금 값의 형식이 달라 여기서 고칠 수 없어요. 원문 편집에서 고쳐 주세요.
+          </span>
+        )}
+        {error && <span className="text-xs text-red-600">{error}</span>}
+      </label>
+      {field.locked && (
+        <TechDetails
+          items={[
+            ["항목 키", field.key],
+            ["잠긴 이유 원문", field.locked],
+          ]}
+        />
+      )}
+    </div>
   );
 }
 
@@ -260,7 +283,7 @@ function FieldInput({
           )}
           {field.options.map((option) => (
             <option key={option} value={option}>
-              {option}
+              {optionLabel(field.key, option)}
             </option>
           ))}
         </select>

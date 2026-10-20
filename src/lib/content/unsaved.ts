@@ -8,7 +8,7 @@ const AREA_NAMES: { [area in EditArea]: string } = {
   metadata: "글 설정",
   body: "본문",
   images: "첨부 이미지",
-  source: "원문",
+  source: "원문 편집",
   submenu: "하위 메뉴",
   title: "제목",
 };

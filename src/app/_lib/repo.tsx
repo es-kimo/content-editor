@@ -6,7 +6,7 @@ import { LeaveLink } from "@/app/_lib/leave";
 import { prepareRepoPage, type RepoContext } from "@/app/_lib/repo-page";
 import { readSession, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
-import { PRIMARY_BUTTON_CLASS } from "@/app/_lib/ui";
+import { PRIMARY_BUTTON_CLASS, TechDetails } from "@/app/_lib/ui";
 import type { Collection, EditorConfig } from "@/lib/editor-config";
 
 export function LoginLink() {
@@ -25,7 +25,7 @@ export const postHref = (repo: string, path: string) => `/repos/${repo}/post?${n
 export const newPostHref = (repo: string, collection?: string) =>
   `/repos/${repo}/new` + (collection === undefined ? "" : `?${new URLSearchParams({ collection })}`);
 
-/** 컬렉션 탭. 고른 컬렉션은 `aria-current`로 반전한다. 편집 화면에서는 미저장 입력을 잃기 전에 묻는다. */
+/** 글 분류 탭. 고른 글 분류는 `aria-current`로 반전한다. 편집 화면에서는 미저장 입력을 잃기 전에 묻는다. */
 export function CollectionTabs({
   config,
   current,
@@ -36,7 +36,10 @@ export function CollectionTabs({
   href: (collection: string) => string;
 }) {
   return (
-    <nav className="flex flex-wrap gap-2">
+    <nav aria-label="글 분류" className="flex flex-wrap items-center gap-2">
+      <span aria-hidden className="text-sm text-zinc-500">
+        글 분류
+      </span>
       {config.collections.map((c) => (
         <LeaveLink
           key={c.name}
@@ -78,6 +81,7 @@ export async function openRepoPage<T>(
             <Link href="/" className="text-sm underline">
               처음으로
             </Link>
+            {page.detail && <TechDetails items={[["오류 원문", page.detail]]} />}
           </div>
         ),
       };

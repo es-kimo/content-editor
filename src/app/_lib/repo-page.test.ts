@@ -61,9 +61,12 @@ describe("prepareRepoPage", () => {
     expect(page).toEqual({ kind: "login" });
   });
 
-  test("config가 없으면 레포 루트에 없다고 안내한다", async () => {
+  test("config가 없으면 레포 루트에 설정 파일을 추가하라고 안내한다", async () => {
     const page = await prepare(signedIn, [configRoute(() => json({ message: "Not Found" }, 404))]);
-    expect(page).toEqual({ kind: "config", message: `${REPO} 루트에 editor.config.json이 없다.` });
+    expect(page).toEqual({
+      kind: "config",
+      message: `${REPO}에 편집 설정 파일(editor.config.json)이 없어요. 레포 루트에 파일을 추가해 주세요.`,
+    });
   });
 
   test("config가 스키마에 맞지 않으면 오류 건수를 안내하고 글을 읽지 않는다", async () => {
@@ -73,9 +76,11 @@ describe("prepareRepoPage", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  test("config를 읽다가 401 말고 HTTP 오류가 나면 안내한다", async () => {
+  test("config를 읽다가 401 말고 HTTP 오류가 나면 다시 열라고 안내하고 오류 원문은 기술 상세로 돌려준다", async () => {
     const page = await prepare(signedIn, [configRoute(() => json({ message: "Server Error" }, 500))]);
-    expect(page.kind).toBe("config");
+    if (page.kind !== "config") throw new Error(`config가 아니다: ${page.kind}`);
+    expect(page.message).toBe("레포의 편집 설정을 읽지 못했어요. 잠시 뒤 다시 열어 주세요.");
+    expect(page.detail).toContain("HTTP 500");
   });
 
   test("글을 읽다가 401 말고 오류가 나면 그대로 던진다", async () => {

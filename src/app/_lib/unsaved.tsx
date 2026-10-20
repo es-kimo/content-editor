@@ -107,7 +107,7 @@ export function useSave(target: SaveTarget) {
 export function UnsavedNotice() {
   const areas = unsavedAreas(useFlowState(useFlow()).changed);
   if (areas.length === 0) return null;
-  return <p className="text-sm text-amber-600">저장하지 않은 변경이 있다. 바뀐 영역: {areas.join(", ")}</p>;
+  return <p className="text-sm text-amber-600">저장하지 않은 변경이 있어요. 바뀐 곳: {areas.join(", ")}</p>;
 }
 
 /** 저장으로 다른 영역의 미저장 입력이 사라질 때 묻는다. */
@@ -116,16 +116,16 @@ function DiscardDialog({ flow }: { flow: SaveFlow }) {
   return (
     <ConfirmDialog
       open={phase.kind === "confirming"}
-      title="다른 영역의 저장하지 않은 입력이 사라진다"
+      title="저장하면 다른 곳의 저장하지 않은 입력이 사라져요"
       confirmLabel="다른 변경 버리고 저장"
       onKeep={() => flow.cancel()}
       onConfirm={() => flow.confirm()}
     >
       <p className="text-sm">
-        저장하면 저장한 파일로 다시 열려 입력이 사라지는 영역:{" "}
+        저장한 글로 다시 열면서 입력이 사라지는 곳:{" "}
         {phase.kind === "confirming" && areaNames(phase.discarded).join(", ")}
       </p>
-      <p className="text-xs text-zinc-500">저장이 실패하면 모든 입력이 그대로 남는다.</p>
+      <p className="text-xs text-zinc-500">저장이 실패하면 모든 입력이 그대로 남아요.</p>
     </ConfirmDialog>
   );
 }

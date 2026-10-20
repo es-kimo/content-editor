@@ -31,11 +31,7 @@ export function NewPostForm({
   useReportUnsaved("submenu", changes.submenu);
   const fieldErrors = save.state.status === "error" ? (save.state.fields ?? {}) : {};
   // 아직 입력하지 않은 자리는 자리 이름으로 채워, 만들 글이 어디에 생길지 처음부터 보여 준다.
-  const path = newPostPath(
-    collection,
-    postSlug(title) ?? "(제목을 입력한다)",
-    submenus ? submenu || "(하위 메뉴)" : undefined,
-  );
+  const path = newPostPath(collection, postSlug(title) ?? "(제목)", submenus ? submenu || "(하위 메뉴)" : undefined);
 
   return (
     <form
