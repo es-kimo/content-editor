@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { yjshdConfig } from "@/test/config";
+import { blogConfig, yjshdConfig } from "@/test/config";
 
 import { buildForm } from "./form";
 import { newMetadata } from "./new-metadata";
@@ -16,10 +16,16 @@ describe("newMetadata", () => {
     expect(Object.keys(metadata)).toEqual(["title", "description", "keywords", "other"]);
   });
 
-  test("status는 첫 선택지, createdAt은 지금 시각을 초 단위 UTC로 채운다", () => {
-    const metadata = newMetadata(board!, "11월 휴진 안내", NOW);
+  test("status는 첫 선택지가 ready여도 draft, createdAt은 지금 시각을 초 단위 UTC로 채운다", () => {
+    for (const collection of [...yjshdConfig().collections, ...blogConfig().collections]) {
+      const metadata = newMetadata(collection, "11월 휴진 안내", NOW);
 
-    expect(metadata.other).toEqual({ createdAt: "2026-10-19T03:04:05Z", status: "ready" });
+      expect(metadata.other).toEqual({ createdAt: "2026-10-19T03:04:05Z", status: "draft" });
+    }
+  });
+
+  test("status가 아닌 select는 첫 선택지로 채운다", () => {
+    expect(newMetadata(lecture!, "새 글", NOW).category).toBe("예방·관리");
   });
 
   test("문자열은 빈 문자열, 목록은 빈 배열로 둔다", () => {

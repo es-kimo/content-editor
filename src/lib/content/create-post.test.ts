@@ -49,7 +49,7 @@ describe("createPost", () => {
     );
     expect(listed.find((post) => post.path === path)).toMatchObject({
       title: "11월 휴진 안내",
-      status: "ready",
+      status: "draft",
       createdAt: "2026-10-19T03:04:05Z",
       problem: null,
     });
