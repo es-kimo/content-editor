@@ -17,10 +17,10 @@
 4. 조사용으로 만든 임시 파일을 지우고 `pnpm format`을 돌린 뒤 `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm build`를 모두 통과시킨다. e2e는 고친 동작을 다루는 파일만 `pnpm e2e e2e/<파일>`로 돌린다. 전체 e2e는 CI가 돌린다.
 5. `CLAUDE.md` 형식으로 커밋한다. push는 하지 않는다.
 
-테스트를 지우거나 skip해서, 또는 기대값을 바꿔서 통과시키지 않는다. 그렇게밖에 못 고치면 `status: "blocked"`로 멈춘다.
+테스트를 지우거나 skip해서, 또는 기대값을 바꿔서 통과시키지 않는다. 그렇게밖에 못 고치면 `status: "blocked"`로 멈춘다. 고치면서 새로 정한 것이 있으면 `.agent/pr.md`의 `## 에이전트가 정한 것`에 더한다. 그 밖에 멈출지는 `CLAUDE.md`의 "정할 것이 생겼을 때"를 따른다.
 
 마지막 응답은 JSON 스키마를 따른다.
 
 - `status`: `done` 또는 `blocked`
 - `summary`: PR 코멘트로 올라간다. 한국어 해라체로 항목마다 1~2문장: 원인의 핵심 → 무엇을 바꿨는지. 고치지 않았으면 근거. 검증 과정과 수치 나열은 쓰지 않고, 끝에 실행한 검사 결과를 한 줄로 쓴다.
-- `blocked_reason`: blocked일 때 사람이 무엇을 정해야 하는지
+- `blocked_reason`: blocked일 때. 사람이 답만 하면 되게 쓴다: 정할 것 한 줄, 선택지와 각각의 결과, 추천과 이유.

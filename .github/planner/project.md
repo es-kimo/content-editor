@@ -17,14 +17,14 @@ Git 레포의 MDX 글을 웹에서 편집하고 그 레포에 커밋하는 에�
 
 ## 에이전트에게 맡기는 것과 사람이 할 것
 
-`agent: true`면 개발 에이전트가 이슈가 만들어지는 대로 순서대로 구현해 리뷰 후 merge까지 한다. 아래에 하나라도 해당하면 `agent: false`(사람 작업)로 한다.
+`agent: true`면 개발 에이전트가 밤마다 순서대로 구현해 리뷰 후 merge까지 한다. 사람의 시간은 기획에 쓰므로, 아래에 하나라도 해당할 때만 `agent: false`(사람 작업)로 한다.
 
 - 이 레포 밖의 변경: es-kimo/site, blog, yjshd 레포
 - DNS, 배포 설정, GitHub App·계정·시크릿 설정
-- 에이전트가 수정할 수 없는 파일: `.github/`, `CLAUDE.md`, `AGENTS.md`, `fixtures.config.json`, `scripts/sync-fixtures.mts`, `scripts/agent/`, `github-app/`, `scripts/github-app/`, `docs/review/`, `eslint.config.mjs`
+- 에이전트가 수정할 수 없는 파일: `.github/`, `CLAUDE.md`, `AGENTS.md`, `fixtures.config.json`, `scripts/sync-fixtures.mts`, `scripts/agent/`, `github-app/`, `scripts/github-app/`, `eslint.config.mjs`
 - 결과가 코드가 아니라 조사·측정 기록인 것(`spike` 라벨)
 - 완료 기준을 브라우저에서 사람이 봐야만 확인할 수 있는 것
-- 설계 선택이 PRD에서 정해지지 않은 것
+- PRD에서 정하지 않았고 되돌리기 어려운 설계 선택. 되돌릴 수 있는 선택은 에이전트가 정하고 PR 본문에 적는다
 
 사람 작업 이슈의 할 일은 사용자가 그대로 따라 할 수 있게 쓴다.
 

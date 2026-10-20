@@ -22,11 +22,13 @@ pnpm format          # 포맷 자동 수정
 
 ## 금지
 
-- `.github/`, `CLAUDE.md`, `AGENTS.md`, `fixtures.config.json`, `scripts/sync-fixtures.mts`, `scripts/agent/`, `github-app/`, `scripts/github-app/`, `docs/review/`, `eslint.config.mjs` 수정
+- `.github/`, `CLAUDE.md`, `AGENTS.md`, `fixtures.config.json`, `scripts/sync-fixtures.mts`, `scripts/agent/`, `github-app/`, `scripts/github-app/`, `eslint.config.mjs` 수정
 - 테스트를 지우거나 `.skip`, `.only`, `skipIf`를 새로 넣어 통과시키기
 - 기대값을 실제 결과에 맞춰 바꾸기 (픽스처 기대 글 수 등)
-- 이슈 범위 밖의 리팩터링, 의존성 메이저 업그레이드
+- 이슈와 상관없는 정리, 의존성 메이저 업그레이드
 - `main`에 직접 push, force push
+
+이슈를 하는 데 필요한 리팩터링은 한다. `docs/review/`는 이슈가 요구하거나 구현에 맞춰 기준을 고쳐야 할 때 고치되, 기준을 낮춰 통과시키지 않는다. 둘 다 PR 본문 `## 에이전트가 정한 것`에 무엇을 왜 바꿨는지 적는다.
 
 ## 코드 관례
 
@@ -51,6 +53,15 @@ pnpm format          # 포맷 자동 수정
 
 type: `feat`, `fix`, `test`, `refactor`, `chore`, `docs`.
 
-## 막혔을 때
+## 정할 것이 생겼을 때
 
-사람의 결정이 필요하거나(설계 선택, 외부 계정·자격증명), 완료 기준이 모호하면 추측으로 진행하지 않는다. 멈추고 이유를 남긴다.
+되돌릴 수 있는 결정은 스스로 정하고 진행한다. PRD·이슈·`docs/review/`에 비추어 가장 맞는 쪽을 고르고, PR 본문 `## 에이전트가 정한 것`에 고른 것·다른 선택지·이유를 적는다. 완료 기준이 여러 뜻으로 읽히면 PRD에 가장 가까운 해석을 고르고 같은 곳에 적는다. 사람은 코드보다 PR 본문을 읽는다.
+
+아래일 때만 멈춘다.
+
+- 외부 계정·자격증명, 다른 레포, 배포 설정이 필요하다.
+- 위 금지 파일을 바꿔야만 할 수 있다.
+- PRD와 부딪쳐서 어느 쪽을 골라도 제품 방향이 바뀐다.
+- 기존 글 원문이나 사용자 데이터를 되돌릴 수 없게 바꾸는 결정이다.
+
+멈출 때는 사람이 답만 하면 되게 쓴다: 정할 것 한 줄, 선택지와 각각의 결과, 추천과 이유.
