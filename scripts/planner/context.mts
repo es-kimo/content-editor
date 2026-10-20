@@ -47,6 +47,26 @@ export function renderState(s: RepoState): string {
   ].join("\n");
 }
 
+export type ReleaseItem = { number: number; title: string; pulls: number[] };
+
+/**
+ * 마일스톤 이슈로 만든 릴리즈 노트. 에이전트 PR 제목이 이미 한 문장 요약이라 모델 없이 이슈 제목을 그대로 쓴다.
+ * PR이 있는 이슈는 변경, 없는 이슈는 사람이 한 작업으로 나눈다.
+ */
+export function renderReleaseNotes(version: string, repo: string, items: ReleaseItem[]): string {
+  const line = (i: ReleaseItem) => {
+    const refs = i.pulls.length ? i.pulls : [i.number];
+    return `- ${i.title.replace(/^\[v\d+\.\d+\]\s*/, "")} (${refs.map((n) => `#${n}`).join(", ")})`;
+  };
+  const sorted = [...items].sort((a, b) => a.number - b.number);
+  const changed = sorted.filter((i) => i.pulls.length);
+  const manual = sorted.filter((i) => !i.pulls.length);
+  const parts = [`[${version} PRD](https://github.com/${repo}/wiki/${version}-PRD)`];
+  if (changed.length) parts.push(["## 변경", ...changed.map(line)].join("\n"));
+  if (manual.length) parts.push(["## 사람이 한 작업", ...manual.map(line)].join("\n"));
+  return parts.join("\n\n") + "\n";
+}
+
 export function renderHeader(job: Job, s: RepoState): string {
   const target =
     job.mode === "converse" || job.mode === "breakdown"

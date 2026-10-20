@@ -3,14 +3,21 @@
  *
  *   node scripts/planner/run.mts jobs                 # 이번 이벤트에서 할 일 목록(JSON 배열)
  *   node scripts/planner/run.mts context '<job>'      # $PLANNER_DIR/context.md 작성
- *   node scripts/planner/run.mts apply '<job>' out.json
+ *   node scripts/planner/run.mts apply '<job>' [out.json]  # release는 모델 출력 없이 반영한다
  *   node scripts/planner/run.mts fail '<job>' [out.json]   # 실패를 기획 이슈에 알린다
  *
  * env: GH_TOKEN(기획자 봇), REPO, OWNER, EVENT_NAME, EVENT_ACTION, GITHUB_EVENT_PATH, MODE, PLANNER_DIR, MODEL, EFFORT, RUN_URL
  */
 import { readFile, writeFile } from "node:fs/promises";
 
-import { renderConversation, renderHeader, renderState, type RepoState } from "./context.mts";
+import {
+  renderConversation,
+  renderHeader,
+  renderReleaseNotes,
+  renderState,
+  type ReleaseItem,
+  type RepoState,
+} from "./context.mts";
 import {
   createGitHub,
   type ApiComment,
@@ -21,6 +28,7 @@ import {
 } from "./github.mts";
 import {
   blockedReason,
+  parseOutput,
   LABEL,
   nextJob,
   nextVersion,
@@ -142,16 +150,15 @@ async function repoState(): Promise<RepoState> {
   };
 }
 
-async function releaseSection(milestone: number): Promise<string> {
+/** 마일스톤 이슈와 그 이슈를 닫은 merge된 PR. */
+async function releaseItems(milestone: number): Promise<ReleaseItem[]> {
   const issues = issuesOnly(await gh.list<ApiIssue>(`${base}/issues?state=all&milestone=${milestone}`));
   const pulls = (await gh.list<ApiPull>(`${base}/pulls?state=closed`)).filter((p) => p.merged_at);
-  const lines = ["# 이번 버전의 이슈와 PR", ""];
-  for (const i of issues) {
-    const closing = pulls.filter((p) => new RegExp(`Closes #${i.number}\\b`).test(p.body ?? ""));
-    lines.push(`## #${i.number} ${i.title}`, "", ...closing.map((p) => `- PR #${p.number} ${p.title}`), "");
-    lines.push("<details><summary>이슈 본문</summary>", "", (i.body ?? "").trim(), "", "</details>", "");
-  }
-  return lines.join("\n");
+  return issues.map((i) => ({
+    number: i.number,
+    title: i.title,
+    pulls: pulls.filter((p) => new RegExp(`Closes #${i.number}\\b`).test(p.body ?? "")).map((p) => p.number),
+  }));
 }
 
 async function context(job: Job): Promise<void> {
@@ -161,14 +168,14 @@ async function context(job: Job): Promise<void> {
     const issue = await gh.request<ApiIssue>(`${base}/issues/${job.issue}`);
     parts.push(renderConversation(await toPlanning(issue), await people()));
   }
-  if (job.mode === "release") parts.push(await releaseSection(job.milestone));
   parts.push(renderState(state));
   await writeFile(`${dir}/context.md`, parts.join("\n\n---\n\n") + "\n");
 }
 
 function footer(): string {
   const run = process.env.RUN_URL ? ` · [실행 로그](${process.env.RUN_URL})` : "";
-  return `\n\n---\n<sub>기획자 · ${process.env.MODEL ?? "?"} · effort ${process.env.EFFORT ?? "?"}${run}</sub>`;
+  const model = process.env.MODEL ? ` · ${process.env.MODEL} · effort ${process.env.EFFORT ?? "?"}` : "";
+  return `\n\n---\n<sub>기획자${model}${run}</sub>`;
 }
 
 const comment = (issue: number, body: string) =>
@@ -192,7 +199,6 @@ type BreakdownOut = {
   issues: { title: string; body: string; labels: string[]; agent: boolean }[];
 };
 type ProposeOut = { title: string; body: string };
-type ReleaseOut = { notes: string; comment: string };
 
 async function applyConverse(job: Extract<Job, { mode: "converse" }>, out: ConverseOut): Promise<void> {
   const issue = await gh.request<ApiIssue>(`${base}/issues/${job.issue}`);
@@ -254,14 +260,15 @@ async function applyPropose(out: ProposeOut): Promise<void> {
   console.log(`제안 이슈 #${issue.number}`);
 }
 
-async function applyRelease(job: Extract<Job, { mode: "release" }>, out: ReleaseOut): Promise<void> {
+async function applyRelease(job: Extract<Job, { mode: "release" }>): Promise<void> {
   const tag = `${job.version}.0`;
   const releases = await gh.list<{ tag_name: string; html_url: string }>(`${base}/releases`);
+  const notes = renderReleaseNotes(job.version, repo, await releaseItems(job.milestone));
   const release =
     releases.find((r) => r.tag_name === tag) ??
     (await gh.request<{ html_url: string }>(`${base}/releases`, {
       method: "POST",
-      body: { tag_name: tag, target_commitish: "main", name: job.version, body: out.notes, draft: true },
+      body: { tag_name: tag, target_commitish: "main", name: job.version, body: notes, draft: true },
     }));
   const m = await gh.request<ApiMilestone>(`${base}/milestones/${job.milestone}`, {
     method: "PATCH",
@@ -271,14 +278,16 @@ async function applyRelease(job: Extract<Job, { mode: "release" }>, out: Release
   if (planning) {
     await comment(
       planning,
-      `${out.comment}\n\n릴리즈 초안: ${release.html_url}\n확인 후 publish하면 \`${tag}\` 태그가 생겨요.`,
+      `${job.version} 이슈가 모두 닫혀서 릴리즈 초안을 만들었어요.\n\n릴리즈 초안: ${release.html_url}\n확인 후 publish하면 \`${tag}\` 태그가 생겨요.`,
     );
     await gh.request(`${base}/issues/${planning}`, { method: "PATCH", body: { state: "closed" } });
   }
 }
 
-async function apply(job: Job, outPath: string): Promise<void> {
-  const out = JSON.parse(await readFile(outPath, "utf8")) as unknown;
+async function apply(job: Job, outPath: string | undefined): Promise<void> {
+  // 릴리즈는 모델 없이 마일스톤 이슈로 노트를 만든다.
+  if (job.mode === "release") return applyRelease(job);
+  const out = JSON.parse(await readFile(outPath!, "utf8")) as unknown;
   const reason = blockedReason(out);
   if (reason) throw new Error(`기획자가 멈춤: ${reason}`);
   switch (job.mode) {
@@ -288,19 +297,12 @@ async function apply(job: Job, outPath: string): Promise<void> {
       return applyBreakdown(job, out as BreakdownOut);
     case "propose":
       return applyPropose(out as ProposeOut);
-    case "release":
-      return applyRelease(job, out as ReleaseOut);
   }
 }
 
 async function fail(job: Job, outPath: string | undefined): Promise<void> {
   if (job.mode !== "converse" && job.mode !== "breakdown") return;
-  const out = outPath
-    ? await readFile(outPath, "utf8").then(
-        (text) => JSON.parse(text) as unknown,
-        () => null,
-      )
-    : null;
+  const out = parseOutput(outPath ? await readFile(outPath, "utf8").catch(() => null) : null);
   const reason = out ? blockedReason(out) : null;
   // 실패도 봇의 마지막 글이 되므로 같은 이슈를 계속 다시 돌리지 않는다. 다시 하려면 사용자가 코멘트를 단다.
   await comment(
@@ -319,7 +321,7 @@ switch (command) {
     await context(job!);
     break;
   case "apply":
-    await apply(job!, outPath!);
+    await apply(job!, outPath);
     break;
   case "fail":
     await fail(job!, outPath);

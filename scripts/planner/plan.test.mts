@@ -5,6 +5,7 @@ import {
   conversation,
   nextJob,
   nextVersion,
+  parseOutput,
   planningIssueOf,
   proposalBlocker,
   refErrors,
@@ -149,6 +150,18 @@ describe("blockedReason", () => {
     expect(blockedReason({ title: "실행 환경 오류로 진행 불가", body: "..." })).toBe("이유 없음");
     expect(blockedReason({ status: "blocked", blocked_reason: "" })).toBe("이유 없음");
     expect(blockedReason(null)).toBe("이유 없음");
+  });
+});
+
+describe("parseOutput", () => {
+  test("JSON이면 읽고, 없거나 비었거나 깨졌으면 null", () => {
+    expect(parseOutput('{"status":"blocked","blocked_reason":"x"}')).toEqual({
+      status: "blocked",
+      blocked_reason: "x",
+    });
+    expect(parseOutput(null)).toBeNull();
+    expect(parseOutput("")).toBeNull();
+    expect(parseOutput('{"status":')).toBeNull();
   });
 });
 

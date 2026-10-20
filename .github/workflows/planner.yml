@@ -26,8 +26,12 @@ permissions:
 env:
   REPO: ${{ github.repository }}
   OWNER: ${{ github.repository_owner }}
-  MODEL: ${{ vars.PLANNER_MODEL || 'gpt-6-astra' }}
+  # 대화·제안(기획)은 Codex, 이슈 나누기(코드를 읽고 이슈를 쓰는 엔지니어링)는 구현과 같은 Claude, 릴리즈는 모델 없이.
+  # GPT 구독(Plus) 사용량을 기획에만 쓰고, 여유 있는 Claude(Max) 구독으로 가장 비싼 이슈 나누기를 넘긴다.
+  CODEX_MODEL: ${{ vars.PLANNER_MODEL || 'gpt-6-astra' }}
   CODEX_VERSION: "0.163.0"
+  CLAUDE_MODEL: ${{ vars.PLANNER_CLAUDE_MODEL || vars.AGENT_MODEL || 'claude-opus-5-5' }}
+  CLAUDE_VERSION: "2.1.303"
   # GitHub 러너에서 Codex 샌드박스가 돌지 않으면 danger-full-access로 바꾼다 (러너는 실행마다 버려진다).
   SANDBOX: ${{ vars.PLANNER_SANDBOX || 'workspace-write' }}
   PLANNER_DIR: ${{ github.workspace }}/.planner
@@ -82,19 +86,27 @@ jobs:
         id: prep
         if: steps.jobs.outputs.list != '[]'
         env:
+          JOBS: ${{ steps.jobs.outputs.list }}
           GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
         run: |
-          # ubuntu-24.04는 AppArmor가 일반 사용자의 user namespace 권한을 막아, Codex 샌드박스(bwrap)가
-          # 네트워크를 만들다 `RTM_NEWADDR: Operation not permitted`로 실패한다. 러너는 실행마다 버려지므로 제한을 푼다.
-          if [ "$SANDBOX" != "danger-full-access" ]; then
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          mkdir -p "$PLANNER_DIR"
+          # 이번 할 일에 필요한 CLI만 설치한다. Codex 토큰도 Codex를 쓸 때만 꺼내므로 되쓰기도 그때만 돈다.
+          if jq -e 'any(.[]; .mode == "converse" or .mode == "propose")' <<<"$JOBS" > /dev/null; then
+            # ubuntu-24.04는 AppArmor가 일반 사용자의 user namespace 권한을 막아, Codex 샌드박스(bwrap)가
+            # 네트워크를 만들다 `RTM_NEWADDR: Operation not permitted`로 실패한다. 러너는 실행마다 버려지므로 제한을 푼다.
+            if [ "$SANDBOX" != "danger-full-access" ]; then
+              sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+            fi
+            npm install -g "@openai/codex@${CODEX_VERSION}"
+            mkdir -p ~/.codex
+            printf '%s' "$CODEX_AUTH_JSON" > ~/.codex/auth.json
+            chmod 600 ~/.codex/auth.json
+            echo "auth_sha=$(sha256sum ~/.codex/auth.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           fi
-          npm install -g "@openai/codex@${CODEX_VERSION}"
-          mkdir -p ~/.codex "$PLANNER_DIR"
-          printf '%s' "$CODEX_AUTH_JSON" > ~/.codex/auth.json
-          chmod 600 ~/.codex/auth.json
-          echo "auth_sha=$(sha256sum ~/.codex/auth.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          if jq -e 'any(.[]; .mode == "breakdown")' <<<"$JOBS" > /dev/null; then
+            npm install -g "@anthropic-ai/claude-code@${CLAUDE_VERSION}"
+          fi
 
           gh label create planning -R "$REPO" --color 5319e7 --description "기획자와 대화하는 이슈" --force
           gh label create planner-report -R "$REPO" --color c5def5 --description "기획자 제안 보고서" --force
@@ -106,60 +118,84 @@ jobs:
           git -C "$PLANNER_DIR/wiki" config user.name "${bot% *}"
           git -C "$PLANNER_DIR/wiki" config user.email "${bot#* }+${bot% *}@users.noreply.github.com"
 
-      - name: 기획 (Codex)
+      - name: 기획
         if: steps.jobs.outputs.list != '[]'
         env:
           JOBS: ${{ steps.jobs.outputs.list }}
           BOT_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           EFFORT_CONVERSE: ${{ vars.PLANNER_EFFORT_CONVERSE || 'medium' }}
           EFFORT_BREAKDOWN: ${{ vars.PLANNER_EFFORT_BREAKDOWN || 'high' }}
           EFFORT_PROPOSE: ${{ vars.PLANNER_EFFORT_PROPOSE || 'medium' }}
-          EFFORT_RELEASE: ${{ vars.PLANNER_EFFORT_RELEASE || 'low' }}
         run: |
           # wiki push 인증은 명령마다 헤더로 넘긴다. remote URL이나 git config에 두면 모델이 읽을 수 있다.
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$BOT_TOKEN" | base64 -w0)"
           wiki="$PLANNER_DIR/wiki"
           failed=0
-          while read -r job; do
-            mode=$(jq -r .mode <<<"$job")
-            case "$mode" in
-              converse) effort=$EFFORT_CONVERSE ;;
-              breakdown) effort=$EFFORT_BREAKDOWN ;;
-              propose) effort=$EFFORT_PROPOSE ;;
-              release) effort=$EFFORT_RELEASE ;;
-            esac
-            echo "::group::$job (effort $effort)"
-            git -C "$wiki" reset --quiet --hard && git -C "$wiki" clean -fdq
-            rm -f "$PLANNER_DIR/out.json"
-            GH_TOKEN="$BOT_TOKEN" node scripts/planner/run.mts context "$job" < /dev/null
 
-            # 반복문의 stdin(할 일 목록)을 codex가 프롬프트로 읽지 않게 /dev/null을 준다.
-            # 레포 AGENTS.md는 개발 에이전트용이라 읽지 않는다(project_doc_max_bytes=0).
-            if env -u BOT_TOKEN -u GH_TOKEN codex exec \
+          # 모델을 돌려 $PLANNER_DIR/out.json을 만든다. 반복문의 stdin(할 일 목록)을 모델이 프롬프트로 읽지 않게 /dev/null을 준다.
+          think() {
+            local prompt="\`../.github/planner/role.md\`를 읽고 따른다. 이번 모드는 \`$mode\`이고 지시는 \`../.github/planner/$mode.md\`에 있다. 입력은 \`context.md\`에 있다."
+            local schema="$GITHUB_WORKSPACE/.github/planner/schema-$mode.json"
+            if [ "$mode" = "breakdown" ]; then
+              # Bash는 검색만 허용한다. 레포 코드는 --add-dir로 읽고, 쓰기는 wiki만 저장된다.
+              (cd "$PLANNER_DIR" && env -u BOT_TOKEN -u GH_TOKEN claude -p "$prompt" \
+                --model "$model" --fallback-model sonnet --effort "$effort" --max-turns 80 \
+                --output-format json --json-schema "$(jq -c . "$schema")" \
+                --permission-mode acceptEdits --add-dir "$GITHUB_WORKSPACE" \
+                --allowedTools "Read,Glob,Grep,Edit,Write,Bash(rg *),Bash(ls *)" \
+                < /dev/null > "$PLANNER_DIR/claude.json") || return 1
+              jq -c '{subtype, num_turns, usage: (.usage | {input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens})}' "$PLANNER_DIR/claude.json"
+              jq -e '.structured_output // empty' "$PLANNER_DIR/claude.json" > "$PLANNER_DIR/out.json"
+            else
+              # 레포 AGENTS.md는 개발 에이전트용이라 읽지 않는다(project_doc_max_bytes=0).
+              env -u BOT_TOKEN -u GH_TOKEN -u CLAUDE_CODE_OAUTH_TOKEN codex exec \
                 --cd "$PLANNER_DIR" \
-                --model "$MODEL" \
+                --model "$model" \
                 --config "model_reasoning_effort=\"$effort\"" \
                 --config "project_doc_max_bytes=0" \
                 --sandbox "$SANDBOX" \
                 --ephemeral \
-                --output-schema "$GITHUB_WORKSPACE/.github/planner/schema-$mode.json" \
+                --output-schema "$schema" \
                 --output-last-message "$PLANNER_DIR/out.json" \
-                "\`../.github/planner/role.md\`를 읽고 따른다. 이번 모드는 \`$mode\`이고 지시는 \`../.github/planner/$mode.md\`에 있다. 입력은 \`context.md\`에 있다." \
-                < /dev/null \
-              && jq -e . "$PLANNER_DIR/out.json" > /dev/null; then
+                "$prompt" < /dev/null \
+                && jq -e . "$PLANNER_DIR/out.json" > /dev/null
+            fi
+          }
+
+          while read -r job; do
+            mode=$(jq -r .mode <<<"$job")
+            case "$mode" in
+              converse) model=$CODEX_MODEL effort=$EFFORT_CONVERSE ;;
+              propose) model=$CODEX_MODEL effort=$EFFORT_PROPOSE ;;
+              breakdown) model=$CLAUDE_MODEL effort=$EFFORT_BREAKDOWN ;;
+              release) model="" effort="" ;;
+            esac
+            echo "::group::$job ${model:+($model, effort $effort)}"
+            if [ "$mode" = "release" ]; then
+              # 릴리즈 노트는 마일스톤 이슈와 그 PR로 만든다. 모델을 쓰지 않는다.
+              GH_TOKEN="$BOT_TOKEN" node scripts/planner/run.mts apply "$job" < /dev/null || failed=1
+              echo "::endgroup::"
+              continue
+            fi
+
+            git -C "$wiki" reset --quiet --hard && git -C "$wiki" clean -fdq
+            rm -f "$PLANNER_DIR/out.json"
+            GH_TOKEN="$BOT_TOKEN" node scripts/planner/run.mts context "$job" < /dev/null
+            if think; then
               msg=$(jq -r 'select(.status == "done") | .wiki_message // empty' "$PLANNER_DIR/out.json")
               if [ -n "$msg" ] && [ -n "$(git -C "$wiki" status --porcelain)" ]; then
                 git -C "$wiki" add -A
                 git -C "$wiki" commit --quiet -m "$msg"
                 git -C "$wiki" -c http.extraheader="$auth" push --quiet
               fi
-              if ! GH_TOKEN="$BOT_TOKEN" EFFORT="$effort" node scripts/planner/run.mts apply "$job" "$PLANNER_DIR/out.json" < /dev/null; then
+              if ! GH_TOKEN="$BOT_TOKEN" MODEL="$model" EFFORT="$effort" node scripts/planner/run.mts apply "$job" "$PLANNER_DIR/out.json" < /dev/null; then
                 failed=1
-                GH_TOKEN="$BOT_TOKEN" EFFORT="$effort" node scripts/planner/run.mts fail "$job" "$PLANNER_DIR/out.json" < /dev/null || true
+                GH_TOKEN="$BOT_TOKEN" MODEL="$model" EFFORT="$effort" node scripts/planner/run.mts fail "$job" "$PLANNER_DIR/out.json" < /dev/null || true
               fi
             else
               failed=1
-              GH_TOKEN="$BOT_TOKEN" EFFORT="$effort" node scripts/planner/run.mts fail "$job" "$PLANNER_DIR/out.json" < /dev/null || true
+              GH_TOKEN="$BOT_TOKEN" MODEL="$model" EFFORT="$effort" node scripts/planner/run.mts fail "$job" "$PLANNER_DIR/out.json" < /dev/null || true
             fi
             echo "::endgroup::"
           done < <(jq -c '.[]' <<<"$JOBS")
