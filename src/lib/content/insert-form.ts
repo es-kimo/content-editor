@@ -4,6 +4,7 @@ import {
   addFootnoteRef,
   addImageAt,
   addToc,
+  footnoteRefChoices,
   hasTocHeading,
   imageTag,
   printMdx,
@@ -11,6 +12,7 @@ import {
   removeToc,
   setBody,
   setInsertText,
+  type FootnoteRefChoice,
   type InsertEdit,
   type InsertItem,
   type InsertKind,
@@ -38,7 +40,7 @@ export type TocInsertItem = Extract<InsertItem, { kind: "toc" }>;
 export type InsertPlace = { at: InsertSpan; opened: string };
 
 /** 출처 폼에서 고를 수 있는 각주. */
-export type FootnoteChoice = { id: number; text: string };
+export type FootnoteChoice = FootnoteRefChoice;
 
 /**
  * 폼이 고칠 대상. 폼을 연 영역의 원문(일반 편집은 본문 앞에 import·metadata를 붙인 원문, 원문 편집은 파일 전체)에서 읽은 위치다.
@@ -68,7 +70,7 @@ export type InsertFormApply =
 
 /**
  * 넣기 메뉴로 고른 항목의 폼 대상. 출처 폼에서 고를 각주와 목차 안내를 `source`(폼을 연 영역의 원문)에서 정한다.
- * 출처는 이미 다른 출처가 가리키는 각주를 고를 수 없다.
+ * 출처는 `footnoteRefChoices`가 연결할 수 있다고 한 각주만 고른다.
  */
 export function newInsertTarget<K extends NewInsertKind>(
   kind: K,
@@ -81,17 +83,10 @@ export function newInsertTarget<K extends NewInsertKind>(
 
 function newTarget(kind: NewInsertKind, source: string, place: InsertPlace | null, syntax: Syntax): InsertFormTarget {
   if (kind === "footnote") return { kind, place };
+  if (kind === "footnote-ref") return { kind, place, choices: footnoteRefChoices(source, syntax) };
   const list = readInserts(source, syntax);
-  const items = list.ok ? list.items : [];
-  if (kind === "toc") {
-    const exists = list.ok && [...list.items, ...list.limited].some((entry) => entry.kind === "toc");
-    return { kind, place, exists, heading: hasTocHeading(source, syntax) };
-  }
-  const linked = new Set(items.flatMap((item) => (item.kind === "footnote-ref" ? item.ids : [])));
-  const choices = items.flatMap((item) =>
-    item.kind === "footnote" && !linked.has(item.id) ? [{ id: item.id, text: item.text }] : [],
-  );
-  return { kind, place, choices };
+  const exists = list.ok && [...list.items, ...list.limited].some((entry) => entry.kind === "toc");
+  return { kind, place, exists, heading: hasTocHeading(source, syntax) };
 }
 
 /** 폼을 열 때 입력의 처음 값. */

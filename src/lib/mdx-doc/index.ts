@@ -26,12 +26,14 @@ export {
   addFootnoteRef,
   addImageAt,
   addToc,
+  footnoteRefChoices,
   hasTocHeading,
   readInserts,
   removeToc,
   setInsertText,
 } from "./inserts";
 export type {
+  FootnoteRefChoice,
   ImageAtOptions,
   ImageInsertEdit,
   InsertEdit,

@@ -8,6 +8,7 @@ import {
   addFootnoteRef,
   addImageAt,
   addToc,
+  footnoteRefChoices,
   hasTocHeading,
   readInserts,
   removeToc,
@@ -324,6 +325,33 @@ describe("addFootnoteRef", () => {
   });
 });
 
+describe("footnoteRefChoices", () => {
+  test("폼으로 고칠 수 없는 출처가 가리키는 각주도 이미 연결된 것으로 보고 빼고, 연결하면 ambiguous-link다", () => {
+    const source =
+      '가<Footnote id="1">1</Footnote> 나<Footnote id="2">2</Footnote>\n\n<FootnoteRef ids={["1"]}>[링크](https://a.b)</FootnoteRef>\n';
+    expect(read(source).limited).toMatchObject([{ kind: "footnote-ref", reason: "nested" }]);
+
+    expect(footnoteRefChoices(source)).toEqual([{ id: 2, text: "2" }]);
+    const end = { from: source.length, to: source.length };
+    expect(addFootnoteRef(source, end, [1], "출처")).toEqual({ ok: false, reason: "ambiguous-link" });
+  });
+
+  test("내용에 서식이 있어 폼으로 고칠 수 없는 각주도 보이는 글자로 고를 수 있고 연결된다", () => {
+    const source = '가<Footnote id="1">**굵은** `코드` 설명</Footnote>\n';
+    expect(read(source).limited).toMatchObject([{ kind: "footnote", reason: "nested" }]);
+
+    expect(footnoteRefChoices(source)).toEqual([{ id: 1, text: "굵은 코드 설명" }]);
+    const result = edited(addFootnoteRef(source, { from: source.length, to: source.length }, [1], "출처"));
+    expect(itemOf(result, "footnote-ref")).toMatchObject({ ids: [1], text: "출처" });
+  });
+
+  test("번호가 겹치거나 숫자가 아닌 각주는 고를 수 없고, 읽을 수 없는 원문은 빈 목록이다", () => {
+    const source = '가<Footnote id="1">1</Footnote> 나<Footnote id="1">1</Footnote> 다<Footnote id="a">a</Footnote>\n';
+    expect(footnoteRefChoices(source)).toEqual([]);
+    expect(footnoteRefChoices('<Footnote id="1">1</Footnote>\n\n<Note>\n')).toEqual([]);
+  });
+});
+
 describe("addToc와 removeToc", () => {
   test("목차가 없으면 선택 위치에 자동 목차를 넣는다", () => {
     const source = "# 제목\n\n문단\n";
@@ -462,6 +490,18 @@ describe.each(fixtureSources)("픽스처 삽입 항목: $name", (source) => {
     },
   );
 
+  test.skipIf(!fixtures)("출처에 고를 수 있다고 한 각주는 모두 글 끝에 새 출처로 연결된다", { timeout: 60_000 }, () => {
+    const failed: string[] = [];
+    for (const f of fixtures!) {
+      const end = { from: f.source.length, to: f.source.length };
+      for (const { id } of footnoteRefChoices(f.source, source.syntax)) {
+        const result = addFootnoteRef(f.source, end, [id], "출처", source.syntax);
+        if (!result.ok) failed.push(`${f.path}: ${id} ${result.reason}`);
+      }
+    }
+    expect(failed).toEqual([]);
+  });
+
   test.skipIf(!fixtures)("자동 목차가 있는 글은 모두 목차를 채울 소제목이 있다", () => {
     const tocPosts = fixtures!.filter((f) => {
       const list = readInserts(f.source, source.syntax);
@@ -482,5 +522,18 @@ describe("픽스처 EOSE 각주", () => {
     const end = eose!.source.length;
     const result = addFootnote(eose!.source, { from: end, to: end }, undefined, blog.syntax);
     expect(result.ok && result.source).toBe(eose!.source + '<Footnote id="70">70</Footnote>');
+  });
+});
+
+describe("픽스처 GitHub Pages HTTPS 각주", () => {
+  const blog = fixtureSources.find((source) => source.name === "blog")!;
+  const post = loadFixtures(blog.name)?.find((fixture) =>
+    fixture.path.startsWith("Computer-Science/github-pages-enforce-https/"),
+  );
+
+  test.skipIf(!post)("링크가 든 출처가 각주 1~4를 모두 가리키므로 고를 각주가 없다", () => {
+    const refs = read(post!.source, blog.syntax).limited.filter((item) => item.kind === "footnote-ref");
+    expect(refs.length).toBeGreaterThan(0);
+    expect(footnoteRefChoices(post!.source, blog.syntax)).toEqual([]);
   });
 });

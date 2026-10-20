@@ -220,6 +220,15 @@ describe("각주 출처 폼", () => {
     expect(insertFormNotice(newRef())).toBeNull();
   });
 
+  test("폼으로 고칠 수 없는 출처가 가리키는 각주는 고를 수 없어 연결할 각주가 없다고 안내한다", () => {
+    const linked = `${SOURCE}\n<FootnoteRef ids={["1"]}>[달력](https://example.com)</FootnoteRef>\n`;
+
+    const target = newRef(linked);
+
+    expect(target.choices).toEqual([]);
+    expect(insertFormNotice(target)).toMatchObject({ blocking: true });
+  });
+
   test("각주를 고르기만 해도 작성 중 입력이라 떠날 때 묻는다", () => {
     expect(formDirty(newRef(), { text: "", ids: [1] })).toBe(true);
     expect(formDirty(newRef(), text(""))).toBe(false);
