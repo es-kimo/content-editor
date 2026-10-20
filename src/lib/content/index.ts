@@ -55,3 +55,10 @@ export {
   type UploadPlan,
   type UploadProblem,
 } from "./upload";
+export {
+  createUploadSession,
+  type AddedUploads,
+  type PreparedImage,
+  type UploadSession,
+  type UploadSubmission,
+} from "./upload-session";

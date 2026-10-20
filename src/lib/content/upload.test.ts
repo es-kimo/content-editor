@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { parseMdx, readImageImports } from "@/lib/mdx-doc";
+import { GIF, JPEG, PNG, SOURCE, WEBP } from "@/test/upload-images";
 
 import {
   addUpload,
@@ -11,12 +12,6 @@ import {
   uploadImports,
   usedUploads,
 } from "./upload";
-
-const ascii = (text: string) => [...text].map((c) => c.charCodeAt(0));
-const PNG = new Uint8Array([0x89, ...ascii("PNG\r\n\x1a\n"), 0, 0]);
-const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0]);
-const WEBP = new Uint8Array([...ascii("RIFF"), 0, 0, 0, 0, ...ascii("WEBPVP8 ")]);
-const GIF = new Uint8Array(ascii("GIF89a"));
 
 describe("uploadExtension", () => {
   test("png·jpg·webp만 받고 확장자를 정한다", () => {
@@ -84,8 +79,6 @@ describe("fitImageSize", () => {
     expect(fitImageSize(640, 480, 2000)).toBeNull();
   });
 });
-
-const SOURCE = 'import image1 from "./1.png";\n\n<Image src={image1} alt="" />\n';
 
 /** 이미지를 차례로 넣고 마지막 계획과 태그들을 돌려준다. 실패하면 던진다. */
 function addAll(images: { extension: string; content: Uint8Array }[], files: string[] = []) {

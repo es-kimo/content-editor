@@ -1,12 +1,13 @@
 // 편집 화면이 입력할 때마다 브라우저에서 부른다. GitHub 클라이언트를 import하지 않는다.
 
 /** 저장하지 않은 변경을 따로 판정하는 편집 영역. */
-export type EditArea = "metadata" | "body" | "source" | "submenu" | "title";
+export type EditArea = "metadata" | "body" | "images" | "source" | "submenu" | "title";
 
 /** 화면에 보일 영역 이름. 화면 위에서 아래 순서다. */
 const AREA_NAMES: { [area in EditArea]: string } = {
   metadata: "metadata",
   body: "본문",
+  images: "첨부 이미지",
   source: "원문",
   submenu: "하위 메뉴",
   title: "제목",
