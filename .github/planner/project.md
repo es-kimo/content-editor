@@ -17,7 +17,7 @@ Git 레포의 MDX 글을 웹에서 편집하고 그 레포에 커밋하는 에�
 
 ## 에이전트에게 맡기는 것과 사람이 할 것
 
-`agent: true`면 개발 에이전트가 그날 밤 구현해 리뷰 후 merge까지 한다. 아래에 하나라도 해당하면 `agent: false`(사람 작업)로 한다.
+`agent: true`면 개발 에이전트가 이슈가 만들어지는 대로 순서대로 구현해 리뷰 후 merge까지 한다. 아래에 하나라도 해당하면 `agent: false`(사람 작업)로 한다.
 
 - 이 레포 밖의 변경: es-kimo/site, blog, yjshd 레포
 - DNS, 배포 설정, GitHub App·계정·시크릿 설정

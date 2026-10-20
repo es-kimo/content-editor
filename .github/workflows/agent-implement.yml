@@ -1,19 +1,20 @@
 name: Agent implement
 
-# 밤 시간대(01:00~06:30 KST)에 30분마다 다음 이슈 하나를 골라 구현하고 PR을 연다.
-# 열린 에이전트 PR이 있으면 아무것도 하지 않는다 (동시 1개).
+# 다음 이슈 하나를 골라 구현하고 PR을 연다. 열린 에이전트 PR이 있으면 아무것도 하지 않는다 (동시 1개).
+# 에이전트 PR이 merge되거나, agent-ready가 달리거나, needs-human이 떨어지면 바로 다음 이슈를 고른다.
+# 마일스톤 하나를 사람이 매번 돌리지 않고 끝까지 이어 가기 위해서다. cron은 한도로 멈춘 실행과 놓친 이벤트를 줍는다.
 on:
   schedule:
-    - cron: "*/30 16-21 * * *"
+    - cron: "*/30 * * * *"
+  pull_request:
+    types: [closed]
+  issues:
+    types: [labeled, unlabeled]
   workflow_dispatch:
     inputs:
       issue:
         description: "이슈 번호 (비우면 자동 선택)"
         required: false
-
-concurrency:
-  group: agent-implement
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -35,12 +36,28 @@ env:
 
 jobs:
   implement:
-    if: vars.AGENT_ENABLED == 'true'
+    # 이슈 라벨이 바뀔 때마다 실행이 생기므로, 다음 이슈를 고를 이유가 있는 이벤트만 통과시킨다.
+    if: >-
+      vars.AGENT_ENABLED == 'true' && (
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.merged &&
+          contains(github.event.pull_request.labels.*.name, 'agent') &&
+          github.event.pull_request.head.repo.full_name == github.repository) ||
+        (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'agent-ready') ||
+        (github.event_name == 'issues' && github.event.action == 'unlabeled' && github.event.label.name == 'needs-human')
+      )
+    # 워크플로 단위에 두면 if에서 걸러질 실행까지 줄을 서서, 기다리던 실행을 취소한다. 통과한 실행만 줄을 세운다.
+    concurrency:
+      group: agent-implement
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
+          # pull_request 이벤트의 기본 ref는 PR의 merge ref다. 새 작업은 항상 main에서 시작한다.
+          ref: main
           token: ${{ secrets.AGENT_GH_TOKEN }}
           fetch-depth: 0
 
@@ -58,10 +75,13 @@ jobs:
             fi
             exit 0
           fi
-          open=$(gh pr list -R "$REPO" --label agent --state open --json number --jq length)
+          # 막혀서 사람을 기다리는 PR(needs-human)은 세지 않는다. 그 이슈는 PR이 열려 있는 동안 in progress라 다시 고르지 않고,
+          # 그 이슈에 의존하지 않는 다음 이슈는 계속 진행한다.
+          open=$(gh pr list -R "$REPO" --label agent --state open --json labels \
+            --jq '[.[] | select(all(.labels[]; .name != "needs-human"))] | length')
           if [ "$open" != "0" ]; then echo "열린 에이전트 PR ${open}개 → 건너뜀"; exit 0; fi
-          # 밤 상한은 cron 실행에만 건다. 수동 실행은 사람이 보고 돌리는 것이라 막지 않는다.
-          if [ "${{ github.event_name }}" = "schedule" ]; then
+          # 상한은 자동 실행(cron·이벤트)에 건다. 수동 실행은 사람이 보고 돌리는 것이라 막지 않는다.
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             since=$(date -u -d '12 hours ago' +%Y-%m-%dT%H:%M:%SZ)
             made=$(gh pr list -R "$REPO" --label agent --state all --search "created:>=$since" --json number --jq length)
             if [ "$made" -ge "$MAX_PRS" ]; then echo "최근 12시간 PR ${made}개, 상한 ${MAX_PRS} → 건너뜀"; exit 0; fi
