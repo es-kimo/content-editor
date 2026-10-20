@@ -80,7 +80,8 @@ export {
   type PostImage,
 } from "./read";
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
-export { BODY_FIELD, saveEdit, type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
+export { BODY_FIELD } from "./edit-post";
+export { saveEdit,type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
 export {
   createSaveFlow,
   discardedAreas,
