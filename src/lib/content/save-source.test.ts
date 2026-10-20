@@ -9,7 +9,7 @@ import { loadFixtures } from "@/test/fixtures";
 import { JPEG, PNG } from "@/test/upload-images";
 
 import { saveSource } from "./save-source";
-import { IMAGE_COMPONENT, sourceUploads } from "./upload";
+import { IMAGE_COMPONENT, MAX_UPLOAD_BYTES, sourceUploads } from "./upload";
 import { createUploadSession } from "./upload-session";
 
 const REPO = "es-kimo/site";
@@ -235,18 +235,21 @@ describe("saveSource 이미지", () => {
     expect(repo.file(`${DIR}/2.png`, BRANCH)).toEqual(OLD_IMAGE);
   });
 
-  test("형식이 다르면 커밋하지 않는다", async () => {
+  test("형식이 다르거나 용량을 넘으면 커밋하지 않는다", async () => {
     const { repo, client } = setup([{ path: POST, content: SOURCE }]);
     const before = repo.head(BRANCH);
+    const save = (content: Uint8Array) =>
+      saveSource(client, REPO, config, {
+        path: POST,
+        baseSha: blobSha(SOURCE),
+        source: `import image2 from "./2.png";\n${SOURCE}`,
+        images: [{ file: "2.png", content }],
+      });
+    const large = new Uint8Array(MAX_UPLOAD_BYTES + 1);
+    large.set(PNG);
 
-    const result = await saveSource(client, REPO, config, {
-      path: POST,
-      baseSha: blobSha(SOURCE),
-      source: `import image2 from "./2.png";\n${SOURCE}`,
-      images: [{ file: "2.png", content: JPEG }],
-    });
-
-    expect(result).toMatchObject({ ok: false, reason: "image", problem: "format" });
+    expect(await save(JPEG)).toMatchObject({ ok: false, reason: "image", problem: "format" });
+    expect(await save(large)).toMatchObject({ ok: false, reason: "image", problem: "size" });
     expect(repo.head(BRANCH)).toBe(before);
   });
 });
