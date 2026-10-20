@@ -169,7 +169,7 @@ describe("saveEdit 게시 상태 전환", () => {
     expect(text(repo.file(POST))).toBe(DRAFT);
   });
 
-  test("초안 게시 내리기와 게시 대상 글의 다시 게시는 거절한다", async () => {
+  test("초안의 게시 내리기·수정 반영과 게시 대상 글의 게시는 거절한다", async () => {
     for (const [source, input] of [
       [DRAFT, { action: "unpublish" }],
       [READY, { action: "publish", content: form({}, BODY) }],
