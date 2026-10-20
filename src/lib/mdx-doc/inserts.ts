@@ -7,6 +7,8 @@ import {
   escapeJsxAttribute,
   isImageFile,
   readImageImports,
+  removeUnusedImageImport,
+  type AddedImage,
   type AddImageOptions,
 } from "./images";
 import { arrayAttribute, attributeValue, expressionAttribute, jsxElements, type JsxElement } from "./jsx";
@@ -19,7 +21,7 @@ import {
   trailingNewlines,
   type ComponentSnippet,
 } from "./snippet";
-import { parseMarkdown, parseMdx, printMdx, type Syntax } from "./split";
+import { parseMarkdown, parseMdx, printMdx, type MdxDoc, type Syntax } from "./split";
 
 /** 원문에서의 위치. `from`부터 `to` 앞까지다. */
 export type InsertSpan = { from: number; to: number };
@@ -92,7 +94,10 @@ export type ImageInsertEdit =
 /** 원문에서 고칠 구간과, 새 값을 그 구간에 쓸 원문으로 바꾸는 함수. */
 type Field = InsertSpan & { write: (value: string) => string };
 
-type Entry = { item: InsertItem; field: Field | null } | { limited: LimitedInsert };
+/** `src`는 이미지의 `src` 속성 전체(`src={image1}`) 구간이다. */
+type ItemEntry = { item: InsertItem; field: Field | null; src?: InsertSpan };
+
+type Entry = ItemEntry | { limited: LimitedInsert };
 
 type Scan = {
   entries: Entry[];
@@ -232,15 +237,20 @@ export function removeToc(
 ): InsertEdit {
   const found = locate(source, target, syntax);
   if (!found.ok) return found;
-  const before = source.slice(0, target.from);
-  const after = source.slice(target.to);
+  return { ok: true, ...removeSpan(source, target) };
+}
+
+/** 구간을 지운다. 구간만 있던 줄은 앞뒤 빈 줄이 겹치지 않게 함께 정리한다. 커서는 지운 자리다. */
+function removeSpan(source: string, span: InsertSpan): { source: string; cursor: number } {
+  const before = source.slice(0, span.from);
+  const after = source.slice(span.to);
   const ownLines = (before === "" || before.endsWith("\n")) && (after === "" || after.startsWith("\n"));
-  if (!ownLines) return { ok: true, source: before + after, cursor: target.from };
+  if (!ownLines) return { source: before + after, cursor: span.from };
   const head = before.slice(0, before.length - trailingNewlines(before));
   const rest = after.slice(leadingNewlines(after));
   const gap =
     head === "" ? "" : rest === "" ? "\n" : "\n".repeat(Math.max(trailingNewlines(before), leadingNewlines(after)));
-  return { ok: true, source: head + gap + rest, cursor: head.length + gap.length };
+  return { source: head + gap + rest, cursor: head.length + gap.length };
 }
 
 /**
@@ -277,7 +287,7 @@ export function addImageAt(
   if (!checked.ok) return checked;
   const { doc } = checked;
   const bodyStart = source.length - doc.body.length;
-  const added = "file" in options ? addImageAs(doc, options.file, options) : addImage(doc, options);
+  const added = addImageFile(doc, options);
   if (!added) return { ok: false, reason: "name-taken" };
   const inserted = insertSnippet(doc.body, at.from - bodyStart, at.to - bodyStart, { kind: "block", text: added.tag });
   const edited = printMdx(setBody(added.doc, inserted.source));
@@ -293,6 +303,145 @@ export function addImageAt(
   };
   const result = verify(edited, expected, syntax, "invalid-position");
   return result.ok ? { ...result, file: added.file } : result;
+}
+
+type ImageItem = Extract<InsertItem, { kind: "image" }>;
+
+/** 교체할 새 이미지 파일. 컴포넌트 이름과 대체 텍스트는 교체할 이미지의 것을 쓴다. */
+export type ImageFileOptions = DistributiveOmit<ImageAtOptions, "component" | "alt">;
+
+/**
+ * 이미지 한 곳의 `src`만 새 파일의 import로 바꾸고 그 import를 더한다. 컴포넌트 이름과 대체 텍스트는 그대로다.
+ * 원래 import는 다른 곳에서 쓰면 그대로 두고, 이 이미지만 쓰던 것이면 지운다. 파일은 다루지 않는다.
+ * 미리 고른 파일 이름의 번호를 원문이 이미 쓰면 `name-taken`이다.
+ */
+export function replaceImage(
+  source: string,
+  target: ImageItem,
+  options: ImageFileOptions,
+  syntax: Syntax = {},
+): ImageInsertEdit {
+  const found = locate(source, target, syntax);
+  if (!found.ok) return found;
+  const doc = parseMdx(source, syntax);
+  if (!doc.ok) return { ok: false, reason: "parse-error" };
+  const added = addImageFile(doc, { ...options, component: target.component, alt: target.alt });
+  if (!added) return { ok: false, reason: "name-taken" };
+
+  const bodyStart = source.length - doc.body.length;
+  const src = found.src!;
+  const attribute = `src={${added.name}}`;
+  const body = doc.body.slice(0, src.from - bodyStart) + attribute + doc.body.slice(src.to - bodyStart);
+  const edited = printMdx(removeUnusedImageImport(setBody(added.doc, body), target.name));
+  const shift = edited.length - body.length - bodyStart;
+  const expected: InsertItem = {
+    ...target,
+    from: target.from + shift,
+    to: target.to + shift + attribute.length - (src.to - src.from),
+    name: added.name,
+    path: `./${added.file}`,
+  };
+  const result = verify(edited, expected, syntax, "invalid-position");
+  return result.ok ? { ...result, file: added.file } : result;
+}
+
+/**
+ * 이미지 한 곳의 태그만 지운다. 태그만 있던 줄은 앞뒤 빈 줄이 겹치지 않게 정리한다.
+ * 그 이미지의 import는 다른 곳에서 쓰면 남기고, 더 쓰지 않으면 지운다. 파일은 다루지 않는다.
+ */
+export function removeImage(source: string, target: ImageItem, syntax: Syntax = {}): InsertEdit {
+  const found = locate(source, target, syntax);
+  if (!found.ok) return found;
+  const removed = removeSpan(source, target);
+  const doc = parseMdx(removed.source, syntax);
+  if (!doc.ok) return { ok: false, reason: "invalid-position" };
+  const edited = printMdx(removeUnusedImageImport(doc, target.name));
+  return { ok: true, source: edited, cursor: removed.cursor + edited.length - removed.source.length };
+}
+
+/** `before`는 바로 앞 본문 블록의 앞으로, `after`는 바로 뒤 본문 블록의 뒤로 옮긴다. */
+export type MoveDirection = "before" | "after";
+
+/**
+ * 이미지를 옮길 수 없는 이유.
+ * - first-block: 앞에 본문 블록이 없다
+ * - last-block: 뒤에 본문 블록이 없다
+ * - in-paragraph: 문단 안에 글자와 함께 있다
+ * - in-component: 다른 컴포넌트 안에 있다
+ * - in-container: 목록·인용 같은 블록 안에 있다
+ */
+export type MoveLimit = "first-block" | "last-block" | "in-paragraph" | "in-component" | "in-container";
+
+export type ImageMoveEdit = InsertEdit | { ok: false; reason: MoveLimit };
+
+/**
+ * 이미지 태그만 있는 최상위 블록을 인접한 본문 블록과 자리를 바꿔 한 칸 옮긴다. 두 블록 사이의 원문(빈 줄 등)은 그대로다.
+ * 옮길 수 없으면 원문을 바꾸지 않고 이유를 돌려준다. `{식}` 속성이 있는 이미지는 `readInserts`와 같은 `expression`이다.
+ */
+export function moveImage(
+  source: string,
+  target: ImageItem,
+  direction: MoveDirection,
+  syntax: Syntax = {},
+): ImageMoveEdit {
+  const found = locate(source, target, syntax);
+  if (!found.ok) return found;
+  const root = parseMarkdown(source, syntax);
+  const ancestors = ancestorsOf(root, target) ?? [];
+  if (ancestors.length > 0) return { ok: false, reason: moveLimit(ancestors) };
+
+  const blocks = root.children;
+  const index = blocks.findIndex((block) => offsets(block).from === target.from);
+  const neighbor = blocks[direction === "before" ? index - 1 : index + 1];
+  if (!neighbor || neighbor.type === "mdxjsEsm") {
+    return { ok: false, reason: direction === "before" ? "first-block" : "last-block" };
+  }
+  const other = offsets(neighbor);
+  const [first, second] = direction === "before" ? [other, target] : [target, other];
+  const text = (span: InsertSpan) => source.slice(span.from, span.to);
+  const edited =
+    source.slice(0, first.from) +
+    text(second) +
+    source.slice(first.to, second.from) +
+    text(first) +
+    source.slice(second.to);
+  const length = target.to - target.from;
+  const from = direction === "before" ? other.from : other.to - length;
+  const result = verify(edited, { ...target, from, to: from + length }, syntax, "invalid-position");
+  if (!result.ok) return result;
+  // 옮긴 뒤 이미지가 옆 블록에 붙어 문단 안으로 들어가거나 블록이 합쳐지면 같은 글이 아니다.
+  const moved = parseMarkdown(edited, syntax).children;
+  const kept =
+    moved.length === blocks.length &&
+    moved.some((block) => block.type === "mdxJsxFlowElement" && offsets(block).from === from);
+  return kept ? result : { ok: false, reason: "invalid-position" };
+}
+
+type TreeNode = { type: string; children?: TreeNode[]; position?: Parameters<typeof offsets>[0]["position"] };
+
+/** `span` 자리의 JSX 요소를 감싼 노드들. 바깥부터 순서대로이고 루트는 뺀다. 요소가 없으면 null. */
+function ancestorsOf(node: TreeNode, span: InsertSpan): TreeNode[] | null {
+  for (const child of node.children ?? []) {
+    const at = offsets(child);
+    if (at.from > span.from || span.to > at.to) continue;
+    if (at.from === span.from && at.to === span.to && isJsx(child)) return [];
+    const inner = ancestorsOf(child, span);
+    if (inner) return [child, ...inner];
+  }
+  return null;
+}
+
+function moveLimit(ancestors: TreeNode[]): MoveLimit {
+  if (ancestors.some(isJsx)) return "in-component";
+  return ancestors.at(-1)!.type === "paragraph" ? "in-paragraph" : "in-container";
+}
+
+function isJsx(node: TreeNode): boolean {
+  return node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement";
+}
+
+function addImageFile(doc: Extract<MdxDoc, { ok: true }>, options: ImageAtOptions): AddedImage | null {
+  return "file" in options ? addImageAs(doc, options.file, options) : addImage(doc, options);
 }
 
 function scan(source: string, syntax: Syntax): Scan | null {
@@ -410,7 +559,7 @@ function imageEntry(element: JsxElement, span: InsertSpan, imports: Map<string, 
     ? { ...offsets(altAttribute), write }
     : { from: offsets(srcAttribute).to, to: offsets(srcAttribute).to, write: (value) => ` ${write(value)}` };
   const item: InsertItem = { ...span, kind: "image", component: element.name!, name: src.name, path, alt: alt ?? "" };
-  return { item, field };
+  return { item, field, src: offsets(srcAttribute) };
 }
 
 function footnoteId(element: JsxElement): number | InsertLimit {
@@ -486,7 +635,7 @@ function locate(
   source: string,
   target: InsertItem,
   syntax: Syntax,
-): { ok: true; field: Field | null } | Extract<InsertEdit, { ok: false }> {
+): ({ ok: true } & ItemEntry) | Extract<InsertEdit, { ok: false }> {
   const scanned = scan(source, syntax);
   if (!scanned) return { ok: false, reason: "parse-error" };
   for (const entry of scanned.entries) {
@@ -494,7 +643,7 @@ function locate(
     if (found.from !== target.from || found.to !== target.to || found.kind !== target.kind) continue;
     if ("limited" in entry) return { ok: false, reason: entry.limited.reason };
     if (!sameItem(entry.item, target)) break;
-    return { ok: true, field: entry.field };
+    return { ok: true, ...entry };
   }
   return { ok: false, reason: "target-changed" };
 }

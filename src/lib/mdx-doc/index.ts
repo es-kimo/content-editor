@@ -29,14 +29,19 @@ export {
   footnoteRefChoices,
   hasToc,
   hasTocHeading,
+  moveImage,
   readInserts,
+  removeImage,
   removeToc,
+  replaceImage,
   setInsertText,
 } from "./inserts";
 export type {
   FootnoteRefChoice,
   ImageAtOptions,
+  ImageFileOptions,
   ImageInsertEdit,
+  ImageMoveEdit,
   InsertEdit,
   InsertItem,
   InsertKind,
@@ -44,4 +49,6 @@ export type {
   InsertList,
   InsertSpan,
   LimitedInsert,
+  MoveDirection,
+  MoveLimit,
 } from "./inserts";

@@ -11,8 +11,11 @@ import {
   footnoteRefChoices,
   hasToc,
   hasTocHeading,
+  moveImage,
   readInserts,
+  removeImage,
   removeToc,
+  replaceImage,
   setInsertText,
   type InsertItem,
   type InsertKind,
@@ -449,6 +452,169 @@ describe("addImageAt", () => {
   });
 });
 
+const SHARED = [
+  'import image1 from "./1.png";',
+  'import image2 from "./2.png";',
+  "",
+  'export const metadata = { title: "글" };',
+  "",
+  "첫 문단",
+  "",
+  '<Image src={image1} alt="첫째" />',
+  "",
+  "가운데 문단",
+  "",
+  '<Image src={image1} alt="둘째" size={"full"} />',
+  "",
+  '<Image src={image2} alt="셋째" />',
+  "",
+  "끝 문단",
+  "",
+].join("\n");
+
+function image(source: string, alt: string): Extract<InsertItem, { kind: "image" }> {
+  return read(source).items.find(
+    (item): item is Extract<InsertItem, { kind: "image" }> => item.kind === "image" && item.alt === alt,
+  )!;
+}
+
+describe("replaceImage", () => {
+  test("같은 import를 두 곳에서 쓰면 고른 곳의 src만 새 import로 바꾸고 대체 텍스트와 나머지 원문은 그대로다", async () => {
+    const result = replaceImage(SHARED, image(SHARED, "둘째"), { extension: "webp" });
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.file).toBe("3.webp");
+    expect(result.source).toBe(
+      SHARED.replace('"./2.png";\n', '"./2.png";\nimport image3 from "./3.webp";\n').replace(
+        '<Image src={image1} alt="둘째"',
+        '<Image src={image3} alt="둘째"',
+      ),
+    );
+    expect(image(result.source, "둘째")).toMatchObject({ component: "Image", name: "image3", path: "./3.webp" });
+    expect(image(result.source, "첫째")).toMatchObject({ name: "image1", path: "./1.png" });
+    expect(await checkMdx(result.source, blogSyntax)).toEqual({ ok: true });
+  });
+
+  test("미리 고른 파일 이름을 주면 그 이름으로 바꾸고, 그 번호를 원문이 이미 쓰면 바꾸지 않는다", () => {
+    const result = replaceImage(SHARED, image(SHARED, "첫째"), { file: "7.jpg" });
+    expect(result.ok && image(result.source, "첫째")).toMatchObject({ name: "image7", path: "./7.jpg" });
+    expect(replaceImage(SHARED, image(SHARED, "첫째"), { file: "2.jpg" })).toEqual({ ok: false, reason: "name-taken" });
+  });
+
+  test("그 이미지만 쓰던 import는 교체하면서 지운다", () => {
+    const result = replaceImage(SHARED, image(SHARED, "셋째"), { extension: "png" });
+    expect(result.ok && result.source).toBe(
+      SHARED.replace('import image2 from "./2.png";', 'import image3 from "./3.png";').replace(
+        "src={image2}",
+        "src={image3}",
+      ),
+    );
+  });
+
+  test("읽은 뒤 원문이 바뀌었거나 src가 식인 이미지는 바꾸지 않는다", () => {
+    const target = image(SHARED, "둘째");
+    expect(replaceImage(`앞\n\n${SHARED}`, target, { extension: "png" })).toMatchObject({
+      ok: false,
+      reason: "target-changed",
+    });
+    const dynamic = 'import image1 from "./1.png";\n\n<Image src={image1} alt={"설명"} />\n';
+    const limited = read(dynamic).limited[0]!;
+    const item = {
+      ...limited,
+      kind: "image",
+      component: "Image",
+      name: "image1",
+      path: "./1.png",
+      alt: "설명",
+    } as const;
+    expect(replaceImage(dynamic, item, { extension: "png" })).toEqual({ ok: false, reason: "expression" });
+  });
+});
+
+describe("removeImage", () => {
+  test("같은 import를 두 곳에서 쓰면 고른 태그만 지우고 import는 남긴다", () => {
+    const result = removeImage(SHARED, image(SHARED, "첫째"));
+    expect(result.ok && result.source).toBe(SHARED.replace('<Image src={image1} alt="첫째" />\n\n', ""));
+    expect(result.ok && image(result.source, "둘째")).toMatchObject({ name: "image1", path: "./1.png" });
+  });
+
+  test("더 쓰는 곳이 없는 import는 태그와 함께 지운다", async () => {
+    const result = removeImage(SHARED, image(SHARED, "셋째"));
+    expect(result.ok && result.source).toBe(
+      SHARED.replace('import image2 from "./2.png";\n', "").replace('<Image src={image2} alt="셋째" />\n\n', ""),
+    );
+    expect(result.ok && (await checkMdx(result.source, blogSyntax))).toEqual({ ok: true });
+  });
+
+  test("문단 안의 이미지는 태그만 지우고 문단 글자는 그대로다", () => {
+    const source = 'import image1 from "./1.png";\n\n앞 글자 <Image src={image1} alt="안" /> 뒤 글자\n';
+    const result = removeImage(source, image(source, "안"));
+    expect(result.ok && result.source).toBe("앞 글자  뒤 글자\n");
+  });
+});
+
+describe("moveImage", () => {
+  test("앞으로 옮기면 바로 앞 블록과 자리만 바뀌고, 뒤로 옮기면 원래 원문으로 돌아온다", () => {
+    const before = moveImage(SHARED, image(SHARED, "첫째"), "before");
+    if (!before.ok) throw new Error(before.reason);
+    expect(before.source).toBe(
+      SHARED.replace('첫 문단\n\n<Image src={image1} alt="첫째" />', '<Image src={image1} alt="첫째" />\n\n첫 문단'),
+    );
+    const after = moveImage(before.source, image(before.source, "첫째"), "after");
+    expect(after.ok && after.source).toBe(SHARED);
+  });
+
+  test("뒤로 옮기면 바로 뒤 블록과 자리를 바꾸고 두 블록 사이의 원문은 그대로이며 커서는 옮긴 이미지 뒤다", () => {
+    const source = SHARED.replace('<Image src={image2} alt="셋째" />\n\n', '<Image src={image2} alt="셋째" />\n\n\n');
+    const result = moveImage(source, image(source, "셋째"), "after");
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.source).toBe(
+      source.replace(
+        '<Image src={image2} alt="셋째" />\n\n\n끝 문단',
+        '끝 문단\n\n\n<Image src={image2} alt="셋째" />',
+      ),
+    );
+    expect(result.cursor).toBe(image(result.source, "셋째").to);
+  });
+
+  test("옮기면 나뉘어 있던 목록이 하나로 합쳐지는 것처럼 글 구조가 바뀌면 옮기지 않는다", () => {
+    const source = 'import image1 from "./1.png";\n\n1. 하나\n\n<Image src={image1} alt="사이" />\n\n2. 둘\n';
+    expect(moveImage(source, image(source, "사이"), "before")).toEqual({ ok: false, reason: "invalid-position" });
+    expect(moveImage(source, image(source, "사이"), "after")).toEqual({ ok: false, reason: "invalid-position" });
+  });
+
+  test("본문 첫 블록은 앞으로, 마지막 블록은 뒤로 옮기지 않는다", () => {
+    const source =
+      'import image1 from "./1.png";\n\n<Image src={image1} alt="처음" />\n\n문단\n\n<Image src={image1} alt="끝" />\n';
+    expect(moveImage(source, image(source, "처음"), "before")).toEqual({ ok: false, reason: "first-block" });
+    expect(moveImage(source, image(source, "끝"), "after")).toEqual({ ok: false, reason: "last-block" });
+  });
+
+  test("문단 안·컴포넌트 안·목록 안 이미지와 식 속성 이미지는 이유를 돌려주고 옮기지 않는다", () => {
+    const source = [
+      'import image1 from "./1.png";',
+      "",
+      '앞 글자 <Image src={image1} alt="문단" /> 뒤 글자',
+      "",
+      "<Box>",
+      '  <Image src={image1} alt="컴포넌트" />',
+      "</Box>",
+      "",
+      '- <Image src={image1} alt="목록" />',
+      "",
+      '<Image src={image1} alt={"식"} />',
+      "",
+      "끝",
+      "",
+    ].join("\n");
+    expect(moveImage(source, image(source, "문단"), "after")).toEqual({ ok: false, reason: "in-paragraph" });
+    expect(moveImage(source, image(source, "컴포넌트"), "after")).toEqual({ ok: false, reason: "in-component" });
+    expect(moveImage(source, image(source, "목록"), "before")).toEqual({ ok: false, reason: "in-container" });
+    const limited = read(source).limited.find((item) => item.kind === "image")!;
+    const item = { ...limited, kind: "image", component: "Image", name: "image1", path: "./1.png", alt: "식" } as const;
+    expect(moveImage(source, item, "before")).toEqual({ ok: false, reason: "expression" });
+  });
+});
+
 describe.each(fixtureSources)("픽스처 삽입 항목: $name", (source) => {
   const fixtures = loadFixtures(source.name);
 
@@ -510,6 +676,67 @@ describe.each(fixtureSources)("픽스처 삽입 항목: $name", (source) => {
     }
     expect(failed).toEqual([]);
   });
+
+  test.skipIf(!fixtures)(
+    "옮길 수 있는 지원 이미지는 한 방향으로 옮긴 뒤 반대로 옮기면 원래 원문이다",
+    { timeout: 60_000 },
+    () => {
+      const failed: string[] = [];
+      let moved = 0;
+      for (const f of fixtures!) {
+        const list = readInserts(f.source, source.syntax);
+        if (!list.ok) continue;
+        for (const item of list.items) {
+          if (item.kind !== "image") continue;
+          for (const [there, back] of [
+            ["before", "after"],
+            ["after", "before"],
+          ] as const) {
+            const result = moveImage(f.source, item, there, source.syntax);
+            if (!result.ok) continue;
+            moved += 1;
+            const from = result.cursor - (item.to - item.from);
+            const after = readInserts(result.source, source.syntax);
+            const target = after.ok ? after.items.find((i) => i.kind === "image" && i.from === from) : undefined;
+            const returned = target?.kind === "image" ? moveImage(result.source, target, back, source.syntax) : null;
+            if (!returned?.ok || returned.source !== f.source) failed.push(`${f.path}: ${there} ${item.from}`);
+          }
+        }
+      }
+      expect(failed).toEqual([]);
+      expect(moved).toBeGreaterThan(0);
+    },
+  );
+
+  test.skipIf(!fixtures)(
+    "지원 이미지를 하나씩 교체·제거한 원문은 모두 컴파일되고 다시 읽힌다",
+    { timeout: 300_000 },
+    async () => {
+      const failed: string[] = [];
+      let edited = 0;
+      for (const f of fixtures!) {
+        const list = readInserts(f.source, source.syntax);
+        if (!list.ok) continue;
+        for (const item of list.items) {
+          if (item.kind !== "image") continue;
+          const results = {
+            replace: replaceImage(f.source, item, { extension: "webp" }, source.syntax),
+            remove: removeImage(f.source, item, source.syntax),
+          };
+          for (const [name, result] of Object.entries(results)) {
+            edited += 1;
+            const ok =
+              result.ok &&
+              readInserts(result.source, source.syntax).ok &&
+              (await checkMdx(result.source, source.syntax)).ok;
+            if (!ok) failed.push(`${f.path}: ${name} ${item.from}`);
+          }
+        }
+      }
+      expect(failed).toEqual([]);
+      expect(edited).toBeGreaterThan(0);
+    },
+  );
 
   test.skipIf(!fixtures)("자동 목차가 있는 글은 모두 목차를 채울 소제목이 있다", () => {
     const tocPosts = fixtures!.filter((f) => {

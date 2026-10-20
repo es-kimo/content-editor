@@ -122,6 +122,19 @@ export function findUnusedImageImports(doc: MdxDoc): ImageImport[] {
   return readImageImports(doc).filter((image) => ![doc.body, ...rest].some((text) => isUsedInBody(text, image.name)));
 }
 
+/**
+ * 본문과 다른 head 구간에서 `name`을 쓰지 않으면 그 이미지 import를 지운다. 쓰면 그대로 둔다.
+ * import 앞(맨 앞이면 뒤)의 줄바꿈 gap도 함께 지워 빈 줄이 겹치지 않게 한다. 주석이 든 gap은 남긴다.
+ */
+export function removeUnusedImageImport(doc: MdxDoc, name: string): MdxDoc {
+  if (!doc.ok || !findUnusedImageImports(doc).some((image) => image.name === name)) return doc;
+  const index = doc.head.findIndex((segment) => segment.kind === "import" && parseImport(segment.text)?.name === name);
+  const blank = (segment: HeadSegment | undefined) => segment?.kind === "gap" && segment.text.trim() === "";
+  const from = index > 0 && blank(doc.head[index - 1]) ? index - 1 : index;
+  const to = from === index && blank(doc.head[index + 1]) ? index + 2 : index + 1;
+  return { ...doc, head: [...doc.head.slice(0, from), ...doc.head.slice(to)] };
+}
+
 function isUsedInBody(text: string, name: string): boolean {
   const escaped = name.replace(/[$]/g, "\\$&");
   return new RegExp(`(?<![\\p{ID_Continue}$])${escaped}(?![\\p{ID_Continue}$])`, "u").test(text);
