@@ -1,8 +1,9 @@
 import { compilePathPattern, type Collection, type EditorConfig, type PathParams } from "@/lib/editor-config";
 import { repoPath, type GitHubClient } from "@/lib/github";
-import { isImageFile, metadataText, parseMdx, readMetadata, type MdxDoc, type MetadataResult } from "@/lib/mdx-doc";
+import { isImageFile, parseMdx, readMetadata, type MdxDoc, type MetadataResult } from "@/lib/mdx-doc";
 
 import { listDir } from "./contents";
+import { docEditorKeys, type EditorKeys } from "./save-flow";
 import { IMAGE_COMPONENT } from "./upload";
 
 export type PostImage = { name: string; path: string; sha: string; size: number };
@@ -109,7 +110,6 @@ export function sourceComponents(collection: Collection): string[] {
  * 글 화면의 편집 영역마다 그 영역의 원본에서 만든 key.
  * 한 영역을 저장하면 sha가 바뀌어도 다른 영역의 key는 그대로라, 저장하지 않은 다른 영역의 입력이 다시 마운트로 사라지지 않는다.
  */
-export function editorKeys(post: Post): { metadata: string; body: string } {
-  if (!post.doc.ok) return { metadata: post.source, body: post.source };
-  return { metadata: metadataText(post.doc) ?? "", body: post.doc.body };
+export function editorKeys(post: Post): EditorKeys {
+  return docEditorKeys(post.source, post.doc);
 }

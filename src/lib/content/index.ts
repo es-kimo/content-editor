@@ -36,6 +36,19 @@ export {
   type PostImage,
 } from "./read";
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
+export {
+  createSaveFlow,
+  discardedAreas,
+  docEditorKeys,
+  reopenedAreas,
+  type EditorKeys,
+  type SaveFlow,
+  type SaveFlowState,
+  type SavePhase,
+  type SaveRequest,
+  type SaveState,
+  type SaveTarget,
+} from "./save-flow";
 export { saveSource, type SaveSourceInput, type SaveSourceResult } from "./save-source";
 export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";
 export { newPostPath, postSlug } from "./slug";
