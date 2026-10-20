@@ -58,6 +58,21 @@ describe("앱 안 이동 확인", () => {
     expect(guard.warnsUnload()).toBe(false);
   });
 
+  test("변경 버리고 나가기를 고른 때부터 도착할 때까지만 입력을 버리는 중이다", () => {
+    const { flow, guard } = setup();
+    flow.report("metadata", true);
+    guard.request(LIST);
+    guard.stay();
+    expect(guard.discarding()).toBe(false);
+
+    guard.request(LIST);
+    guard.leave();
+    expect(guard.discarding()).toBe(true);
+
+    guard.arrived();
+    expect(guard.discarding()).toBe(false);
+  });
+
   test("나간 뒤 화면 주소가 바뀌면 남은 미저장 입력을 다시 지킨다", () => {
     const { flow, guard } = setup();
     flow.report("title", true);
