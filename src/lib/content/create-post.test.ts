@@ -417,4 +417,30 @@ describe("listSubmenus", () => {
 
     expect(await listSubmenus(client, REPO, config, lecture!)).toEqual(["2.콩팥질환 정보", "3.혈액투석 1,2,3"]);
   });
+
+  test("휴지통 글만 있는 메뉴는 빼고 초안만 있는 메뉴는 남긴다", async () => {
+    const meta = (other: string) => `export const metadata = { title: "글", other: { ${other} } };\n\n# 글\n`;
+    const { client } = setup([
+      { path: "content/3.강좌/휴지통/a/page.mdx", content: meta(`status: "draft", trashedAt: "2026-10-20T00:00:00Z"`) },
+      { path: "content/3.강좌/초안/a/page.mdx", content: meta(`status: "draft"`) },
+      { path: "content/3.강좌/초안/b/page.mdx", content: meta(`status: "draft", trashedAt: "2026-10-20T00:00:00Z"`) },
+    ]);
+
+    expect(await listSubmenus(client, REPO, config, lecture!)).toEqual(["2.콩팥질환 정보", "초안"]);
+  });
+
+  test("휴지통 글만 있는 메뉴는 기존 메뉴로 고를 수 없고 같은 이름으로 새로 만들지도 않는다", async () => {
+    const trashedPost = `export const metadata = { title: "글", other: { status: "draft", trashedAt: "2026-10-20T00:00:00Z" } };\n`;
+    const { repo, client } = setup([{ path: "content/3.강좌/휴지통/a/page.mdx", content: trashedPost }]);
+    const before = repo.head();
+
+    for (const submenu of [
+      { kind: "existing", name: "휴지통" },
+      { kind: "new", name: "휴지통" },
+    ] as const) {
+      const result = await createPost(client, REPO, config, inNewMenu("휴지통", { submenu }), NOW);
+      expect(result).toMatchObject({ ok: false, reason: "invalid", errors: [{ key: "submenu" }] });
+    }
+    expect(repo.head()).toBe(before);
+  });
 });

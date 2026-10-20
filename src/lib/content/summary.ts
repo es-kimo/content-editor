@@ -6,7 +6,7 @@ import {
   type MetadataValue,
   type Syntax,
 } from "@/lib/mdx-doc";
-import { STATUS_FIELD, TITLE_FIELD } from "@/lib/metadata-form";
+import { readTrash, STATUS_FIELD, TITLE_FIELD } from "@/lib/metadata-form";
 
 export type PostSummary = {
   title: string;
@@ -14,6 +14,10 @@ export type PostSummary = {
   titleFromMetadata: boolean;
   status: string | null;
   createdAt: string | null;
+  /** 휴지통 글인지. metadata를 읽지 못한 글은 휴지통 표시도 알 수 없어 false다. */
+  trashed: boolean;
+  /** 휴지통에 옮긴 시각. 휴지통 글이 아니거나 시각이 문자열이 아니면 null. */
+  trashedAt: string | null;
   /** metadata를 읽지 못한 이유. 읽었으면 null. */
   problem: string | null;
 };
@@ -39,6 +43,8 @@ export function summarizePost(source: string, syntax: Syntax, fallbackTitle: str
     titleFromMetadata: false,
     status: null,
     createdAt: null,
+    trashed: false,
+    trashedAt: null,
     problem,
   });
 
@@ -49,11 +55,14 @@ export function summarizePost(source: string, syntax: Syntax, fallbackTitle: str
   if (!metadata.editable) return fallback(metadata.reason);
 
   const title = savedTitle(metadata);
+  const trash = readTrash(metadata.value);
   return {
     title: title ?? fallbackTitle,
     titleFromMetadata: title !== null,
     status: stringAt(metadata.value, STATUS_FIELD),
     createdAt: stringAt(metadata.value, "other.createdAt"),
+    trashed: trash.trashed,
+    trashedAt: trash.trashed ? trash.trashedAt : null,
     problem: title ? null : "metadata에 title이 없다",
   };
 }

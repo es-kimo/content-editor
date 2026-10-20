@@ -13,7 +13,18 @@ describe("summarizePost", () => {
       titleFromMetadata: true,
       status: "draft",
       createdAt: "2021-01-01T00:00:00Z",
+      trashed: false,
+      trashedAt: null,
       problem: null,
+    });
+  });
+
+  test("other.trashedAt이 있으면 휴지통 글로 읽고 삭제 시각을 보인다", () => {
+    const source = `export const metadata = {\n  title: "공지",\n  other: { status: "draft", trashedAt: "2026-10-20T09:30:15Z" },\n};\n\n본문\n`;
+    expect(summarizePost(source, {}, "slug")).toMatchObject({
+      status: "draft",
+      trashed: true,
+      trashedAt: "2026-10-20T09:30:15Z",
     });
   });
 

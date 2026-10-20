@@ -14,7 +14,7 @@ import {
 
 import { savePost } from "./commit";
 import { editBody, withRequired } from "./edit-post";
-import { fetchTree, matchPosts } from "./posts";
+import { readPostList } from "./posts";
 import { checkSubmenuName, newPostPath, postSlug, submenuFolder } from "./slug";
 import { checkUploads, type UploadCheck, type UploadImage } from "./upload";
 
@@ -25,7 +25,7 @@ export function needsSubmenu(collection: Collection): boolean {
 
 /**
  * 컬렉션에 이미 있는 하위 메뉴. 이름순.
- * 글이 하나라도 있는 폴더만 메뉴다. 초안만 있는 메뉴도 다음 글을 쓸 때 고를 수 있다.
+ * 휴지통에 없는 글이 하나라도 있는 폴더만 메뉴다. 초안만 있는 메뉴도 다음 글을 쓸 때 고를 수 있다.
  */
 export async function listSubmenus(
   client: GitHubClient,
@@ -33,8 +33,8 @@ export async function listSubmenus(
   config: EditorConfig,
   collection: Collection,
 ): Promise<string[]> {
-  const submenus = matchPosts(await fetchTree(client, repo, config.branch), collection).flatMap(({ params }) =>
-    params.submenu === undefined ? [] : [params.submenu],
+  const submenus = (await readPostList(client, repo, config, collection)).flatMap(({ params, trashed }) =>
+    params.submenu === undefined || trashed ? [] : [params.submenu],
   );
   return [...new Set(submenus)].sort((a, b) => a.localeCompare(b, "ko", { numeric: true }));
 }
