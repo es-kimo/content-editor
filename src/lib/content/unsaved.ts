@@ -15,7 +15,12 @@ const AREA_NAMES: { [area in EditArea]: string } = {
 
 /** 영역별 변경 여부를 모아 바뀐 영역 이름을 화면 순서로 돌려준다. 바뀐 영역이 없으면 빈 배열. */
 export function unsavedAreas(changed: { [area in EditArea]?: boolean }): string[] {
-  return (Object.keys(AREA_NAMES) as EditArea[]).filter((area) => changed[area]).map((area) => AREA_NAMES[area]);
+  return areaNames((Object.keys(changed) as EditArea[]).filter((area) => changed[area]));
+}
+
+/** 영역들의 화면 이름을 화면 순서로. */
+export function areaNames(areas: EditArea[]): string[] {
+  return (Object.keys(AREA_NAMES) as EditArea[]).filter((area) => areas.includes(area)).map((area) => AREA_NAMES[area]);
 }
 
 /** 원문 모드에 저장하지 않은 변경이 있는지. import·metadata를 포함한 파일 전체 문자열로 비교한다. */

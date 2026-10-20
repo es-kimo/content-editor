@@ -39,7 +39,8 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
   if (!post) notFound();
 
   return (
-    <UnsavedProvider>
+    // 저장하면 새 커밋을 `saved`로 받아 다시 열리므로, 그 커밋으로 저장한 글 화면이 열렸는지 안다.
+    <UnsavedProvider revision={typeof saved === "string" ? saved : undefined}>
       <header className="flex flex-col gap-1">
         <Link href={repoHref(repo, post.collection.name)} className="text-sm text-zinc-500 underline">
           {repo} · {post.collection.name}

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { newPostChanges, sourceChanged, unsavedAreas } from "./unsaved";
+import { areaNames, newPostChanges, sourceChanged, unsavedAreas } from "./unsaved";
 
 describe("unsavedAreas", () => {
   test("바뀐 영역 이름만 화면 순서로 모은다", () => {
@@ -11,6 +11,12 @@ describe("unsavedAreas", () => {
   test("바뀐 영역이 없으면 빈 배열이다", () => {
     expect(unsavedAreas({})).toEqual([]);
     expect(unsavedAreas({ metadata: false, body: false, source: false })).toEqual([]);
+  });
+});
+
+describe("areaNames", () => {
+  test("받은 순서와 상관없이 영역 이름을 화면 순서로 돌려준다", () => {
+    expect(areaNames(["source", "images", "metadata"])).toEqual(["metadata", "첨부 이미지", "원문"]);
   });
 });
 

@@ -3,9 +3,9 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { linter, lintGutter } from "@codemirror/lint";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Syntax } from "@/lib/mdx-doc";
 
@@ -18,7 +18,11 @@ export type CodeMirrorSourceEditorProps = {
   /** 삽입 버튼으로 보일 컴포넌트. `sourceComponents`의 결과. */
   components: string[];
   onChange: (source: string) => void;
+  /** 저장 중이면 고치지도 컴포넌트를 넣지도 않는다. */
+  readOnly?: boolean;
 };
+
+const locked = (readOnly: boolean) => [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
 
 const theme = EditorView.theme({
   "&": { maxHeight: "70vh", fontSize: "0.875rem" },
@@ -26,13 +30,22 @@ const theme = EditorView.theme({
 });
 
 /** next/dynamic으로 브라우저에서만 불러온다. CodeMirror는 DOM이 있어야 만들 수 있다. */
-export default function CodeMirrorSourceEditor({ source, syntax, components, onChange }: CodeMirrorSourceEditorProps) {
+export default function CodeMirrorSourceEditor({
+  source,
+  syntax,
+  components,
+  onChange,
+  readOnly = false,
+}: CodeMirrorSourceEditorProps) {
   const parent = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView>(null);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+  // 잠금이 바뀔 때 에디터를 다시 만들면 처음 원문으로 돌아가 입력을 잃으므로 잠금 구획만 바꾼다.
+  const [lock] = useState(() => new Compartment());
+  const readOnlyRef = useRef(readOnly);
 
   // 원문은 처음 연 값만 쓴다. 다른 원문으로 다시 열 때는 부모가 key를 바꿔 새로 만든다.
   const initial = useRef(source);
@@ -56,6 +69,7 @@ export default function CodeMirrorSourceEditor({ source, syntax, components, onC
           lintGutter(),
           linter((view) => compileDiagnostics(view.state.doc, syntax), { delay: 750 }),
           theme,
+          lock.of(locked(readOnlyRef.current)),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString());
           }),
@@ -67,11 +81,15 @@ export default function CodeMirrorSourceEditor({ source, syntax, components, onC
       view.current = null;
       created.destroy();
     };
-  }, [gfm, math]);
+  }, [gfm, math, lock]);
+  useEffect(() => {
+    readOnlyRef.current = readOnly;
+    view.current?.dispatch({ effects: lock.reconfigure(locked(readOnly)) });
+  }, [lock, readOnly]);
 
   const insert = (name: string) => {
     const current = view.current;
-    if (!current) return;
+    if (!current || readOnly) return;
     current.dispatch(insertComponent(current.state, name, { gfm, math }));
     current.focus();
   };
@@ -81,7 +99,13 @@ export default function CodeMirrorSourceEditor({ source, syntax, components, onC
       {components.length > 0 && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="컴포넌트 넣기">
           {components.map((name) => (
-            <button key={name} type="button" onClick={() => insert(name)} className={TOGGLE_BUTTON_CLASS}>
+            <button
+              key={name}
+              type="button"
+              disabled={readOnly}
+              onClick={() => insert(name)}
+              className={TOGGLE_BUTTON_CLASS}
+            >
               {name}
             </button>
           ))}

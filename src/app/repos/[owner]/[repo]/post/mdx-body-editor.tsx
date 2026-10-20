@@ -18,10 +18,12 @@ import {
   markdownShortcutPlugin,
   MDXEditor,
   quotePlugin,
+  readOnly$,
   Separator,
   thematicBreakPlugin,
   toolbarPlugin,
   UndoRedo,
+  useCellValue,
   usePublisher,
   type JsxComponentDescriptor,
   type MDXEditorMethods,
@@ -41,16 +43,25 @@ export type MdxBodyEditorProps = {
    * 본문에 넣기까지를 한 작업으로 보호하도록 넣는 시점을 호출자가 정한다. 없으면 이미지를 받지 않는다.
    */
   onImages?: (files: File[], insert: (tags: string[]) => void) => Promise<void>;
+  /** 저장 중이면 고치지도 이미지를 받지도 않는다. 도구 막대는 에디터가 함께 막는다. */
+  readOnly?: boolean;
 };
 
 /** next/dynamic으로 브라우저에서만 불러온다. MDXEditor는 서버에서 렌더링할 수 없다. */
-export default function MdxBodyEditor({ markdown, components, onChange, onError, onImages }: MdxBodyEditorProps) {
+export default function MdxBodyEditor({
+  markdown,
+  components,
+  onChange,
+  onError,
+  onImages,
+  readOnly = false,
+}: MdxBodyEditorProps) {
   const editor = useRef<MDXEditorMethods>(null);
   const picker = useRef<HTMLInputElement>(null);
   const acceptsImages = onImages !== undefined;
 
   const insertImages = async (files: File[]) => {
-    if (!onImages || files.length === 0) return;
+    if (!onImages || files.length === 0 || readOnly) return;
     await onImages(files, (tags) => {
       if (tags.length > 0) editor.current?.insertMarkdown(tags.join("\n\n"));
     });
@@ -89,11 +100,7 @@ export default function MdxBodyEditor({ markdown, components, onChange, onError,
             <ListsToggle options={["bullet", "number"]} />
             <CreateLink />
             {(components.length > 0 || acceptsImages) && <Separator />}
-            {acceptsImages && (
-              <Button title="이미지 넣기" onClick={() => picker.current?.click()}>
-                이미지
-              </Button>
-            )}
+            {acceptsImages && <ImageButton onClick={() => picker.current?.click()} />}
             {components.map((name) => (
               <InsertComponent key={name} name={name} />
             ))}
@@ -114,6 +121,7 @@ export default function MdxBodyEditor({ markdown, components, onChange, onError,
         ref={editor}
         markdown={markdown}
         plugins={plugins}
+        readOnly={readOnly}
         onChange={onChange}
         onError={({ error }) => onError(error)}
         className="rounded border"
@@ -126,6 +134,7 @@ export default function MdxBodyEditor({ markdown, components, onChange, onError,
           accept={Object.keys(UPLOAD_IMAGE_TYPES).join(",")}
           multiple
           hidden
+          disabled={readOnly}
           onChange={(event) => {
             const files = [...(event.target.files ?? [])];
             // 같은 파일을 다시 골라도 change가 일어나게 비운다.
@@ -151,10 +160,21 @@ function descriptors(components: string[]): JsxComponentDescriptor[] {
   ];
 }
 
+// 에디터의 읽기 전용은 도구 막대의 마우스 입력만 막고 직접 만든 버튼은 키보드로 누를 수 있어 같은 값으로 막는다.
+function ImageButton({ onClick }: { onClick: () => void }) {
+  const readOnly = useCellValue(readOnly$);
+  return (
+    <Button title="이미지 넣기" disabled={readOnly} onClick={onClick}>
+      이미지
+    </Button>
+  );
+}
+
 function InsertComponent({ name }: { name: string }) {
   const insertJsx = usePublisher(insertJsx$);
+  const readOnly = useCellValue(readOnly$);
   return (
-    <Button title={`${name} 넣기`} onClick={() => insertJsx({ name, kind: "flow", props: {} })}>
+    <Button title={`${name} 넣기`} disabled={readOnly} onClick={() => insertJsx({ name, kind: "flow", props: {} })}>
       {name}
     </Button>
   );

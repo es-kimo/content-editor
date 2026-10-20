@@ -1,39 +1,17 @@
 "use server";
 
-import { redirect } from "next/navigation";
-
 import { runRepoAction, type ActionContext } from "@/app/_lib/action";
 import { postHref } from "@/app/_lib/repo";
-import {
-  findCollection,
-  saveBody,
-  saveMetadata,
-  saveSource,
-  type SaveBodyResult,
-  type SaveMetadataResult,
-  type SaveSourceResult,
-} from "@/lib/content";
+import { findCollection, saveBody, saveMetadata, saveSource, type SaveState } from "@/lib/content";
 import type { Collection } from "@/lib/editor-config";
 import { readFormData } from "@/lib/metadata-form";
 
-import { uploadMessage } from "./upload-message";
-
-export type SaveState =
-  | { status: "idle" }
-  | { status: "error"; message: string; fields?: { [key: string]: string } }
-  | { status: "unchanged" };
-
-const error = (message: string, fields?: { [key: string]: string }): SaveState => ({
-  status: "error",
-  message,
-  fields,
-});
+import { saveError, saveResultState, type SaveResult } from "./save-result";
 
 type SaveContext = ActionContext & { collection: Collection };
-type SaveResult = SaveMetadataResult | SaveBodyResult | SaveSourceResult;
 
 /**
- * 저장 액션의 공통 흐름: 세션 → config → 저장 → 결과를 화면 상태로. 성공하면 새 sha로 글 화면을 다시 연다.
+ * 저장 액션의 공통 흐름: 세션 → config → 저장 → 결과를 화면 상태로. 성공하면 새 sha로 열 글 화면 주소를 돌려준다.
  * 경로·sha는 서버 컴포넌트에서 bind한 값이지만, 직접 보낸 요청일 수 있어 다시 검사한다.
  */
 async function runSave(
@@ -45,28 +23,12 @@ async function runSave(
     const found = findCollection(config, path);
     return found ? save({ client, config, collection: found.collection }) : null;
   });
-  if (!outcome.ok) return error(outcome.message);
-  const result = outcome.value;
-  if (result === null) return error("config의 컬렉션에 없는 글이다.");
-
-  if (result.ok) redirect(`${postHref(repo, path)}&${new URLSearchParams({ saved: result.commit })}`);
-  switch (result.reason) {
-    case "unchanged":
-      return { status: "unchanged" };
-    case "invalid":
-      return error("입력을 확인한다.", Object.fromEntries(result.errors.map((e) => [e.key, e.message])));
-    case "changed":
-    case "not-fast-forward":
-      return error("글을 연 뒤 다른 곳에서 바뀌었다. 입력을 따로 적어 두고 새로고침한 뒤 다시 저장한다.");
-    case "compile":
-      return error(`저장하면 사이트 빌드가 깨진다 (${result.error.line ?? "?"}행): ${result.error.message}`);
-    case "not-editable":
-      return error(`원문 모드에서만 고칠 수 있는 글이다: ${result.message}`);
-    case "not-found":
-      return error("글을 찾을 수 없다.");
-    case "image":
-      return error(uploadMessage(result.file, result.problem));
-  }
+  if (!outcome.ok) return saveError(outcome.message);
+  if (outcome.value === null) return saveError("config의 컬렉션에 없는 글이다.");
+  return saveResultState(
+    outcome.value,
+    (commit) => `${postHref(repo, path)}&${new URLSearchParams({ saved: commit })}`,
+  );
 }
 
 /** 메타데이터 폼 저장. */
@@ -74,7 +36,6 @@ export async function saveMetadataAction(
   repo: string,
   path: string,
   baseSha: string,
-  _prev: SaveState,
   data: FormData,
 ): Promise<SaveState> {
   return runSave(repo, path, ({ client, config, collection }) =>
@@ -83,15 +44,9 @@ export async function saveMetadataAction(
 }
 
 /** WYSIWYG 본문 저장. `body`와, 본문에 넣은 이미지를 파일 이름이 `N.ext`인 `image` 파일로 받는다. */
-export async function saveBodyAction(
-  repo: string,
-  path: string,
-  baseSha: string,
-  _prev: SaveState,
-  data: FormData,
-): Promise<SaveState> {
+export async function saveBodyAction(repo: string, path: string, baseSha: string, data: FormData): Promise<SaveState> {
   const body = data.get("body");
-  if (typeof body !== "string") return error("본문을 읽을 수 없다. 새로고침한 뒤 다시 저장한다.");
+  if (typeof body !== "string") return saveError("본문을 읽을 수 없다. 새로고침한 뒤 다시 저장한다.");
   const files = data.getAll("image").filter((value): value is File => value instanceof File);
   const images = await Promise.all(
     files.map(async (file) => ({ file: file.name, content: new Uint8Array(await file.arrayBuffer()) })),
@@ -104,7 +59,6 @@ export async function saveSourceAction(
   repo: string,
   path: string,
   baseSha: string,
-  _prev: SaveState,
   source: string,
 ): Promise<SaveState> {
   return runSave(repo, path, ({ client, config }) => saveSource(client, repo, config, { path, baseSha, source }));
