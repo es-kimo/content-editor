@@ -301,3 +301,70 @@ describe("createSaveFlow", () => {
     expect(flow.getState().phase).toMatchObject({ kind: "saved", reopened: ["metadata", "source"] });
   });
 });
+
+describe("적용하지 않은 폼", () => {
+  test.each<SaveRequest>([{ target: "metadata" }, { target: "body" }, sourceSave(SOURCE), { target: "new" }])(
+    "폼이 열려 있으면 $target 저장을 제출하지 않고 막은 저장을 알린다",
+    (request) => {
+      const { flow } = setupFlow({ metadata: true, body: true, source: true });
+      const submit = vi.fn(async () => SAVED);
+      flow.openForm("body");
+
+      expect(flow.request(request, submit)).toBe(false);
+
+      expect(submit).not.toHaveBeenCalled();
+      expect(flow.getState().phase).toEqual({ kind: "idle" });
+      expect(flow.getState().form?.blocked).toBe(request.target);
+    },
+  );
+
+  test("폼이 열려 있으면 모드 전환을 막고, 폼이 없으면 막지 않는다", () => {
+    const { flow } = setupFlow();
+    expect(flow.blockedByForm("mode")).toBe(false);
+
+    flow.openForm("source");
+
+    expect(flow.blockedByForm("mode")).toBe(true);
+    expect(flow.getState().form?.blocked).toBe("mode");
+  });
+
+  test("폼을 적용하거나 취소해 닫으면 다시 저장할 수 있고 미저장 표시는 편집 영역이 알린 그대로다", async () => {
+    const { flow } = setupFlow({ body: true });
+    const submit = vi.fn(async () => SAVED);
+    flow.openForm("body");
+    flow.editForm(true);
+    flow.request({ target: "body" }, submit);
+
+    flow.closeForm();
+
+    expect(flow.getState().changed).toEqual({ body: true });
+    expect(flow.request({ target: "body" }, submit)).toBe(true);
+    expect(submit).toHaveBeenCalledOnce();
+  });
+
+  test("저장 중이거나 버릴지 묻는 중에는 폼을 열지 않는다", () => {
+    const saving = setupFlow({ body: true }).flow;
+    saving.request({ target: "body" }, () => new Promise<SaveState>(() => {}));
+    expect(saving.openForm("body")).toBe(false);
+
+    const confirming = setupFlow({ metadata: true, source: true }).flow;
+    confirming.request({ target: "metadata" }, async () => SAVED);
+    expect(confirming.openForm("source")).toBe(false);
+    expect(confirming.getState().form).toBeNull();
+  });
+
+  test("저장이 실패해도 그 뒤에 연 폼의 상태와 모든 영역의 미저장 표시를 둔다", async () => {
+    const { flow } = setupFlow({ metadata: true, body: true, images: true });
+    flow.request({ target: "metadata" }, async () => ({
+      status: "error",
+      message: "글을 연 뒤 다른 곳에서 글이 바뀌었어요.",
+    }));
+    await flush();
+
+    expect(flow.openForm("body")).toBe(true);
+    flow.editForm(true);
+
+    expect(flow.getState().changed).toEqual({ metadata: true, body: true, images: true });
+    expect(flow.getState().form).toEqual({ area: "body", dirty: true, blocked: null });
+  });
+});

@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 
-import { useSaveLocked } from "@/app/_lib/unsaved";
+import { FormBlockedNotice, useFormFlow, useSaveLocked } from "@/app/_lib/unsaved";
 import type { EditorMode } from "@/lib/content";
 
 const LABELS: { [mode in EditorMode]: string } = { wysiwyg: "일반 편집", source: "원문 편집" };
@@ -24,23 +24,28 @@ export function EditorModeSwitch({
   const [mode, setMode] = useState(initial);
   // 저장 중에는 저장하는 편집기를 숨기지 않게 모드를 바꾸지 않는다.
   const locked = useSaveLocked();
+  // 폼을 연 편집기를 숨기면 적용·취소할 수 없게 되므로 열린 폼이 있으면 바꾸지 않는다.
+  const forms = useFormFlow();
   const editors: { [mode in EditorMode]: ReactNode } = { wysiwyg, source };
 
   return (
     <>
-      <div className="flex gap-2" role="group" aria-label="본문 편집 모드">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="본문 편집 모드">
         {(Object.keys(LABELS) as EditorMode[]).map((m) => (
           <button
             key={m}
             type="button"
             aria-pressed={m === mode}
             disabled={locked}
-            onClick={() => setMode(m)}
+            onClick={() => {
+              if (m !== mode && !forms.blocks("mode")) setMode(m);
+            }}
             className={TOGGLE_BUTTON_CLASS}
           >
             {LABELS[m]}
           </button>
         ))}
+        {forms.form?.blocked === "mode" && <FormBlockedNotice />}
       </div>
       {(Object.keys(editors) as EditorMode[]).map((m) => (
         <div key={m} hidden={m !== mode}>

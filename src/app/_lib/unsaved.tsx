@@ -82,7 +82,7 @@ export function useReportUnsaved(area: EditArea, changed: boolean) {
   }, [flow, area, changed]);
 }
 
-/** 저장이 진행 중이거나 확인 중이면 true. 그동안 입력·첨부·모드 전환·다른 저장을 막는다. */
+/** 저장이 진행 중이거나 확인 중이면 true. 그동안 입력·첨부·모드 전환·다른 저장·폼 열기를 막는다. */
 export function useSaveLocked(): boolean {
   return useFlowState(useFlow()).phase.kind !== "idle";
 }
@@ -92,15 +92,38 @@ const IDLE: SaveState = { status: "idle" };
 /** 저장 대상 하나의 저장 버튼 상태와 제출. 제출은 `SaveFlow.request`를 따른다. */
 export function useSave(target: SaveTarget) {
   const flow = useFlow();
-  const { phase, results } = useFlowState(flow);
+  const { phase, results, form } = useFlowState(flow);
   return {
     state: results[target] ?? IDLE,
     // 성공한 뒤 저장한 글 화면이 열릴 때까지도 저장 중으로 보인다.
     pending: (phase.kind === "saving" || phase.kind === "saved") && phase.target === target,
     locked: phase.kind !== "idle",
+    /** 적용하지 않은 폼 때문에 이 저장을 막았는지. */
+    formBlocked: form?.blocked === target,
     request: (request: SaveRequest, submit: () => Promise<SaveState>, onUnchanged?: () => void) =>
       flow.request(request, submit, onUnchanged),
   };
+}
+
+/** 넣기·수정 폼의 열기·닫기와, 열린 폼 때문에 막을 동작. 화면에 폼은 하나만 열린다. */
+export function useFormFlow() {
+  const flow = useFlow();
+  const { phase, form } = useFlowState(flow);
+  return {
+    form,
+    /** 저장 중이거나 확인 중이거나 다른 폼이 열려 있으면 새 폼을 열 수 없다. */
+    canOpen: phase.kind === "idle" && form === null,
+    // 화면이 effect 정리에 쓸 수 있게 흐름의 메서드를 그대로 넘겨 렌더마다 같은 함수가 되게 한다.
+    open: flow.openForm,
+    edit: flow.editForm,
+    close: flow.closeForm,
+    blocks: flow.blockedByForm,
+  };
+}
+
+/** 적용하지 않은 폼 때문에 막은 동작 옆에 보이는 안내. */
+export function FormBlockedNotice() {
+  return <p className="text-sm text-amber-600">열려 있는 폼을 먼저 적용하거나 취소해 주세요.</p>;
 }
 
 /** 바뀐 영역이 있으면 색만이 아니라 문구와 영역 이름으로 알린다. */
