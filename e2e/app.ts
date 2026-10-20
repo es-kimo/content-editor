@@ -41,9 +41,21 @@ async function startGitHub(repo: string, files: FakeFile[]) {
   return { git, server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 }
 
+/**
+ * 비어 있는 포트를 OS에서 받는다. 범위에서 임의로 고르면 쓰는 중인 포트나 브라우저가 막는 포트(3659 등)에 걸려
+ * 그 파일의 테스트가 통째로 돌지 못한다. OS가 주는 임시 포트는 막힌 포트 목록 밖이다.
+ */
+async function freePort() {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
+
 /** 빌드한 앱(`next start`)을 띄운다. 서버의 GitHub 요청은 `e2e/github-proxy.mjs`가 가짜 GitHub로 돌린다. */
 async function startNext(github: string, sessionSecret: string) {
-  const port = 3100 + Math.floor(Math.random() * 800);
+  const port = await freePort();
   const child = spawn(
     process.execPath,
     [path.join(ROOT, "node_modules/next/dist/bin/next"), "start", "-p", `${port}`],
