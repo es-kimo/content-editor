@@ -63,10 +63,13 @@ describe("metadataFormChanged", () => {
     expect(metadataFormChanged(fields, formData(fields, { title: "" }))).toBe(true);
   });
 
-  test("잠긴 필드는 제출되지 않아도 변경으로 보지 않는다", () => {
+  test("잠긴 필드는 입력 값이 무엇이든 변경으로 보지 않는다", () => {
     const locked = buildForm(board, { ...METADATA, keywords: "휴진, 공지" });
     expect(locked.find((f) => f.key === "keywords")?.locked).not.toBeNull();
     expect(metadataFormChanged(locked, formData(locked))).toBe(false);
+    const data = formData(locked);
+    data.set(FIELD_PREFIX + "keywords", "휴진, 공지");
+    expect(metadataFormChanged(locked, data)).toBe(false);
   });
 
   test("값이 없는 필수 선택지를 고르지 않은 채 두면 변경이 아니고, 고르면 변경이다", () => {
