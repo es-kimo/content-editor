@@ -42,7 +42,7 @@ const PNG = Buffer.from(
   "base64",
 );
 
-const LEAVE_TITLE = "저장하지 않은 변경이 있다. 나가면 입력을 잃는다.";
+const LEAVE_TITLE = "저장하지 않은 변경이 있어요. 나가면 입력이 사라져요.";
 const postUrl = (app: App, path = POST) => `${app.origin}/repos/${REPO}/post?${new URLSearchParams({ path })}`;
 const listUrl = (app: App, collection: string) => `${app.origin}/repos/${REPO}?${new URLSearchParams({ collection })}`;
 const newUrl = (app: App, collection: string) =>
@@ -86,7 +86,7 @@ const titleInput = () => page.locator(`input[name="${FIELD_PREFIX}title"]`);
 const newTitleInput = () => page.locator('input[name="title"]');
 const listLink = (collection = "게시판") => page.getByRole("link", { name: `${REPO} · ${collection}` });
 const isFocused = (locator: ReturnType<Page["locator"]>) => locator.evaluate((el) => el === document.activeElement);
-const sourceMode = () => page.getByRole("button", { name: "원문", exact: true });
+const sourceMode = () => page.getByRole("button", { name: "원문 편집", exact: true });
 const historyIndex = () => page.evaluate(() => history.length);
 
 async function openPost(path = POST) {
@@ -94,7 +94,7 @@ async function openPost(path = POST) {
   await page.locator(".body-editor-content").waitFor();
 }
 
-const POST_EDITED = "저장하지 않은 변경이 있다. 바뀐 영역: 글 설정, 본문, 첨부 이미지";
+const POST_EDITED = "저장하지 않은 변경이 있어요. 바뀐 곳: 글 설정, 본문, 첨부 이미지";
 
 /** 본문 끝에 이미지를 넣는다. 도구 막대의 이미지 버튼처럼 본문에 커서를 둔 채 파일을 고른다. */
 async function attachImage() {
@@ -188,7 +188,7 @@ describe("기존 글", () => {
       expect(page.url()).toBe(postUrl(app));
       await page.locator(".body-editor-content").waitFor();
       expect(await titleInput().inputValue()).toBe("휴진 안내");
-      expect(await page.getByText(/저장하지 않은 변경이 있다/).count()).toBe(0);
+      expect(await page.getByText(/저장하지 않은 변경이 있어요/).count()).toBe(0);
       expect(await page.getByText(/넣은 이미지: /).count()).toBe(0);
       expect(await sourceMode().getAttribute("aria-pressed")).toBe("false");
     };
@@ -216,7 +216,7 @@ describe("기존 글", () => {
     await titleInput().fill("휴진 안내 (다시 수정)");
     await listLink().click();
     await leaveDialog().waitFor();
-    expect(await leaveDialog().getByText("바뀐 영역: 글 설정").count()).toBe(1);
+    expect(await leaveDialog().getByText("바뀐 곳: 글 설정").count()).toBe(1);
     await keepButton().click();
     expect(newCommits()).toBe(0);
     expect(browserDialogs).toEqual([]);
@@ -225,7 +225,7 @@ describe("기존 글", () => {
   test("변경 없는 화면, 새 탭 열기, 페이지 내 앵커, 미리보기 조작, 모드 전환은 묻지 않는다", async () => {
     await openPost();
     await sourceMode().click();
-    await page.getByRole("button", { name: "WYSIWYG" }).click();
+    await page.getByRole("button", { name: "일반 편집" }).click();
     await page
       .getByRole("button", { name: /미리보기/ })
       .first()
@@ -270,7 +270,7 @@ describe("기존 글", () => {
 
     await listLink().click();
     await leaveDialog().waitFor();
-    expect(await leaveDialog().getByText("바뀐 영역: 본문, 첨부 이미지").count()).toBe(1);
+    expect(await leaveDialog().getByText("바뀐 곳: 본문, 첨부 이미지").count()).toBe(1);
     await keepButton().click();
     expect(browserDialogs).toEqual([]);
   });
@@ -346,7 +346,7 @@ describe("새 글", () => {
     await page.waitForURL(newUrl(app, "게시판"));
 
     expect(await newTitleInput().inputValue()).toBe("");
-    expect(await page.getByText(/저장하지 않은 변경이 있다/).count()).toBe(0);
+    expect(await page.getByText(/저장하지 않은 변경이 있어요/).count()).toBe(0);
     await listLink().click();
     await page.waitForURL(listUrl(app, "게시판"));
     expect(await leaveDialog().count()).toBe(0);
@@ -374,7 +374,7 @@ describe("브라우저 기본 경고", () => {
     // 브라우저는 사용자가 누른 적이 있는 화면에만 기본 경고를 띄운다.
     await titleInput().click();
     await titleInput().fill("휴진 안내 (수정)");
-    await page.getByText("저장하지 않은 변경이 있다. 바뀐 영역: 글 설정").waitFor();
+    await page.getByText("저장하지 않은 변경이 있어요. 바뀐 곳: 글 설정").waitFor();
 
     await page.reload({ timeout: 2000 }).catch(() => null);
     await vi.waitFor(() => expect(browserDialogs).toEqual(["beforeunload"]));
@@ -391,7 +391,7 @@ describe("브라우저 기본 경고", () => {
     expect(page.isClosed()).toBe(false);
 
     await titleInput().fill("휴진 안내");
-    await page.getByText(/저장하지 않은 변경이 있다/).waitFor({ state: "detached" });
+    await page.getByText(/저장하지 않은 변경이 있어요/).waitFor({ state: "detached" });
     await page.reload();
     await page.locator(".body-editor-content").waitFor();
     expect(browserDialogs).toHaveLength(3);

@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { useSaveLocked } from "@/app/_lib/unsaved";
 import type { EditorMode } from "@/lib/content";
 
-const LABELS: { [mode in EditorMode]: string } = { wysiwyg: "WYSIWYG", source: "원문" };
+const LABELS: { [mode in EditorMode]: string } = { wysiwyg: "일반 편집", source: "원문 편집" };
 
 /** 눌림 상태(`aria-pressed`)를 반전으로 보이는 버튼. */
 export const TOGGLE_BUTTON_CLASS =

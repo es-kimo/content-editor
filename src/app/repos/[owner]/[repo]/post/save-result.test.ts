@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { saveBody, saveMetadata, saveSource } from "@/lib/content";
+import { saveBody, saveMetadata, saveSource, type SaveState } from "@/lib/content";
 import { createGitHubClient } from "@/lib/github";
 import { yjshdConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
@@ -59,32 +59,48 @@ describe("saveResultState", () => {
     expect(saveResultState(result, href)).toEqual({ status: "unchanged" });
   });
 
-  test("입력이 잘못되면 필드별 오류를 돌려준다", async () => {
+  test("입력이 잘못되면 필드별 오류를 돌려주고 기본 안내는 표시된 항목을 고치라고 한다", async () => {
     const { client } = setup();
 
     const result = await saveMetadata(client, REPO, config, { path: POST, baseSha, values: { ...FORM, title: "" } });
+    const state = errorState(saveResultState(result, href));
 
-    expect(saveResultState(result, href)).toMatchObject({ status: "error", fields: { title: "필수 항목이다" } });
+    expect(state.fields).toEqual({ title: "값을 입력해 주세요." });
+    expect(state.message).toBe("입력한 값을 확인해 주세요. 표시된 항목을 고친 뒤 다시 저장해 주세요.");
+    expect(state.detail).toBeUndefined();
   });
 
-  test("컴파일되지 않으면 오류 행을 알린다", async () => {
+  test("컴파일되지 않으면 기본 안내는 원문 편집에서 고치라고 하고, 오류 행과 원문은 기술 상세에 둔다", async () => {
     const { client } = setup();
     const broken = SOURCE.replace("src={image1}", "src={image1 +}");
 
     const result = await saveSource(client, REPO, config, { path: POST, baseSha, source: broken });
+    const state = errorState(saveResultState(result, href));
 
-    expect(saveResultState(result, href)).toMatchObject({ status: "error", message: expect.stringContaining("12행") });
+    expect(state.message).toBe(
+      "이대로 저장하면 사이트에서 글을 보여 줄 수 없어요. 원문 편집에서 오류 표시가 있는 줄을 고친 뒤 다시 저장해 주세요.",
+    );
+    if (result.ok || result.reason !== "compile") throw new Error("컴파일 실패가 아니다");
+    expect(state.detail).toBe(`12행: ${result.error.message}`);
+    expect(state.message).not.toContain(result.error.message);
+    expect(state.fields).toBeUndefined();
   });
 
-  test("연 뒤 다른 곳에서 글이 바뀌었으면 충돌로 알린다", async () => {
+  test("연 뒤 다른 곳에서 글이 바뀌었으면 충돌 이유와 입력을 보관한 뒤 다시 여는 행동을 알린다", async () => {
     const { repo, client } = setup();
     repo.pushElsewhere([{ path: POST, content: SOURCE.replace("본문", "다른 곳에서 고친 본문") }]);
 
     const result = await saveSource(client, REPO, config, { path: POST, baseSha, source: SOURCE + "\n추가\n" });
+    const state = errorState(saveResultState(result, href));
 
-    expect(saveResultState(result, href)).toMatchObject({
-      status: "error",
-      message: expect.stringContaining("다른 곳에서 바뀌었다"),
-    });
+    expect(state.message).toBe(
+      "글을 연 뒤 다른 곳에서 글이 바뀌었어요. 입력한 내용을 따로 보관한 뒤 글을 다시 열어 주세요.",
+    );
+    expect(state.fields).toBeUndefined();
   });
 });
+
+function errorState(state: SaveState): Extract<SaveState, { status: "error" }> {
+  if (state.status !== "error") throw new Error(`오류 결과가 아니다: ${state.status}`);
+  return state;
+}

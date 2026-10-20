@@ -23,8 +23,10 @@ async function runSave(
     const found = findCollection(config, path);
     return found ? save({ client, config, collection: found.collection }) : null;
   });
-  if (!outcome.ok) return saveError(outcome.message);
-  if (outcome.value === null) return saveError("config의 컬렉션에 없는 글이다.");
+  if (!outcome.ok) return saveError(outcome.message, { detail: outcome.detail });
+  if (outcome.value === null) {
+    return saveError("편집할 수 있는 글 분류에 없는 글이라 저장할 수 없어요. 글 목록에서 글을 다시 열어 주세요.");
+  }
   return saveResultState(
     outcome.value,
     (commit) => `${postHref(repo, path)}&${new URLSearchParams({ saved: commit })}`,
@@ -46,7 +48,9 @@ export async function saveMetadataAction(
 /** WYSIWYG 본문 저장. `body`와, 본문에 넣은 이미지를 파일 이름이 `N.ext`인 `image` 파일로 받는다. */
 export async function saveBodyAction(repo: string, path: string, baseSha: string, data: FormData): Promise<SaveState> {
   const body = data.get("body");
-  if (typeof body !== "string") return saveError("본문을 읽을 수 없다. 새로고침한 뒤 다시 저장한다.");
+  if (typeof body !== "string") {
+    return saveError("본문을 읽지 못했어요. 본문을 따로 보관한 뒤 글을 다시 열어 저장해 주세요.");
+  }
   const files = data.getAll("image").filter((value): value is File => value instanceof File);
   const images = await Promise.all(
     files.map(async (file) => ({ file: file.name, content: new Uint8Array(await file.arrayBuffer()) })),

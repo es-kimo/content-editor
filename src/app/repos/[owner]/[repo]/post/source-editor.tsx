@@ -54,7 +54,7 @@ export function SourceEditor({
         );
       }}
     >
-      <p className="text-xs text-zinc-500">import·metadata를 포함한 파일 전체를 고친다.</p>
+      <p className="text-xs text-zinc-500">글 설정과 이미지 연결을 포함한 파일 전체를 고쳐요.</p>
       <CodeMirrorSourceEditor
         source={source}
         syntax={syntax}
@@ -70,7 +70,7 @@ export function SourceEditor({
         syntax={syntax}
         site={preview ? { url: preview, message: () => previewMessage(edited.current, []) } : undefined}
       />
-      <SaveRow label="원문 저장" save={save} unchanged="바뀐 내용이 없어 커밋하지 않았다." />
+      <SaveRow label="원문 저장" save={save} />
     </form>
   );
 }

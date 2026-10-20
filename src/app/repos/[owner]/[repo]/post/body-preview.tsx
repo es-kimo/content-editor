@@ -6,6 +6,7 @@ import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 미리보기 메시지만 가져온다.
 import { previewOrigin, trustsPreviewMessage, type PreviewMessage } from "@/lib/content/preview";
+import { TechDetails } from "@/app/_lib/ui";
 import { previewMdx, type PreviewImages, type Syntax } from "@/lib/mdx-doc";
 
 import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
@@ -93,7 +94,7 @@ function SiteFrame({
 
   return (
     <>
-      <p className="text-xs text-zinc-500">사이트의 미리보기 페이지로 그린다. 입력을 멈추면 다시 그린다.</p>
+      <p className="text-xs text-zinc-500">사이트의 미리보기 페이지로 보여 줘요. 입력을 멈추면 다시 그려요.</p>
       <iframe ref={frame} src={url} title="사이트 미리보기" className="h-[70vh] w-full rounded border" />
     </>
   );
@@ -107,14 +108,17 @@ function Preview({ markdown, syntax, images }: { markdown: string; syntax: Synta
 
   if (!preview.ok) {
     return (
-      <p className="text-sm text-amber-600">
-        MDX 문법 오류가 있어 미리보기를 그릴 수 없다. 원문 모드의 오류 표시를 보고 고친다: {preview.message}
-      </p>
+      <>
+        <p className="text-sm text-amber-600">
+          글에 문법 오류가 있어 미리보기를 그릴 수 없어요. 원문 편집의 오류 표시를 보고 고쳐 주세요.
+        </p>
+        <TechDetails items={[["오류 원문", preview.message]]} />
+      </>
     );
   }
   return (
     <>
-      <p className="text-xs text-zinc-500">사이트 컴포넌트는 이름과 속성만 보인다.</p>
+      <p className="text-xs text-zinc-500">사이트 컴포넌트는 이름과 속성만 보여요.</p>
       <div className="body-preview rounded border">{toJsxRuntime(preview.tree, { Fragment, jsx, jsxs })}</div>
     </>
   );

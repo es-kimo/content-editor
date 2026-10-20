@@ -45,7 +45,7 @@ export function datetimeValue(
 ): { ok: true; value: MetadataValue | undefined } | { ok: false; message: string } {
   if (raw.trim() === "") return { ok: true, value: undefined };
   const parsed = parseDatetime(raw.trim());
-  if (!parsed) return { ok: false, message: `날짜 형식이 아니다: ${raw}` };
+  if (!parsed) return { ok: false, message: "날짜와 시각을 다시 입력해 주세요." };
   const original = typeof current === "string" ? parseDatetime(current) : null;
   if (original && formatLocal(original) === formatLocal(parsed)) return { ok: true, value: current };
   return { ok: true, value: formatDatetime(parsed, original) };

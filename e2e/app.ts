@@ -83,6 +83,8 @@ export type App = {
   context(): Promise<BrowserContext>;
   /** 가짜 레포의 브랜치 커밋 수. 처음 커밋을 포함한다. */
   commits(): number;
+  /** 가짜 레포 브랜치 끝의 파일 내용. 없으면 undefined. */
+  file(path: string): string | undefined;
   close(): Promise<void>;
 };
 
@@ -122,6 +124,10 @@ export async function startApp(repo: string, files: FakeFile[]): Promise<App> {
       return context;
     },
     commits: () => github.git.log().length,
+    file(path) {
+      const content = github.git.file(path);
+      return content && new TextDecoder().decode(content);
+    },
     close,
   };
 }

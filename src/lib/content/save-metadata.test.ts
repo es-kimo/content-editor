@@ -154,8 +154,8 @@ export const metadata = {
       ok: false,
       reason: "invalid",
       errors: [
-        { key: "title", message: "필수 항목이다" },
-        { key: "other.status", message: "선택지에 없는 값이다: hidden" },
+        { key: "title", message: "값을 입력해 주세요." },
+        { key: "other.status", message: "목록에 없는 값이에요. 목록에서 골라 주세요." },
       ],
     });
     expect(repo.head()).toBe(before);

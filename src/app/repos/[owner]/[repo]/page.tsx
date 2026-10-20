@@ -4,6 +4,7 @@ import { CollectionTabs, newPostHref, openRepoPage, postHref, repoHref } from "@
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell, TechDetails } from "@/app/_lib/ui";
 import { listPosts, listTitle, timed } from "@/lib/content";
+import { optionLabel, STATUS_FIELD } from "@/lib/metadata-form";
 
 type Params = Promise<{ owner: string; repo: string }>;
 
@@ -55,7 +56,7 @@ async function PostList({ params, searchParams }: { params: Params; searchParams
         </div>
         {posts.length === 0 ? (
           <p className="text-zinc-500">
-            <code>{collection.path}</code>에 맞는 글이 없다.
+            <code>{collection.path}</code>에 맞는 글이 없어요.
           </p>
         ) : (
           <table className="w-full text-left text-sm">
@@ -75,11 +76,11 @@ async function PostList({ params, searchParams }: { params: Params; searchParams
                     </Link>
                     {post.problem && (
                       <span className="ml-2 text-xs text-amber-600" title={post.problem}>
-                        metadata를 읽지 못함
+                        글 설정을 읽지 못했어요
                       </span>
                     )}
                   </td>
-                  <td className="py-2">{post.status ?? "-"}</td>
+                  <td className="py-2">{post.status === null ? "-" : optionLabel(STATUS_FIELD, post.status)}</td>
                   <td className="py-2 whitespace-nowrap">{post.createdAt?.slice(0, 10) ?? "-"}</td>
                 </tr>
               ))}

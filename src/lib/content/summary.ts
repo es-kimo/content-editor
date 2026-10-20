@@ -6,7 +6,7 @@ import {
   type MetadataValue,
   type Syntax,
 } from "@/lib/mdx-doc";
-import { TITLE_FIELD } from "@/lib/metadata-form";
+import { STATUS_FIELD, TITLE_FIELD } from "@/lib/metadata-form";
 
 export type PostSummary = {
   title: string;
@@ -52,7 +52,7 @@ export function summarizePost(source: string, syntax: Syntax, fallbackTitle: str
   return {
     title: title ?? fallbackTitle,
     titleFromMetadata: title !== null,
-    status: stringAt(metadata.value, "other.status"),
+    status: stringAt(metadata.value, STATUS_FIELD),
     createdAt: stringAt(metadata.value, "other.createdAt"),
     problem: title ? null : "metadata에 title이 없다",
   };

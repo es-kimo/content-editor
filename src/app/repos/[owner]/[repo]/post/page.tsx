@@ -49,6 +49,7 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
 
   const commit = typeof saved === "string" ? saved : undefined;
   const fields = metadataFields(post);
+  const sourceOnly = editorModes(post).sourceOnly;
   const content = (
     <>
       <header className="flex flex-col gap-1">
@@ -96,6 +97,8 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
           ["파일 경로", post.path],
           ["blob SHA", post.sha],
           ...(commit ? [["저장한 커밋", commit] satisfies [string, string]] : []),
+          // 글 설정을 폼으로 읽을 수 없는 글도 원문 전용이라, 그 이유도 여기에 담긴다.
+          ...(sourceOnly ? [["일반 편집 제한 원문", sourceOnly.message] satisfies [string, string]] : []),
         ]}
       />
     </>
@@ -119,9 +122,10 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
   );
 }
 
+/** 원문 전용 글의 구체적인 제한 이유. 기술 원문은 기술 상세에 둔다. */
 const SOURCE_ONLY = {
-  doc: "구간으로 나눌 수 없는 글이라 원문 모드로만 고친다",
-  metadata: "metadata를 폼으로 읽을 수 없는 글이라 원문 모드로만 고친다",
+  doc: "글 설정과 본문을 나눠 읽을 수 없는 구성이에요.",
+  metadata: "글 설정을 폼으로 읽을 수 없어요.",
 };
 
 function BodyView({ repo, post, syntax, preview }: { repo: string; post: Post; syntax: Syntax; preview?: string }) {
@@ -142,7 +146,7 @@ function BodyView({ repo, post, syntax, preview }: { repo: string; post: Post; s
       <>
         {modes.sourceOnly && (
           <p className="text-sm text-amber-600">
-            {SOURCE_ONLY[modes.sourceOnly.reason]}: {modes.sourceOnly.message}
+            이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. {SOURCE_ONLY[modes.sourceOnly.reason]}
           </p>
         )}
         {source}
@@ -176,18 +180,24 @@ function BodyView({ repo, post, syntax, preview }: { repo: string; post: Post; s
 
 /** 글 설정 폼에 실을 필드. 폼으로 고칠 수 없으면 글 설정 자리에 대신 보일 안내. */
 function metadataFields(post: Post): { ok: true; fields: FormField[] } | { ok: false; notice: ReactNode } {
-  if (!post.metadata) return { ok: false, notice: <p className="text-sm text-zinc-500">metadata export가 없다.</p> };
+  if (!post.metadata) {
+    return {
+      ok: false,
+      notice: <p className="text-sm text-zinc-500">이 글에는 글 설정이 없어요. 원문 편집에서 추가할 수 있어요.</p>,
+    };
+  }
   if (!post.metadata.editable) {
     return {
       ok: false,
-      notice: (
-        <p className="text-sm text-amber-600">폼으로 읽을 수 없어 원문 모드로만 편집한다: {post.metadata.reason}</p>
-      ),
+      notice: <p className="text-sm text-amber-600">글 설정을 폼으로 읽을 수 없어요. 원문 편집에서 고쳐 주세요.</p>,
     };
   }
   const fields = buildForm(post.collection, post.metadata.value);
   if (fields.length === 0) {
-    return { ok: false, notice: <p className="text-sm text-zinc-500">config에 이 컬렉션의 metadata 필드가 없다.</p> };
+    return {
+      ok: false,
+      notice: <p className="text-sm text-zinc-500">이 글 분류에는 고칠 수 있는 글 설정이 없어요.</p>,
+    };
   }
   return { ok: true, fields };
 }

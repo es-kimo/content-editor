@@ -67,12 +67,12 @@ export function handleLogin(request: NextRequest, config: AuthConfig): NextRespo
 export async function handleCallback(request: NextRequest, config: AuthConfig, deps: HandlerDeps) {
   const params = request.nextUrl.searchParams;
   const error = params.get("error");
-  if (error) return text(`GitHub 로그인이 취소되었거나 실패했다: ${error}`, 400);
+  if (error) return text(`GitHub 로그인이 취소됐거나 실패했어요. 처음 화면에서 다시 로그인해 주세요. (${error})`, 400);
   if (!statesMatch(request.cookies.get(STATE_COOKIE)?.value, params.get("state"))) {
-    return text("state가 일치하지 않는다. 로그인을 처음부터 다시 시도한다.", 400);
+    return text("로그인 요청을 확인하지 못했어요. 처음 화면에서 다시 로그인해 주세요.", 400);
   }
   const code = params.get("code");
-  if (!code) return text("code가 없다", 400);
+  if (!code) return text("GitHub에서 로그인 결과를 받지 못했어요. 처음 화면에서 다시 로그인해 주세요.", 400);
 
   let session: Session;
   try {
@@ -80,7 +80,7 @@ export async function handleCallback(request: NextRequest, config: AuthConfig, d
   } catch (e) {
     if (!(e instanceof GitHubAuthError)) throw e;
     deps.warn(e.message);
-    return text("GitHub 토큰 교환에 실패했다", 502);
+    return text("GitHub 로그인을 마치지 못했어요. 잠시 뒤 처음 화면에서 다시 로그인해 주세요.", 502);
   }
 
   const res = NextResponse.redirect(new URL("/", request.nextUrl.origin));

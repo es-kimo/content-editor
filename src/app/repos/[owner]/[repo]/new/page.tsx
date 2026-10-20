@@ -45,14 +45,15 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
         </LeaveLink>
         <h1 className="text-2xl font-semibold">새 글</h1>
         <p className="text-sm text-zinc-500">
-          만들면 브랜치 {config.branch}에 바로 커밋하고 편집 화면으로 간다. 제목이 폴더 이름이 된다.
+          만들면 브랜치 {config.branch}에 바로 저장하고 편집 화면으로 가요. 제목이 폴더 이름이 돼요.
         </p>
         <UnsavedNotice />
       </header>
       <CollectionTabs config={config} current={collection} href={(c) => newPostHref(repo, c)} />
       {submenus?.length === 0 ? (
         <p className="text-amber-600">
-          <code>{collection.path}</code>에 맞는 글이 없어 고를 하위 메뉴가 없다. 하위 메뉴 폴더는 레포에서 먼저 만든다.
+          <code>{collection.path}</code>에 맞는 글이 없어 고를 하위 메뉴가 없어요. 레포에서 하위 메뉴 폴더를 먼저 만들어
+          주세요.
         </p>
       ) : (
         <NewPostForm
