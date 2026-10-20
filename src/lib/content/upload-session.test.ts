@@ -4,7 +4,7 @@ import { bodyChanged, parseMdx } from "@/lib/mdx-doc";
 import { GIF, JPEG, PNG, SOURCE } from "@/test/upload-images";
 
 import { unsavedAreas } from "./unsaved";
-import { uploadExtension } from "./upload";
+import { MAX_UPLOAD_BYTES, uploadExtension } from "./upload";
 import { createUploadSession, type AddedUploads, type PreparedImage } from "./upload-session";
 
 const doc = parseMdx(SOURCE);
@@ -210,7 +210,7 @@ describe("createUploadSession 첨부 판정", () => {
   });
 
   test("합계 상한을 넘게 만드는 이미지는 넣지 않고 그 이유를 돌려준다", async () => {
-    const large = new Uint8Array(3 * 1024 * 1024);
+    const large = new Uint8Array(MAX_UPLOAD_BYTES / 2 + 1);
     large.set(PNG);
     const { session, finish, inserted, add } = setup();
 
