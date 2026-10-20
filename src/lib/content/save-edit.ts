@@ -1,10 +1,9 @@
 import type { EditorConfig } from "@/lib/editor-config";
 import type { GitHubClient } from "@/lib/github";
-import { checkMdx, parseMdx, printMdx, readMetadata, setMetadata, type MetadataValue } from "@/lib/mdx-doc";
+import { checkMdx, parseMdx, printMdx, readMetadata, setMetadata } from "@/lib/mdx-doc";
 import {
   actionStatus,
   readStatus,
-  REQUIRED_MESSAGE,
   STATUS_FIELD,
   TITLE_FIELD,
   withStatus,
@@ -21,6 +20,7 @@ import {
   editBody,
   openForEdit,
   openPost,
+  withRequired,
   type CommitEditResult,
   type EditablePost,
   type MetadataFormResult,
@@ -54,9 +54,6 @@ export type SaveEditInput = {
   /** 게시 내리기는 미저장 편집을 담지 않는다. 화면이 먼저 반영하거나 버리게 한다. */
   | { action: "unpublish" }
 );
-
-/** 본문 필드 오류의 키. 설정 폼의 키와 겹치지 않는다. */
-export const BODY_FIELD = "body";
 
 export type SaveEditResult =
   | CommitEditResult
@@ -164,27 +161,4 @@ async function saveSource(
   if (!next) return { ok: false, reason: "source-status" };
   const source = printMdx(setMetadata(doc, next));
   return commitSource(client, repo, config, post, source, metadata.value.title, images);
-}
-
-/**
- * 폼 해석 오류에 필수 값 오류를 더한다. 제목은 내용을 저장하는 행동에 모두 필요하다.
- * 본문은 게시 대상이 되는 행동에만 필요하고, 이미지 태그만 있어도 비어 있지 않다.
- * 게시 내리기는 상태만 바꾸므로 이미 저장된 제목·본문을 다시 따지지 않는다.
- */
-function withRequired(
-  errors: { key: string; message: string }[],
-  action: PostAction,
-  title: MetadataValue | undefined,
-  body: string,
-): { key: string; message: string }[] {
-  const missing = [...errors];
-  if (action === "unpublish") return missing;
-  const has = (key: string) => missing.some((error) => error.key === key);
-  if (!has(TITLE_FIELD) && (typeof title !== "string" || title.trim() === "")) {
-    missing.push({ key: TITLE_FIELD, message: REQUIRED_MESSAGE });
-  }
-  if ((action === "publish" || action === "update") && body.trim() === "") {
-    missing.push({ key: BODY_FIELD, message: REQUIRED_MESSAGE });
-  }
-  return missing;
 }

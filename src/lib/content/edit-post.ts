@@ -10,7 +10,14 @@ import {
   type MdxError,
   type MetadataValue,
 } from "@/lib/mdx-doc";
-import { applyForm, type FormValues, type MetadataObject } from "@/lib/metadata-form";
+import {
+  applyForm,
+  REQUIRED_MESSAGE,
+  TITLE_FIELD,
+  type FormValues,
+  type MetadataObject,
+  type PostAction,
+} from "@/lib/metadata-form";
 
 import { savePost, type CommitResult } from "./commit";
 import { readPost, type Post } from "./read";
@@ -76,9 +83,10 @@ export function applyMetadataForm(post: EditablePost, values: FormValues): Metad
 /**
  * `doc`의 본문을 `body`로 바꾸고 새 이미지의 import를 더한다. import·metadata는 `doc` 그대로 남는다.
  * 본문이 쓰지 않는 새 이미지는 커밋하지 않도록 실패로 돌려준다.
+ * @param post 글 폴더에 이미 있는 이미지. 새 이미지 이름이 그 번호를 쓰지 않게 한다. 새 글은 `{ images: [] }`.
  */
 export function editBody(
-  post: EditablePost,
+  post: Pick<Post, "images">,
   doc: MdxDoc,
   body: string,
   images: UploadImage[],
@@ -93,6 +101,32 @@ export function editBody(
   const unused = findUnusedImageImports(edited).find((image) => images.some(({ file }) => image.path === `./${file}`));
   if (unused) return { ok: false, reason: "image", file: unused.path.slice(2), problem: "unused" };
   return { ok: true, doc: edited };
+}
+
+/** 본문 필드 오류의 키. 설정 폼의 키와 겹치지 않는다. */
+export const BODY_FIELD = "body";
+
+/**
+ * 폼 해석 오류에 필수 값 오류를 더한다. 제목은 내용을 저장하는 행동에 모두 필요하다.
+ * 본문은 게시 대상이 되는 행동에만 필요하고, 이미지 태그만 있어도 비어 있지 않다.
+ * 게시 내리기는 상태만 바꾸므로 이미 저장된 제목·본문을 다시 따지지 않는다.
+ */
+export function withRequired(
+  errors: { key: string; message: string }[],
+  action: PostAction,
+  title: MetadataValue | undefined,
+  body: string,
+): { key: string; message: string }[] {
+  const missing = [...errors];
+  if (action === "unpublish") return missing;
+  const has = (key: string) => missing.some((error) => error.key === key);
+  if (!has(TITLE_FIELD) && (typeof title !== "string" || title.trim() === "")) {
+    missing.push({ key: TITLE_FIELD, message: REQUIRED_MESSAGE });
+  }
+  if ((action === "publish" || action === "update") && body.trim() === "") {
+    missing.push({ key: BODY_FIELD, message: REQUIRED_MESSAGE });
+  }
+  return missing;
 }
 
 export type CommitEditResult =

@@ -10,7 +10,8 @@ import { loadFixtures } from "@/test/fixtures";
 import { GIF, PNG } from "@/test/upload-images";
 
 import { findCollection } from "./read";
-import { BODY_FIELD, saveEdit, type EditContent, type SaveEditInput } from "./save-edit";
+import { BODY_FIELD } from "./edit-post";
+import { saveEdit, type EditContent, type SaveEditInput } from "./save-edit";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { yjshdConfig } from "@/test/config";
 
-import { newPostPath, postSlug } from "./slug";
+import { checkSubmenuName, newPostPath, postSlug } from "./slug";
 
 describe("postSlug", () => {
   test("기존 글처럼 제목을 그대로 폴더 이름으로 쓴다", () => {
@@ -32,6 +32,60 @@ describe("postSlug", () => {
   test("쓸 수 있는 글자가 없으면 null", () => {
     expect(postSlug(" . ")).toBeNull();
     expect(postSlug("???")).toBeNull();
+  });
+});
+
+describe("checkSubmenuName", () => {
+  const EXISTING = ["2.콩팥질환 정보", "3.혈액투석 1,2,3"];
+
+  test("새 이름은 앞뒤 공백만 떼고 그대로 쓴다", () => {
+    expect(checkSubmenuName("AI", EXISTING)).toEqual({ ok: true, name: "AI" });
+    expect(checkSubmenuName("  4.AI 활용 (기초)  ", EXISTING)).toEqual({ ok: true, name: "4.AI 활용 (기초)" });
+  });
+
+  test("한글 자모가 분리된 입력(NFD)은 합쳐진 형태로 쓴다", () => {
+    expect(checkSubmenuName("투석 식단".normalize("NFD"), EXISTING)).toEqual({
+      ok: true,
+      name: "투석 식단".normalize("NFC"),
+    });
+  });
+
+  test("앞뒤 공백이나 유니코드 정규화만 다른 기존 메뉴는 그 메뉴를 고르게 한다", () => {
+    for (const input of ["2.콩팥질환 정보", " 2.콩팥질환 정보\t", "2.콩팥질환 정보".normalize("NFD")]) {
+      expect(checkSubmenuName(input, EXISTING)).toMatchObject({
+        ok: false,
+        problem: "duplicate",
+        existing: "2.콩팥질환 정보",
+      });
+    }
+  });
+
+  test("기존 메뉴 이름이 NFD여도 같은 이름으로 본다", () => {
+    expect(checkSubmenuName("AI 상담", ["AI 상담".normalize("NFD")])).toMatchObject({ problem: "duplicate" });
+  });
+
+  test.each([
+    ["", "empty"],
+    ["   ", "empty"],
+    [".", "dot"],
+    ["..", "dot"],
+    [".AI", "dot"],
+    ["AI.", "dot"],
+    ["a/b", "unsafe"],
+    ["a\\b", "unsafe"],
+    ["AI\n기초", "unsafe"],
+    ["AI\u0000", "unsafe"],
+    ["AI?", "unsafe"],
+    ["100%", "unsafe"],
+    ["가".repeat(67), "too-long"],
+  ] as const)("쓸 수 없는 이름은 고치지 않고 오류로 돌려준다: %j", (input, problem) => {
+    expect(checkSubmenuName(input, EXISTING)).toMatchObject({ ok: false, problem });
+  });
+
+  test("한도는 글 폴더 이름과 같은 200바이트다", () => {
+    expect(checkSubmenuName("가".repeat(66), EXISTING)).toMatchObject({ ok: true });
+    expect(checkSubmenuName("a".repeat(200), EXISTING)).toMatchObject({ ok: true });
+    expect(checkSubmenuName("a".repeat(201), EXISTING)).toMatchObject({ ok: false, problem: "too-long" });
   });
 });
 

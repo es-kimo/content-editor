@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { createPost } from "@/lib/content";
 import { createGitHubClient } from "@/lib/github";
+import { REQUIRED_MESSAGE } from "@/lib/metadata-form";
 import { yjshdConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
 
@@ -15,9 +16,18 @@ const EXISTING = "content/4.게시판/10월 휴진 안내/page.mdx";
 const setup = () => {
   const repo = fakeGitRepo(REPO, "main", [
     { path: EXISTING, content: `export const metadata = { title: "10월 휴진 안내" };\n\n# 10월 휴진 안내\n` },
+    { path: "content/3.강좌/2.콩팥질환 정보/우울해요/page.mdx", content: "# 우울해요\n" },
   ]);
   return { repo, client: createGitHubClient("ghu_token", repo.fetch) };
 };
+
+/** 제목만 넣어 임시저장하는 새 글. */
+const draft = (title: string, collection = "게시판") => ({
+  collection,
+  action: "save-draft" as const,
+  values: { title },
+  body: "",
+});
 
 const href = (path: string, commit: string) => `/repos/${REPO}/post?path=${path}&saved=${commit}`;
 
@@ -25,7 +35,7 @@ describe("createResultState", () => {
   test("만들면 만든 글의 편집 화면 주소를 돌려준다", async () => {
     const { repo, client } = setup();
 
-    const result = await createPost(client, REPO, config, { collection: "게시판", title: "11월 휴진 안내" }, NOW);
+    const result = await createPost(client, REPO, config, draft("11월 휴진 안내"), NOW);
 
     expect(createResultState(result, href)).toEqual({
       status: "saved",
@@ -36,7 +46,7 @@ describe("createResultState", () => {
   test("같은 글 폴더가 이미 있으면 제목 옆에 오류를 보인다", async () => {
     const { client } = setup();
 
-    const result = await createPost(client, REPO, config, { collection: "게시판", title: "10월 휴진 안내" }, NOW);
+    const result = await createPost(client, REPO, config, draft("10월 휴진 안내"), NOW);
 
     expect(createResultState(result, href)).toMatchObject({
       status: "error",
@@ -45,15 +55,39 @@ describe("createResultState", () => {
     });
   });
 
+  test("새 하위 메뉴 이름이 기존 메뉴와 같으면 하위 메뉴 옆에 기존 메뉴를 고르라는 오류를 보인다", async () => {
+    const { client } = setup();
+
+    const result = await createPost(
+      client,
+      REPO,
+      config,
+      { ...draft("새 글", "강좌"), submenu: { kind: "new", name: " 2.콩팥질환 정보 " } },
+      NOW,
+    );
+
+    expect(createResultState(result, href)).toMatchObject({
+      status: "error",
+      fields: { submenu: "‘2.콩팥질환 정보’ 하위 메뉴가 이미 있어요. 새로 만들지 말고 목록에서 골라 주세요." },
+    });
+  });
+
+  test("설정에 초안·게시 상태가 없으면 설정을 확인하라는 안내를 돌려준다", () => {
+    expect(createResultState({ ok: false, reason: "status-options" }, href)).toMatchObject({
+      status: "error",
+      message: expect.stringContaining("편집 설정을 확인"),
+    });
+  });
+
   test("제목이 비면 제목 옆 오류를, 설정에 없는 글 분류면 필드 없이 글 분류를 다시 고르라는 안내를 돌려준다", async () => {
     const { client } = setup();
 
-    const empty = await createPost(client, REPO, config, { collection: "게시판", title: "" }, NOW);
-    const missing = await createPost(client, REPO, config, { collection: "없는 컬렉션", title: "글" }, NOW);
+    const empty = await createPost(client, REPO, config, draft(""), NOW);
+    const missing = await createPost(client, REPO, config, draft("글", "없는 컬렉션"), NOW);
 
     expect(createResultState(empty, href)).toMatchObject({
       status: "error",
-      fields: { title: "제목을 입력해 주세요." },
+      fields: { title: REQUIRED_MESSAGE },
     });
     expect(createResultState(missing, href)).toEqual({
       status: "error",

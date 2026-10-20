@@ -1,5 +1,7 @@
 import type { CreatePostResult, SaveState } from "@/lib/content";
 
+import { uploadMessage } from "../post/upload-message";
+
 /** 새 글 만들기에는 바뀐 것이 없어 커밋하지 않는 결과가 없다. */
 export type CreateState = Exclude<SaveState, { status: "unchanged" }>;
 
@@ -32,5 +34,20 @@ export function createResultState(
       });
     case "not-fast-forward":
       return createError("만드는 사이 다른 곳에서 레포가 바뀌었어요. 다시 만들어 주세요.");
+    case "compile":
+      return createError(
+        "이대로 저장하면 사이트에서 글을 보여 줄 수 없어요. 오류 표시가 있는 줄을 고친 뒤 다시 저장해 주세요.",
+        { detail: `${result.error.line ?? "?"}행: ${result.error.message}` },
+      );
+    case "image":
+      return createError(uploadMessage(result.file, result.problem));
+    // 새 글은 초안에서 시작하므로 상태 문제는 설정이 초안·게시 상태를 다루지 못할 때뿐이다.
+    case "status-field":
+    case "status-options":
+    case "status-value":
+    case "action":
+      return createError(
+        "이 글 분류는 편집 설정에 초안·게시 상태가 없어 저장할 수 없어요. 레포 관리자에게 편집 설정을 확인해 달라고 해 주세요.",
+      );
   }
 }
