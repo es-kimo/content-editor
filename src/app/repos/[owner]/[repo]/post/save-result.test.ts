@@ -64,7 +64,7 @@ describe("saveResultState", () => {
 
     const result = await saveMetadata(client, REPO, config, { path: POST, baseSha, values: { ...FORM, title: "" } });
 
-    expect(saveResultState(result, href)).toMatchObject({ status: "error", fields: { title: "필수 항목이다" } });
+    expect(saveResultState(result, href)).toMatchObject({ status: "error", fields: { title: "값을 입력해 주세요." } });
   });
 
   test("컴파일되지 않으면 오류 행을 알린다", async () => {

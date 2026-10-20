@@ -5,6 +5,7 @@ import type { MetadataValue } from "@/lib/mdx-doc";
 import { testConfig } from "@/test/config";
 
 import { applyForm, buildForm, FIELD_PREFIX, readFormData, splitTitleField } from "./form";
+import { fieldLabel, optionLabel, STATUS_FIELD } from "./labels";
 
 const collection = (metadata: Collection["metadata"]): Collection =>
   testConfig([{ name: "게시판", path: "content/{slug}/page.mdx", metadata }]).collections[0]!;
@@ -39,14 +40,34 @@ describe("buildForm", () => {
     ]);
   });
 
-  test("config의 label·type·required·options를 필드에 옮기고, label이 없으면 키를 보인다", () => {
+  test("config의 label·type·required·options를 필드에 옮긴다", () => {
     expect(buildForm(board, METADATA).map((f) => [f.key, f.label, f.type, f.required, f.options])).toEqual([
       ["title", "제목", "string", true, []],
       ["description", "요약", "text", false, []],
-      ["keywords", "keywords", "string[]", false, []],
+      ["keywords", "검색어", "string[]", false, []],
       ["other.createdAt", "작성일", "datetime", false, []],
       ["other.status", "상태", "select", false, ["ready", "draft"]],
     ]);
+  });
+
+  test("라벨은 config의 사용자 라벨을 우선하고, 없으면 알려진 필드는 기본 이름을, 알 수 없는 필드는 키를 보인다", () => {
+    const labels = collection({
+      title: { type: "string", label: "글 제목" },
+      description: { type: "text" },
+      keywords: { type: "string[]" },
+      "other.createdAt": { type: "datetime" },
+      "other.status": { type: "select", options: ["ready"] },
+      "other.code": { type: "string" },
+    });
+    expect(buildForm(labels, {}).map((f) => [f.key, f.label])).toEqual([
+      ["title", "글 제목"],
+      ["description", "요약"],
+      ["keywords", "검색어"],
+      ["other.createdAt", "작성일"],
+      ["other.status", "상태"],
+      ["other.code", "other.code"],
+    ]);
+    expect(fieldLabel("toString")).toBe("toString");
   });
 
   test("값이 없는 필드는 빈 값으로 연다", () => {
@@ -91,6 +112,22 @@ describe("buildForm", () => {
     const field = buildForm(board, { other: { status: "hidden" } }).find((f) => f.key === "other.status")!;
     expect(field.options).toEqual(["hidden", "ready", "draft"]);
     expect(field.initial).toBe("hidden");
+  });
+});
+
+describe("optionLabel", () => {
+  test("상태 필드의 ready·draft는 ‘게시 대상’·‘초안’으로 보이고 저장할 선택지 값은 그대로다", () => {
+    const status = buildForm(board, METADATA).find((f) => f.key === STATUS_FIELD)!;
+    expect(status.options.map((value) => [value, optionLabel(status.key, value)])).toEqual([
+      ["ready", "게시 대상"],
+      ["draft", "초안"],
+    ]);
+  });
+
+  test("상태 필드의 알 수 없는 값과 다른 필드의 값은 그대로 보인다", () => {
+    expect(optionLabel(STATUS_FIELD, "hidden")).toBe("hidden");
+    expect(optionLabel(STATUS_FIELD, "toString")).toBe("toString");
+    expect(optionLabel("category", "ready")).toBe("ready");
   });
 });
 
@@ -188,14 +225,14 @@ describe("applyForm", () => {
   test("필수 항목이 비면 오류다", () => {
     expect(applyForm(board, METADATA, { title: "  " })).toEqual({
       ok: false,
-      errors: [{ key: "title", message: "필수 항목이다" }],
+      errors: [{ key: "title", message: "값을 입력해 주세요." }],
     });
   });
 
   test("선택지에 없는 값은 받지 않는다. 원래 값이면 받는다", () => {
     expect(applyForm(board, METADATA, { "other.status": "hidden" })).toEqual({
       ok: false,
-      errors: [{ key: "other.status", message: "선택지에 없는 값이다: hidden" }],
+      errors: [{ key: "other.status", message: "목록에 없는 값이에요. 목록에서 골라 주세요." }],
     });
     const hidden = { other: { status: "hidden" } };
     expect(applyForm(board, hidden, { "other.status": "hidden" })).toEqual({ ok: true, value: hidden });
@@ -205,7 +242,7 @@ describe("applyForm", () => {
     for (const value of ["2020-11-20", "어제", "2020-02-30T00:00", "2020-11-20T24:00"]) {
       expect(applyForm(board, METADATA, { "other.createdAt": value })).toEqual({
         ok: false,
-        errors: [{ key: "other.createdAt", message: `날짜 형식이 아니다: ${value}` }],
+        errors: [{ key: "other.createdAt", message: "날짜와 시각을 다시 입력해 주세요." }],
       });
     }
   });

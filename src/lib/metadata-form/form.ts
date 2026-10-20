@@ -2,6 +2,7 @@ import type { Collection, MetadataField } from "@/lib/editor-config";
 import { lookupMetadata, type MetadataValue } from "@/lib/mdx-doc";
 
 import { datetimeInput, datetimeValue } from "./datetime";
+import { fieldLabel } from "./labels";
 
 export type MetadataObject = { [key: string]: MetadataValue };
 
@@ -32,6 +33,9 @@ export type ApplyResult =
 
 export const FIELD_PREFIX = "metadata:";
 
+/** 필수 필드를 비웠을 때 필드 옆 안내. 브라우저 검사에 걸렸을 때도 같은 문구를 쓴다. */
+export const REQUIRED_MESSAGE = "값을 입력해 주세요.";
+
 /** 입력 해석에 필요한 필드 정보. 서버의 config 필드와 클라이언트의 `FormField`가 같은 해석을 쓴다. */
 type InputField = { type: MetadataField["type"]; options?: readonly string[] };
 
@@ -41,7 +45,7 @@ export function buildForm(collection: Collection, metadata: MetadataObject): For
     const found = lookupMetadata(metadata, key);
     const base = {
       key,
-      label: field.label ?? key,
+      label: fieldLabel(key, field.label),
       type: field.type,
       required: field.required ?? false,
       options: field.type === "select" ? [...field.options] : [],
@@ -100,7 +104,7 @@ export function applyForm(collection: Collection, metadata: MetadataObject, valu
       continue;
     }
     if (field.required && isEmpty(parsed.value)) {
-      errors.push({ key, message: "필수 항목이다" });
+      errors.push({ key, message: REQUIRED_MESSAGE });
       continue;
     }
     if (parsed.value === undefined) {
@@ -206,7 +210,7 @@ function fromInput(
     case "select":
       if (raw === "") return { ok: true, value: undefined };
       if (!field.options?.includes(raw) && raw !== current) {
-        return { ok: false, message: `선택지에 없는 값이다: ${raw}` };
+        return { ok: false, message: "목록에 없는 값이에요. 목록에서 골라 주세요." };
       }
       return { ok: true, value: raw };
     case "string[]":
