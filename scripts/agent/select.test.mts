@@ -8,6 +8,7 @@ const issue = (number: number, extra: Partial<IssueInfo> = {}): IssueInfo => ({
   state: "open",
   labels: ["agent-ready"],
   assignees: [],
+  milestone: null,
   body: "## 의존\n없음\n",
   ...extra,
 });

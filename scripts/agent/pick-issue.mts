@@ -3,23 +3,14 @@
  * env: GH_TOKEN, REPO(owner/name), SHIFT_STARTED(이번 밤 근무 시작 시각, ISO. 이 뒤에 실패한 이슈는 건너뛴다)
  */
 import { createGitHub, type ApiComment, type ApiIssue } from "../planner/github.mts";
-import { candidates, failedSince, type IssueInfo } from "./select.mts";
+import { AGENT_PICK, candidates, failedSince, toIssueInfo } from "./select.mts";
 
 const repo = process.env.REPO!;
 const gh = createGitHub(process.env.GH_TOKEN!);
 
-const issues: IssueInfo[] = (await gh.list<ApiIssue>(`/repos/${repo}/issues?state=all`))
-  .filter((i) => !i.pull_request)
-  .map((i) => ({
-    number: i.number,
-    title: i.title,
-    state: i.state,
-    body: i.body ?? "",
-    labels: i.labels.map((l) => l.name),
-    assignees: (i.assignees ?? []).map((a) => a.login),
-  }));
+const issues = (await gh.list<ApiIssue>(`/repos/${repo}/issues?state=all`)).filter((i) => !i.pull_request);
 
-for (const issue of candidates(issues, { readyLabel: "agent-ready", skipLabels: ["blocked", "spike"] })) {
+for (const issue of candidates(issues.map(toIssueInfo), AGENT_PICK)) {
   const since = process.env.SHIFT_STARTED;
   if (since) {
     const comments = (await gh.list<ApiComment>(`/repos/${repo}/issues/${issue.number}/comments`)).map((c) => ({

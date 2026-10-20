@@ -1,3 +1,5 @@
+import type { ApiIssue } from "../planner/github.mts";
+
 export type IssueInfo = {
   number: number;
   title: string;
@@ -5,6 +7,7 @@ export type IssueInfo = {
   labels: string[];
   /** assignee가 있으면 사람 차례다. 에이전트는 고르지 않는다. */
   assignees: string[];
+  milestone: string | null;
   body: string;
 };
 
@@ -15,6 +18,21 @@ export type SelectOptions = {
   readyLabel: string;
   skipLabels: string[];
 };
+
+/** 밤 근무가 고르는 이슈. 사람 차례는 라벨이 아니라 assignee로 나눈다. */
+export const AGENT_PICK: SelectOptions = { readyLabel: "agent-ready", skipLabels: ["blocked", "spike"] };
+
+export function toIssueInfo(i: ApiIssue): IssueInfo {
+  return {
+    number: i.number,
+    title: i.title,
+    state: i.state,
+    body: i.body ?? "",
+    labels: i.labels.map((l) => l.name),
+    assignees: (i.assignees ?? []).map((a) => a.login),
+    milestone: i.milestone?.title ?? null,
+  };
+}
 
 /** 구현 시도가 실패했다는 표시. 밤 근무 슬롯이 이슈 코멘트에 남긴다. */
 export const ATTEMPT_FAILED = "<!-- agent:attempt-failed -->";
