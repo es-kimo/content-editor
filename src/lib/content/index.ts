@@ -17,6 +17,27 @@ export {
   type NewPostSubmenu,
 } from "./create-post";
 export {
+  checkRestore,
+  clearSavedDraft,
+  discardDraft,
+  DRAFT_TTL_MS,
+  draftAttachments,
+  listDrafts,
+  removeExpiredDrafts,
+  saveDraft,
+  type Draft,
+  type DraftAttachment,
+  type DraftContent,
+  type DraftDoc,
+  type DraftForm,
+  type DraftInput,
+  type DraftKey,
+  type DraftQuery,
+  type DraftRestore,
+  type DraftStorage,
+  type SaveDraftResult,
+} from "./draft";
+export {
   createLeaveGuard,
   leavingAreas,
   traverseNeedsConfirm,
