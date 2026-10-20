@@ -1,5 +1,5 @@
 import type { Collection } from "@/lib/editor-config";
-import { lookupMetadata } from "@/lib/mdx-doc";
+import { lookupMetadata, type MetadataValue } from "@/lib/mdx-doc";
 
 import { set, type MetadataObject } from "./form";
 import { STATUS_FIELD } from "./labels";
@@ -49,12 +49,25 @@ export function readStatus(metadata: MetadataObject): PostStatus | null {
   return STATUSES.find((status) => status === found.value) ?? null;
 }
 
-/** 상태만 `status`로 바꾼 새 metadata. 다른 키와 키 순서는 그대로 둔다. */
-export function withStatus(metadata: MetadataObject, status: PostStatus): MetadataObject {
+/**
+ * 상태만 `status`로 바꾼 새 metadata. 다른 키와 키 순서는 그대로 둔다.
+ * 상태를 담을 자리가 객체가 아니면 null. 원시값에는 키를 붙일 수 없고, 배열에 붙인 키는 출력되지 않아 상태 없이 저장된다.
+ */
+export function withStatus(metadata: MetadataObject, status: PostStatus): MetadataObject | null {
+  let node: MetadataValue = metadata;
+  for (const part of STATUS_FIELD.split(".").slice(0, -1)) {
+    if (!isObject(node)) return null;
+    if (!Object.hasOwn(node, part)) break;
+    node = node[part]!;
+  }
+  if (!isObject(node)) return null;
   const next = structuredClone(metadata);
   set(next, STATUS_FIELD, status);
   return next;
 }
+
+const isObject = (value: MetadataValue): value is MetadataObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
  * 지금 상태의 글에 행동을 할 수 있는지와 저장할 상태. 설정 → 글의 상태 → 행동 순으로 확인한다.

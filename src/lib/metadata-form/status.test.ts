@@ -89,11 +89,17 @@ describe("withStatus", () => {
     const next = withStatus(metadata, "draft");
 
     expect(next).toEqual({ title: "제목", other: { status: "draft", createdAt: "2020-11-20T00:00:00Z" } });
-    expect(Object.keys(next.other as object)).toEqual(["status", "createdAt"]);
+    expect(Object.keys(next?.other as object)).toEqual(["status", "createdAt"]);
     expect(metadata.other.status).toBe("ready");
   });
 
   test("상태 키가 없으면 더한다", () => {
     expect(withStatus({ title: "제목" }, "draft")).toEqual({ title: "제목", other: { status: "draft" } });
+  });
+
+  test("상태를 담을 other가 객체가 아니면 null", () => {
+    for (const other of ["draft", null, ["a"], 1]) {
+      expect(withStatus({ title: "제목", other }, "draft")).toBeNull();
+    }
   });
 });

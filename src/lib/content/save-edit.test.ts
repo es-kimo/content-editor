@@ -301,6 +301,18 @@ describe("saveEdit 상태를 다룰 수 없을 때", () => {
     expect(await result).toEqual({ ok: false, reason: "source-status" });
     expect(repo.head()).toBe(before);
   });
+
+  test("고친 원문의 other가 객체가 아니면 상태 없이 커밋하지 않고 source-status로 거절한다", async () => {
+    const other = /other: \{[^}]*\},/;
+    for (const replacement of ['other: "draft",', "other: null,", 'other: ["a"],']) {
+      const source = DRAFT.replace(other, replacement);
+      expect(source).not.toBe(DRAFT);
+      const { repo, before, result } = save(DRAFT, { action: "save-draft", content: { mode: "source", source } });
+
+      expect(await result).toEqual({ ok: false, reason: "source-status" });
+      expect(repo.head()).toBe(before);
+    }
+  });
 });
 
 describe("saveEdit 실패", () => {

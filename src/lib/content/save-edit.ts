@@ -64,7 +64,7 @@ export type SaveEditResult =
   | Exclude<MetadataFormResult, { ok: true }>
   | Exclude<UploadCheck, { ok: true }>
   | { ok: false; reason: StatusProblem }
-  /** 고친 원문의 metadata를 읽거나 쓸 수 없어 상태를 행동에 맞출 수 없다. */
+  /** 고친 원문의 metadata를 읽거나 쓸 수 없거나 상태를 담을 `other`가 객체가 아니라 상태를 행동에 맞출 수 없다. */
   | { ok: false; reason: "source-status" };
 
 /**
@@ -160,7 +160,9 @@ async function saveSource(
   const errors = withRequired([], action, metadata.value.title, doc.body);
   if (errors.length > 0) return { ok: false, reason: "invalid", errors };
 
-  const source = printMdx(setMetadata(doc, withStatus(metadata.value, status)));
+  const next = withStatus(metadata.value, status);
+  if (!next) return { ok: false, reason: "source-status" };
+  const source = printMdx(setMetadata(doc, next));
   return commitSource(client, repo, config, post, source, metadata.value.title, images);
 }
 
