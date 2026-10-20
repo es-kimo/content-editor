@@ -165,6 +165,7 @@ describe("일반 편집 이미지", () => {
     await page.keyboard.press("Control+End");
 
     await chooseImage(page.getByTitle("이미지 넣기"));
+    await imageForm().waitFor();
     // 파일 교체·자르기 없이 대체 텍스트만 받는다.
     expect(await imageForm().getByRole("button").allInnerTexts()).toEqual(["적용", "취소"]);
     expect(await isFocused(altInput(imageForm()))).toBe(true);
@@ -248,6 +249,7 @@ describe("원문 편집 이미지", () => {
     await openSource(path);
 
     await chooseSourceImage();
+    await imageForm().waitFor();
     expect(await imageForm().getByRole("button").allInnerTexts()).toEqual(["적용", "취소"]);
     await applyAlt("진료 시간표");
     // 열기 전과 같은 위치(원문 끝)에 import와 태그만 더한다.
