@@ -120,6 +120,8 @@ export type SavePostInput = {
   title: string;
   /** 글 폴더에 함께 넣을 이미지. `name`은 폴더 안의 파일 이름. */
   images?: { name: string; content: Uint8Array }[];
+  /** 새 글과 함께 처음 만드는 상위 폴더(새 하위 메뉴). 그 경로에 폴더나 파일이 이미 있으면 저장하지 않는다. */
+  newFolders?: string[];
 };
 
 /** 글 하나와 그 이미지를 config의 브랜치에 커밋 1개로 저장한다. 글을 연 뒤 다른 곳에서 고쳤으면 저장하지 않는다. */
@@ -142,6 +144,11 @@ export async function savePost(
     message: postCommitMessage(input.title),
     files: [{ path: input.path, content: input.source }, ...images],
     // 글 하나가 폴더 하나라, 새 글은 파일뿐 아니라 폴더도 없어야 다른 글의 이미지 폴더에 끼어들지 않는다.
-    expected: [{ path: input.path, sha: input.baseSha }, ...(input.baseSha === null ? [{ path: dir, sha: null }] : [])],
+    // 상위 폴더부터 본다. 새 하위 메뉴 자리에 이미 무엇이 있으면 글 폴더보다 그것이 충돌의 원인이다.
+    expected: [
+      ...(input.newFolders ?? []).map((path) => ({ path, sha: null })),
+      { path: input.path, sha: input.baseSha },
+      ...(input.baseSha === null ? [{ path: dir, sha: null }] : []),
+    ],
   });
 }

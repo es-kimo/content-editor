@@ -11,9 +11,10 @@ export {
   createPost,
   listSubmenus,
   needsSubmenu,
-  type CreatePostField,
+  SUBMENU_FIELD,
   type CreatePostInput,
   type CreatePostResult,
+  type NewPostSubmenu,
 } from "./create-post";
 export {
   createLeaveGuard,
@@ -81,7 +82,7 @@ export {
 } from "./read";
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
 export { BODY_FIELD } from "./edit-post";
-export { saveEdit,type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
+export { saveEdit, type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
 export {
   createSaveFlow,
   discardedAreas,
@@ -100,13 +101,7 @@ export {
 } from "./save-flow";
 export { saveSource, type SaveSourceInput, type SaveSourceResult } from "./save-source";
 export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";
-export {
-  checkSubmenuName,
-  newPostPath,
-  postSlug,
-  type SubmenuNameCheck,
-  type SubmenuNameProblem,
-} from "./slug";
+export { checkSubmenuName, newPostPath, postSlug, type SubmenuNameCheck, type SubmenuNameProblem } from "./slug";
 export { listTitle, postTitle, summarizePost, UNTITLED_POST, type PostSummary } from "./summary";
 export { timed } from "./timed";
 export { areaNames, newPostChanges, sourceChanged, unsavedAreas, type EditArea, type NewPostInput } from "./unsaved";

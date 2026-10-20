@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { createPost } from "@/lib/content";
 import { createGitHubClient } from "@/lib/github";
+import { REQUIRED_MESSAGE } from "@/lib/metadata-form";
 import { yjshdConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
 
@@ -19,13 +20,21 @@ const setup = () => {
   return { repo, client: createGitHubClient("ghu_token", repo.fetch) };
 };
 
+/** 제목만 넣어 임시저장하는 새 글. */
+const draft = (title: string, collection = "게시판") => ({
+  collection,
+  action: "save-draft" as const,
+  values: { title },
+  body: "",
+});
+
 const href = (path: string, commit: string) => `/repos/${REPO}/post?path=${path}&saved=${commit}`;
 
 describe("createResultState", () => {
   test("만들면 만든 글의 편집 화면 주소를 돌려준다", async () => {
     const { repo, client } = setup();
 
-    const result = await createPost(client, REPO, config, { collection: "게시판", title: "11월 휴진 안내" }, NOW);
+    const result = await createPost(client, REPO, config, draft("11월 휴진 안내"), NOW);
 
     expect(createResultState(result, href)).toEqual({
       status: "saved",
@@ -36,7 +45,7 @@ describe("createResultState", () => {
   test("같은 글 폴더가 이미 있으면 제목 옆에 오류를 보인다", async () => {
     const { client } = setup();
 
-    const result = await createPost(client, REPO, config, { collection: "게시판", title: "10월 휴진 안내" }, NOW);
+    const result = await createPost(client, REPO, config, draft("10월 휴진 안내"), NOW);
 
     expect(createResultState(result, href)).toMatchObject({
       status: "error",
@@ -48,12 +57,12 @@ describe("createResultState", () => {
   test("제목이 비면 제목 옆 오류를, 설정에 없는 글 분류면 필드 없이 글 분류를 다시 고르라는 안내를 돌려준다", async () => {
     const { client } = setup();
 
-    const empty = await createPost(client, REPO, config, { collection: "게시판", title: "" }, NOW);
-    const missing = await createPost(client, REPO, config, { collection: "없는 컬렉션", title: "글" }, NOW);
+    const empty = await createPost(client, REPO, config, draft(""), NOW);
+    const missing = await createPost(client, REPO, config, draft("글", "없는 컬렉션"), NOW);
 
     expect(createResultState(empty, href)).toMatchObject({
       status: "error",
-      fields: { title: "제목을 입력해 주세요." },
+      fields: { title: REQUIRED_MESSAGE },
     });
     expect(createResultState(missing, href)).toEqual({
       status: "error",

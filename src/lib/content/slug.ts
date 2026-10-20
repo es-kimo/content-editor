@@ -51,7 +51,11 @@ export function checkSubmenuName(input: string, existing: readonly string[]): Su
   const name = input.trim().normalize("NFC");
   if (name === "") return { ok: false, problem: "empty", message: "새 하위 메뉴 이름을 입력해 주세요." };
   if (name.startsWith(".") || name.endsWith(".")) {
-    return { ok: false, problem: "dot", message: "하위 메뉴 이름은 점(.)으로 시작하거나 끝날 수 없어요. 이름을 바꿔 주세요." };
+    return {
+      ok: false,
+      problem: "dot",
+      message: "하위 메뉴 이름은 점(.)으로 시작하거나 끝날 수 없어요. 이름을 바꿔 주세요.",
+    };
   }
   if (UNSAFE_CHAR.test(name)) {
     return {
@@ -81,4 +85,10 @@ export function checkSubmenuName(input: string, existing: readonly string[]): Su
  */
 export function newPostPath(collection: Collection, slug: string, submenu?: string): string {
   return compilePathPattern(collection.path).build({ slug, submenu });
+}
+
+/** 하위 메뉴 폴더의 경로. 경로 패턴에서 `{submenu}` 단계까지다. */
+export function submenuFolder(collection: Collection, submenu: string): string {
+  const segments = collection.path.split("/");
+  return [...segments.slice(0, segments.indexOf("{submenu}")), submenu].join("/");
 }
