@@ -1,10 +1,20 @@
 import type { EditorConfig } from "@/lib/editor-config";
 import type { GitHubClient } from "@/lib/github";
-import { checkMdx, printMdx, type MdxDoc, type MdxError, type MetadataValue } from "@/lib/mdx-doc";
+import {
+  addImageAs,
+  checkMdx,
+  findUnusedImageImports,
+  printMdx,
+  setBody,
+  type MdxDoc,
+  type MdxError,
+  type MetadataValue,
+} from "@/lib/mdx-doc";
+import { applyForm, type FormValues, type MetadataObject } from "@/lib/metadata-form";
 
 import { savePost, type CommitResult } from "./commit";
 import { readPost, type Post } from "./read";
-import type { UploadImage } from "./upload";
+import { IMAGE_COMPONENT, type UploadCheck, type UploadImage } from "./upload";
 
 export type EditablePost = Post & { doc: Extract<MdxDoc, { ok: true }> };
 
@@ -47,6 +57,42 @@ export async function openForEdit(
   if (!opened.ok) return opened;
   if (!opened.post.doc.ok) return { ok: false, reason: "not-editable", message: opened.post.doc.message };
   return { ok: true, post: opened.post as EditablePost };
+}
+
+export type MetadataFormResult =
+  | { ok: true; value: MetadataObject }
+  /** 폼으로 고칠 수 없는 글이다 (metadata 없음, 리터럴이 아닌 식). */
+  | { ok: false; reason: "not-editable"; message: string }
+  | { ok: false; reason: "invalid"; errors: { key: string; message: string }[] };
+
+/** 서버에서 다시 읽은 글의 metadata에 폼 값을 반영한다. 폼에 없는 키와 키 순서는 원본 그대로다. */
+export function applyMetadataForm(post: EditablePost, values: FormValues): MetadataFormResult {
+  if (!post.metadata) return { ok: false, reason: "not-editable", message: "metadata export가 없다" };
+  if (!post.metadata.editable) return { ok: false, reason: "not-editable", message: post.metadata.reason };
+  const applied = applyForm(post.collection, post.metadata.value, values);
+  return applied.ok ? applied : { ok: false, reason: "invalid", errors: applied.errors };
+}
+
+/**
+ * `doc`의 본문을 `body`로 바꾸고 새 이미지의 import를 더한다. import·metadata는 `doc` 그대로 남는다.
+ * 본문이 쓰지 않는 새 이미지는 커밋하지 않도록 실패로 돌려준다.
+ */
+export function editBody(
+  post: EditablePost,
+  doc: MdxDoc,
+  body: string,
+  images: UploadImage[],
+): { ok: true; doc: MdxDoc } | Exclude<UploadCheck, { ok: true }> {
+  const files = post.images.map((image) => image.name);
+  for (const { file } of images) {
+    const added = addImageAs(doc, file, { component: IMAGE_COMPONENT, files });
+    if (!added) return { ok: false, reason: "image", file, problem: "name" };
+    doc = added.doc;
+  }
+  const edited = setBody(doc, body);
+  const unused = findUnusedImageImports(edited).find((image) => images.some(({ file }) => image.path === `./${file}`));
+  if (unused) return { ok: false, reason: "image", file: unused.path.slice(2), problem: "unused" };
+  return { ok: true, doc: edited };
 }
 
 export type CommitEditResult =
