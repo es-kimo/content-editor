@@ -94,7 +94,7 @@ async function openPost(path = POST) {
   await page.locator(".body-editor-content").waitFor();
 }
 
-const POST_EDITED = "저장하지 않은 변경이 있다. 바뀐 영역: metadata, 본문, 첨부 이미지";
+const POST_EDITED = "저장하지 않은 변경이 있다. 바뀐 영역: 글 설정, 본문, 첨부 이미지";
 
 /** 본문 끝에 이미지를 넣는다. 도구 막대의 이미지 버튼처럼 본문에 커서를 둔 채 파일을 고른다. */
 async function attachImage() {
@@ -216,7 +216,7 @@ describe("기존 글", () => {
     await titleInput().fill("휴진 안내 (다시 수정)");
     await listLink().click();
     await leaveDialog().waitFor();
-    expect(await leaveDialog().getByText("바뀐 영역: metadata").count()).toBe(1);
+    expect(await leaveDialog().getByText("바뀐 영역: 글 설정").count()).toBe(1);
     await keepButton().click();
     expect(newCommits()).toBe(0);
     expect(browserDialogs).toEqual([]);
@@ -262,9 +262,9 @@ describe("기존 글", () => {
     await attachImage();
     await page.getByText(POST_EDITED).waitFor();
 
-    await page.getByRole("button", { name: "저장", exact: true }).click();
+    await page.getByRole("button", { name: "글 설정 저장" }).click();
     // 본문·첨부 입력은 다시 열리지 않으므로 묻지 않고 저장한다.
-    await page.getByText(/저장했다\. 커밋/).waitFor();
+    await page.getByText(/^저장했어요\./).waitFor();
     expect(await leaveDialog().isVisible()).toBe(false);
     expect(newCommits()).toBe(1);
 
@@ -374,7 +374,7 @@ describe("브라우저 기본 경고", () => {
     // 브라우저는 사용자가 누른 적이 있는 화면에만 기본 경고를 띄운다.
     await titleInput().click();
     await titleInput().fill("휴진 안내 (수정)");
-    await page.getByText("저장하지 않은 변경이 있다. 바뀐 영역: metadata").waitFor();
+    await page.getByText("저장하지 않은 변경이 있다. 바뀐 영역: 글 설정").waitFor();
 
     await page.reload({ timeout: 2000 }).catch(() => null);
     await vi.waitFor(() => expect(browserDialogs).toEqual(["beforeunload"]));

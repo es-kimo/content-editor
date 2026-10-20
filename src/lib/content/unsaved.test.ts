@@ -4,7 +4,7 @@ import { areaNames, newPostChanges, sourceChanged, unsavedAreas } from "./unsave
 
 describe("unsavedAreas", () => {
   test("바뀐 영역 이름만 화면 순서로 모은다", () => {
-    expect(unsavedAreas({ source: true, metadata: true, body: false })).toEqual(["metadata", "원문"]);
+    expect(unsavedAreas({ source: true, metadata: true, body: false })).toEqual(["글 설정", "원문"]);
     expect(unsavedAreas({ title: true, submenu: true })).toEqual(["하위 메뉴", "제목"]);
   });
 
@@ -16,7 +16,7 @@ describe("unsavedAreas", () => {
 
 describe("areaNames", () => {
   test("받은 순서와 상관없이 영역 이름을 화면 순서로 돌려준다", () => {
-    expect(areaNames(["source", "images", "metadata"])).toEqual(["metadata", "첨부 이미지", "원문"]);
+    expect(areaNames(["source", "images", "metadata"])).toEqual(["글 설정", "첨부 이미지", "원문"]);
   });
 });
 

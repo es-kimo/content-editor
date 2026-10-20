@@ -195,7 +195,7 @@ describe("createUploadSession 첨부 판정", () => {
     setBody(BODY);
 
     expect(unsavedAreas(changed())).toEqual([]);
-    expect(unsavedAreas({ ...changed(), metadata: true })).toEqual(["metadata"]);
+    expect(unsavedAreas({ ...changed(), metadata: true })).toEqual(["글 설정"]);
   });
 
   test("받지 않는 형식이나 읽을 수 없는 이미지만 넣으면 계획이 그대로이고 미저장으로 남지 않는다", async () => {

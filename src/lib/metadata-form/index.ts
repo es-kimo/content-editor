@@ -4,6 +4,8 @@ export {
   FIELD_PREFIX,
   metadataFormChanged,
   readFormData,
+  splitTitleField,
+  TITLE_FIELD,
   type ApplyResult,
   type FormField,
   type FormValues,
