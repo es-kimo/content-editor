@@ -12,7 +12,7 @@ export {
   type FormValues,
   type MetadataObject,
 } from "./form";
-export { fieldLabel, optionLabel, STATUS_FIELD } from "./labels";
+export { fieldLabel, optionLabel, STATUS_FIELD, TRASHED_AT_FIELD } from "./labels";
 export { newMetadata } from "./new-metadata";
 export {
   actionStatus,
@@ -24,3 +24,4 @@ export {
   type PostStatus,
   type StatusProblem,
 } from "./status";
+export { readTrash, withoutTrash, withTrash, type TrashState } from "./trash";

@@ -1,6 +1,9 @@
 /** 글의 게시 상태를 담는 필드의 키. 글 목록의 상태 칸도 이 값을 읽는다. */
 export const STATUS_FIELD = "other.status";
 
+/** 휴지통에 옮긴 시각(`YYYY-MM-DDTHH:mm:ssZ`)을 담는 필드의 키. 게시 상태와 따로 두고, 키가 있으면 휴지통 글이다. */
+export const TRASHED_AT_FIELD = "other.trashedAt";
+
 /** config에 라벨이 없을 때 쓰는 알려진 필드의 이름. */
 const KNOWN_LABELS: { [key: string]: string } = {
   title: "제목",
