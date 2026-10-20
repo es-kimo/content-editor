@@ -26,6 +26,21 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  # 빌드한 앱을 가짜 GitHub로 띄워 Chrome으로 확인한다. 에이전트가 실행마다 전체 e2e를 돌리지 않고, 리뷰는 이 결과를 근거로 쓴다.
+  # ubuntu 러너에 설치된 Chrome을 쓴다 (e2e/app.ts의 channel: "chrome").
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm e2e
+
   # 에이전트 PR(agent/ 브랜치)이 규칙 파일·워크플로·픽스처 설정을 바꾸거나 테스트를 꺼서 통과시키지 못하게 막는다.
   # 다른 PR에서는 바로 통과한다 (필수 체크로 걸기 위해 항상 실행한다).
   guard:

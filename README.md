@@ -57,7 +57,7 @@ pnpm fixtures:sync   # fixtures/<name>/ 아래에 page.mdx를 받는다 (gitigno
 ```
 Agent implement             다음 이슈 1개 → agent/<이슈>-<실행> 브랜치 → 구현 → PR(label: agent)
                             에이전트 PR merge, agent-ready 달림, needs-human 떨어짐, 30분마다(cron)에 돈다
-CI                           check + guard (agent/ 브랜치의 금지 변경 검사)
+CI                           check + e2e + guard (agent/ 브랜치의 금지 변경 검사)
 Agent review (CI 완료 시)   실패: 로그로 수정 / 통과: 독립 리뷰 → 승인이면 auto-merge, 아니면 수정
 Agent report (07:00 KST)    지난 24시간 결과를 `agent-report` 이슈에 코멘트
 ```

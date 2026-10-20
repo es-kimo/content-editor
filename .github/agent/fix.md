@@ -14,7 +14,7 @@
 1. `.agent/feedback.md`의 항목마다 원인을 코드에서 확인한다. 지적이 틀렸다고 판단되면 고치지 말고 근거를 summary에 적는다.
 2. 고치고, 지적된 문제를 잡는 테스트가 없으면 추가한다. 중복 지적이면 새 코드를 지우고 기존 코드를 쓰는 쪽으로 고친다. 기존 코드를 고쳐야 하면 그 호출자도 함께 확인한다.
 3. 고친 범위에 `review-kit:maintainability-review`, `review-kit:test-review`(화면이면 `review-kit:ui-consistency-review`)를 셀프 체크 모드로 적용한다.
-4. 조사용으로 만든 임시 파일을 지우고 `pnpm format`을 돌린 뒤 `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm build`를 모두 통과시킨다.
+4. 조사용으로 만든 임시 파일을 지우고 `pnpm format`을 돌린 뒤 `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm build`를 모두 통과시킨다. e2e는 고친 동작을 다루는 파일만 `pnpm e2e e2e/<파일>`로 돌린다. 전체 e2e는 CI가 돌린다.
 5. `CLAUDE.md` 형식으로 커밋한다. push는 하지 않는다.
 
 테스트를 지우거나 skip해서, 또는 기대값을 바꿔서 통과시키지 않는다. 그렇게밖에 못 고치면 `status: "blocked"`로 멈춘다.
