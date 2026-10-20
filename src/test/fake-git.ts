@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { blobSha, type FakeFile } from "./fake-github";
+import { blobSha, blobTextsResponse, type FakeFile, GRAPHQL_URL } from "./fake-github";
 import { json, mockFetch } from "./mock-fetch";
 
 type Commit = { sha: string; tree: string; parents: string[]; message: string; author: unknown };
@@ -111,25 +111,17 @@ export function fakeGitRepo(repo: string, branch: string, files: FakeFile[]) {
       return json({ sha: hash([...entries].sort()), tree, truncated: false });
     }
 
-    // 글 목록이 blob 텍스트를 묶어 읽는 GraphQL. 실제 API처럼 UTF-8로 읽을 수 없는 blob의 text는 null이다.
-    if (method === "POST" && url.href === "https://api.github.com/graphql") {
-      const { query, variables } = body(init) as { query: string; variables: { owner: string; name: string } };
-      if (`${variables.owner}/${variables.name}` !== repo) return json({ data: { repository: null } });
+    if (method === "POST" && url.href === GRAPHQL_URL) {
       const decoder = new TextDecoder("utf-8", { fatal: true });
-      const repository: Record<string, { text: string | null } | null> = {};
-      for (const [, alias, oid] of query.matchAll(/(\w+): object\(oid: "([0-9a-f]+)"\)/g)) {
-        const data = blobs.get(oid!);
-        if (!data) {
-          repository[alias!] = null;
-          continue;
-        }
+      return blobTextsResponse(repo, init, (oid) => {
+        const data = blobs.get(oid);
+        if (!data) return undefined;
         try {
-          repository[alias!] = { text: decoder.decode(data) };
+          return decoder.decode(data);
         } catch {
-          repository[alias!] = { text: null };
+          return null;
         }
-      }
-      return json({ data: { repository } });
+      });
     }
 
     const contents = new RegExp(`^${base}/contents/(.+)\\?ref=(.+)$`).exec(href);
