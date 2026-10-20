@@ -8,6 +8,7 @@ import {
   addFootnoteRef,
   addImageAt,
   addToc,
+  hasTocHeading,
   readInserts,
   removeToc,
   setInsertText,
@@ -355,6 +356,19 @@ describe("addToc와 removeToc", () => {
   });
 });
 
+describe("hasTocHeading", () => {
+  test("## 이하 소제목이 있으면 목차를 채울 수 있다", () => {
+    expect(hasTocHeading("# 제목\n\n## 소제목\n")).toBe(true);
+    expect(hasTocHeading("# 제목\n\n<Note>\n\n### 안쪽 소제목\n\n</Note>\n")).toBe(true);
+  });
+
+  test("글 제목(#)뿐이거나 코드 블록 안의 ## 줄만 있거나 읽을 수 없으면 채울 제목이 없다", () => {
+    expect(hasTocHeading("# 제목\n\n문단\n")).toBe(false);
+    expect(hasTocHeading("```md\n## 코드\n```\n")).toBe(false);
+    expect(hasTocHeading("<TOC items={toc +} />\n\n## 소제목\n")).toBe(false);
+  });
+});
+
 describe("addImageAt", () => {
   test("이미지 import와 대체 텍스트가 있는 태그만 더하고 나머지 원문은 그대로다", async () => {
     const at = SOURCE.indexOf("<TOC");
@@ -447,6 +461,14 @@ describe.each(fixtureSources)("픽스처 삽입 항목: $name", (source) => {
       expect(failed).toEqual([]);
     },
   );
+
+  test.skipIf(!fixtures)("자동 목차가 있는 글은 모두 목차를 채울 소제목이 있다", () => {
+    const tocPosts = fixtures!.filter((f) => {
+      const list = readInserts(f.source, source.syntax);
+      return list.ok && list.items.some((item) => item.kind === "toc");
+    });
+    expect(tocPosts.filter((f) => !hasTocHeading(f.source, source.syntax)).map((f) => f.path)).toEqual([]);
+  });
 });
 
 describe("픽스처 EOSE 각주", () => {

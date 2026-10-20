@@ -217,6 +217,23 @@ export function removeToc(
   return { ok: true, source: head + gap + rest, cursor: head.length + gap.length };
 }
 
+/**
+ * 자동 목차를 채울 소제목(`##`부터)이 있는지. `#`은 글 제목으로 쓰여 목차에 들지 않는다고 본다.
+ * 코드 블록 안의 `##` 줄은 제목이 아니다. 읽을 수 없는 원문은 false다.
+ */
+export function hasTocHeading(source: string, syntax: Syntax = {}): boolean {
+  let root;
+  try {
+    root = parseMarkdown(source, syntax);
+  } catch {
+    return false;
+  }
+  const visit = (node: { type: string; depth?: number; children?: unknown[] }): boolean =>
+    (node.type === "heading" && (node.depth ?? 1) >= 2) ||
+    (node.children ?? []).some((child) => visit(child as typeof node));
+  return visit(root);
+}
+
 /** `file`을 주면 그 파일 이름(`N.ext`)으로 넣는다. 없으면 `addImage`가 고른다. */
 export type ImageAtOptions = AddImageOptions | (Omit<AddImageOptions, "extension"> & { file: string });
 
