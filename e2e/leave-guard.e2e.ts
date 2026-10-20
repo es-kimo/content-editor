@@ -26,8 +26,17 @@ const CONFIG = {
       metadata: { title: { type: "string", label: "제목", required: true } },
       editor: "wysiwyg",
     },
+    {
+      name: "각주",
+      path: "content/각주/{slug}/page.mdx",
+      metadata: { title: { type: "string", label: "제목", required: true } },
+      components: ["Footnote"],
+      editor: "source",
+    },
   ],
 };
+/** 원문 편집으로 열고 각주를 폼으로 고쳐 보는 글. */
+const FOOTNOTE_POST = "content/각주/휴진/page.mdx";
 const SOURCE = `export const metadata = {
   title: '휴진 안내',
 };
@@ -63,6 +72,7 @@ beforeAll(async () => {
     { path: POST, content: SOURCE },
     { path: SAVED_POST, content: SOURCE.replaceAll("휴진 안내", "저장해 볼 글") },
     { path: "content/공지/안내/page.mdx", content: "export const metadata = {\n  title: '안내',\n};\n\n# 안내\n" },
+    { path: FOOTNOTE_POST, content: SOURCE.replace("쉰다.", '쉰다<Footnote id="1">공휴일</Footnote>.') },
   ]);
 });
 afterAll(async () => app?.close());
@@ -273,6 +283,77 @@ describe("기존 글", () => {
     expect(await leaveDialog().getByText("바뀐 곳: 본문, 첨부 이미지").count()).toBe(1);
     await keepButton().click();
     expect(browserDialogs).toEqual([]);
+  });
+});
+
+describe("넣기·수정 폼", () => {
+  const footnoteForm = () => page.getByRole("form", { name: "각주 1 수정" });
+  const footnoteInput = () => footnoteForm().getByRole("textbox", { name: "각주 내용" });
+  const sourceText = () => page.locator(".cm-content").innerText();
+
+  /** 목록에서 원문 편집으로 여는 글을 열고 각주 수정 폼에 내용을 고쳐 쓴다. 아직 적용하지 않는다. */
+  async function typeInFootnoteForm() {
+    await page.goto(listUrl(app, "각주"));
+    await page.getByRole("link", { name: "휴진 안내" }).click();
+    await page.waitForURL(postUrl(app, FOOTNOTE_POST));
+    await page.locator(".cm-content").waitFor();
+    await page.getByText("삽입 항목 1개").click();
+    await page.getByRole("button", { name: "각주 1 수정" }).click();
+    await footnoteInput().fill("설 연휴");
+  }
+
+  test("폼에 입력 중이면 목록 이동·뒤로 가기를 확인하고, 계속 편집하면 폼과 입력이 그대로 남는다", async () => {
+    await typeInFootnoteForm();
+
+    await listLink("각주").click();
+    await leaveDialog().waitFor();
+    expect(await leaveDialog().getByText("바뀐 곳: 원문 편집").count()).toBe(1);
+    await keepButton().click();
+    expect(page.url()).toBe(postUrl(app, FOOTNOTE_POST));
+    expect(await footnoteInput().inputValue()).toBe("설 연휴");
+
+    await back();
+    await leaveDialog().waitFor();
+    await keepButton().click();
+    expect(page.url()).toBe(postUrl(app, FOOTNOTE_POST));
+    expect(await footnoteInput().inputValue()).toBe("설 연휴");
+    expect(await sourceText()).not.toContain("설 연휴");
+    expect(newCommits()).toBe(0);
+    expect(browserDialogs).toEqual([]);
+  });
+
+  test("폼을 적용하면 입력이 원문 편집의 미저장 변경으로 넘어가 계속 지키고, 버리고 나간 글로 돌아오면 입력 없이 열린다", async () => {
+    await typeInFootnoteForm();
+    await footnoteForm().getByRole("button", { name: "적용" }).click();
+    await page.getByText("저장하지 않은 변경이 있어요. 바뀐 곳: 원문 편집").waitFor();
+
+    await listLink("각주").click();
+    await leaveDialog().waitFor();
+    expect(await leaveDialog().getByText("바뀐 곳: 원문 편집").count()).toBe(1);
+    await leaveButton().click();
+    await page.waitForURL(listUrl(app, "각주"));
+    await back();
+    await page.waitForURL(postUrl(app, FOOTNOTE_POST));
+    await page.locator(".cm-content").waitFor();
+
+    expect(await sourceText()).toContain('<Footnote id="1">공휴일</Footnote>');
+    expect(await footnoteForm().count()).toBe(0);
+    expect(await page.getByText(/저장하지 않은 변경이 있어요/).count()).toBe(0);
+    expect(newCommits()).toBe(0);
+    expect(browserDialogs).toEqual([]);
+  });
+
+  test("폼에 입력 중이면 새로고침에 기본 경고를 요청하고, 취소하면 요청하지 않는다", async () => {
+    await typeInFootnoteForm();
+
+    await page.reload({ timeout: 2000 }).catch(() => null);
+    await vi.waitFor(() => expect(browserDialogs).toEqual(["beforeunload"]));
+    expect(await footnoteInput().inputValue()).toBe("설 연휴");
+
+    await footnoteForm().getByRole("button", { name: "취소" }).click();
+    await page.reload();
+    await page.locator(".cm-content").waitFor();
+    expect(browserDialogs).toEqual(["beforeunload"]);
   });
 });
 
