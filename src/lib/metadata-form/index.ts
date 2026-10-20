@@ -8,3 +8,4 @@ export {
   type FormValues,
 } from "./form";
 export { newMetadata } from "./new-metadata";
+export { metadataFormChanged } from "./unsaved";
