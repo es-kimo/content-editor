@@ -31,8 +31,11 @@ export type DraftAttachment = { file: string; content: Uint8Array; width?: numbe
 /** 보관할 내용. */
 export type DraftContent = { input: DraftInput; form: DraftForm | null; attachments: DraftAttachment[] };
 
-/** 보관본. `baseSha`는 편집을 연 글의 blob sha이고 새 글은 null, `savedAt`은 보관 시각(ms)이다. */
-export type Draft = DraftContent & { key: DraftKey; baseSha: string | null; savedAt: number };
+/**
+ * 보관본. `baseSha`는 편집을 연 글의 blob sha이고 새 글은 null, `savedAt`은 보관 시각(ms)이다.
+ * `missing`은 용량이 모자라 텍스트만 보관할 때 빠진 첨부 파일 이름이다. 복구할 때 다시 골라야 한다.
+ */
+export type Draft = DraftContent & { key: DraftKey; baseSha: string | null; savedAt: number; missing: string[] };
 
 /**
  * 보관본을 두는 브라우저 저장소. 값은 구조화 복제로 그대로 담는다(IndexedDB 등).
@@ -79,11 +82,12 @@ export async function saveDraft(
   now: Date,
 ): Promise<SaveDraftResult> {
   const id = draftStorageKey(key);
-  const draft: Draft = { ...content, key, baseSha, savedAt: now.getTime() };
+  const draft: Draft = { ...content, key, baseSha, savedAt: now.getTime(), missing: [] };
   if (await trySet(storage, id, draft)) return { ok: true, savedAt: draft.savedAt, missing: [] };
   if (content.attachments.length === 0) return { ok: false, reason: "storage" };
-  if (!(await trySet(storage, id, { ...draft, attachments: [] }))) return { ok: false, reason: "storage" };
-  return { ok: true, savedAt: draft.savedAt, missing: content.attachments.map((attachment) => attachment.file) };
+  const missing = content.attachments.map((attachment) => attachment.file);
+  if (!(await trySet(storage, id, { ...draft, attachments: [], missing }))) return { ok: false, reason: "storage" };
+  return { ok: true, savedAt: draft.savedAt, missing };
 }
 
 async function trySet(storage: DraftStorage, id: string, draft: Draft): Promise<boolean> {
@@ -138,11 +142,14 @@ export async function removeExpiredDrafts(storage: DraftStorage, now: Date): Pro
 /**
  * 저장에 성공한 뒤 부른다. 이 탭의 보관본이 저장한 내용과 같을 때만 지운다.
  * 저장하는 동안 더 입력해 보관본이 달라졌으면 그 입력을 남긴다.
+ * 텍스트만 보관된 보관본은 빠진 첨부를 뺀 나머지로 비교한다. 아니면 이미 저장한 내용이 다음 접속에서 충돌로 나온다.
  */
 export async function clearSavedDraft(storage: DraftStorage, key: DraftKey, saved: DraftContent): Promise<void> {
   const id = draftStorageKey(key);
   const draft = await storage.get(id);
-  if (draft && sameContent(draft, saved)) await storage.delete(id);
+  if (!draft) return;
+  const kept = saved.attachments.filter((attachment) => !draft.missing.includes(attachment.file));
+  if (sameContent(draft, { ...saved, attachments: kept })) await storage.delete(id);
 }
 
 /** '버리기'. 다음 접속에서 되살리지 않게 그 보관본을 지운다. */

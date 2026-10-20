@@ -261,7 +261,24 @@ describe("보관 실패", () => {
     const result = await saveDraft(storage, key(), content("본문", attachments), "sha-1", NOW);
     expect(result).toEqual({ ok: true, savedAt: NOW.getTime(), missing: ["1.png", "2.jpg"] });
     const [draft] = await listDrafts(storage, OWNER, POST, NOW);
-    expect(draft).toMatchObject({ input: content("본문").input, attachments: [] });
+    expect(draft).toMatchObject({ input: content("본문").input, attachments: [], missing: ["1.png", "2.jpg"] });
+  });
+
+  test("텍스트만 보관된 뒤 첨부를 포함해 저장에 성공하면 저장 성공 처리가 그 보관본을 지운다", async () => {
+    const { storage } = memoryStorage({ quota: 0 });
+    const saved = content("본문", [{ file: "1.png", content: PNG }]);
+    await saveDraft(storage, key(), saved, "sha-1", NOW);
+
+    await clearSavedDraft(storage, key(), saved);
+    expect(await listDrafts(storage, OWNER, POST, NOW)).toEqual([]);
+  });
+
+  test("텍스트만 보관된 보관본도 저장한 뒤 본문이 달라졌으면 저장 성공 처리가 남긴다", async () => {
+    const { storage } = memoryStorage({ quota: 0 });
+    await saveDraft(storage, key(), content("본문\n\n더 쓴 문단", [{ file: "1.png", content: PNG }]), "sha-1", NOW);
+
+    await clearSavedDraft(storage, key(), content("본문", [{ file: "1.png", content: PNG }]));
+    expect(await listDrafts(storage, OWNER, POST, NOW)).toHaveLength(1);
   });
 
   test("첨부까지 담으면 빠진 첨부가 없다", async () => {
