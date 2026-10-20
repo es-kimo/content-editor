@@ -3,9 +3,9 @@
 /** 저장하지 않은 변경을 따로 판정하는 편집 영역. */
 export type EditArea = "metadata" | "body" | "images" | "source" | "submenu" | "title";
 
-/** 화면에 보일 영역 이름. 화면 위에서 아래 순서다. */
+/** 화면에 보일 영역 이름. 화면 위에서 아래 순서다. 글 화면 위의 제목 입력도 글 설정으로 저장하므로 `metadata`에 든다. */
 const AREA_NAMES: { [area in EditArea]: string } = {
-  metadata: "metadata",
+  metadata: "글 설정",
   body: "본문",
   images: "첨부 이미지",
   source: "원문",

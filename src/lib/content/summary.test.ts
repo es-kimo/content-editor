@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
 
+import { parseMdx, readMetadata } from "@/lib/mdx-doc";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { summarizePost } from "./summary";
+import { listTitle, postTitle, summarizePost } from "./summary";
 
 describe("summarizePost", () => {
   test("title·status·createdAt을 읽는다", () => {
@@ -42,6 +43,33 @@ describe("summarizePost", () => {
   test("site 문법을 따른다: math 없이 읽으면 실패하는 글도 math를 켜면 읽는다", () => {
     const source = `export const metadata = { title: "수식" };\n\n$$\n\\frac{a}{b}\n$$\n\n$x_{1}$\n`;
     expect(summarizePost(source, { math: true }, "slug")).toMatchObject({ title: "수식", titleFromMetadata: true });
+  });
+});
+
+describe("postTitle", () => {
+  const metadataOf = (source: string) => {
+    const doc = parseMdx(source, {});
+    if (!doc.ok) throw new Error(doc.message);
+    return readMetadata(doc);
+  };
+
+  test("저장된 제목을 앞뒤 공백 없이 화면 제목으로 쓴다", () => {
+    expect(postTitle(metadataOf(`export const metadata = { title: "  공지  " };\n`))).toBe("공지");
+  });
+
+  test("제목이 비었거나 없거나 읽을 수 없으면 '제목 없는 글'이다", () => {
+    expect(postTitle(metadataOf(`export const metadata = { title: "  " };\n`))).toBe("제목 없는 글");
+    expect(postTitle(metadataOf(`export const metadata = { other: {} };\n`))).toBe("제목 없는 글");
+    expect(postTitle(metadataOf(`export const metadata = { title: foo };\n`))).toBe("제목 없는 글");
+    expect(postTitle(metadataOf("# 본문\n"))).toBe("제목 없는 글");
+  });
+});
+
+describe("listTitle", () => {
+  test("metadata에서 읽은 제목을 쓰고, 읽지 못하면 파일명 대신 '제목 없는 글'이다", () => {
+    expect(listTitle(summarizePost(`export const metadata = { title: "공지" };\n`, {}, "slug"))).toBe("공지");
+    expect(listTitle(summarizePost(`export const metadata = { title: "" };\n`, {}, "slug"))).toBe("제목 없는 글");
+    expect(listTitle(summarizePost("# 본문\n", {}, "slug"))).toBe("제목 없는 글");
   });
 });
 

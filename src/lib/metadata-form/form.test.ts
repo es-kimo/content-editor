@@ -4,7 +4,7 @@ import type { Collection } from "@/lib/editor-config";
 import type { MetadataValue } from "@/lib/mdx-doc";
 import { testConfig } from "@/test/config";
 
-import { applyForm, buildForm, FIELD_PREFIX, readFormData } from "./form";
+import { applyForm, buildForm, FIELD_PREFIX, readFormData, splitTitleField } from "./form";
 
 const collection = (metadata: Collection["metadata"]): Collection =>
   testConfig([{ name: "게시판", path: "content/{slug}/page.mdx", metadata }]).collections[0]!;
@@ -91,6 +91,26 @@ describe("buildForm", () => {
     const field = buildForm(board, { other: { status: "hidden" } }).find((f) => f.key === "other.status")!;
     expect(field.options).toEqual(["hidden", "ready", "draft"]);
     expect(field.initial).toBe("hidden");
+  });
+});
+
+describe("splitTitleField", () => {
+  test("제목 필드를 따로 꺼내고 잠긴 필드를 포함한 나머지를 config 순서대로 남긴다", () => {
+    const { title, settings } = splitTitleField(buildForm(board, { ...METADATA, keywords: "문자열" }));
+    expect(title?.initial).toBe("11월 휴진 안내");
+    expect(settings.map((f) => [f.key, f.locked === null])).toEqual([
+      ["description", true],
+      ["keywords", false],
+      ["other.createdAt", true],
+      ["other.status", true],
+    ]);
+  });
+
+  test("config에 제목 필드가 없으면 모든 필드가 나머지에 남는다", () => {
+    const fields = buildForm(collection({ "other.status": { type: "select", options: ["ready"] } }), METADATA);
+    const { title, settings } = splitTitleField(fields);
+    expect(title).toBeNull();
+    expect(settings.map((f) => f.key)).toEqual(["other.status"]);
   });
 });
 

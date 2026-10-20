@@ -60,7 +60,7 @@ export {
 export { saveSource, type SaveSourceInput, type SaveSourceResult } from "./save-source";
 export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";
 export { newPostPath, postSlug } from "./slug";
-export { summarizePost, type PostSummary } from "./summary";
+export { listTitle, postTitle, summarizePost, UNTITLED_POST, type PostSummary } from "./summary";
 export { timed } from "./timed";
 export { areaNames, newPostChanges, sourceChanged, unsavedAreas, type EditArea, type NewPostInput } from "./unsaved";
 export {

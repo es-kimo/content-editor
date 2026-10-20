@@ -55,6 +55,20 @@ export function buildForm(collection: Collection, metadata: MetadataObject): For
   });
 }
 
+/** 글 화면 위에 따로 두는 제목 필드의 키. */
+export const TITLE_FIELD = "title";
+
+/**
+ * 폼 필드를 화면 위의 제목 입력과 '글 설정'에 접어 둘 나머지로 나눈다. 둘은 같은 폼이라 함께 저장된다.
+ * 잠긴 필드와 config의 다른 필드는 모두 나머지에 config 순서대로 남는다. 제목 필드가 없으면 `title`은 null.
+ */
+export function splitTitleField(fields: FormField[]): { title: FormField | null; settings: FormField[] } {
+  return {
+    title: fields.find((field) => field.key === TITLE_FIELD) ?? null,
+    settings: fields.filter((field) => field.key !== TITLE_FIELD),
+  };
+}
+
 /** 제출된 FormData에서 config 필드의 값만 꺼낸다. 없는 입력은 빠진다. */
 export function readFormData(collection: Collection, data: FormData): FormValues {
   const values: FormValues = {};
