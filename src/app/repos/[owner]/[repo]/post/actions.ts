@@ -2,7 +2,7 @@
 
 import { runRepoAction, type ActionContext } from "@/app/_lib/action";
 import { postHref } from "@/app/_lib/repo";
-import { findCollection, saveBody, saveMetadata, saveSource, type SaveState } from "@/lib/content";
+import { findCollection, saveBody, saveMetadata, saveSource, type SaveState, type UploadImage } from "@/lib/content";
 import type { Collection } from "@/lib/editor-config";
 import { readFormData } from "@/lib/metadata-form";
 
@@ -45,25 +45,47 @@ export async function saveMetadataAction(
   );
 }
 
-/** WYSIWYG 본문 저장. `body`와, 본문에 넣은 이미지를 파일 이름이 `N.ext`인 `image` 파일로 받는다. */
-export async function saveBodyAction(repo: string, path: string, baseSha: string, data: FormData): Promise<SaveState> {
-  const body = data.get("body");
-  if (typeof body !== "string") {
-    return saveError("본문을 읽지 못했어요. 본문을 따로 보관한 뒤 글을 다시 열어 저장해 주세요.");
-  }
-  const files = data.getAll("image").filter((value): value is File => value instanceof File);
-  const images = await Promise.all(
+/**
+ * 편집 화면이 넣은 이미지. 파일 이름이 `N.ext`인 `image` 파일로 받는다.
+ * 본문·원문 글자는 FormData에 담지 않고 따로 받는다. 브라우저가 FormData 글자 값의 줄바꿈을 CRLF로 바꿔 보내기 때문이다.
+ */
+async function readImages(images: FormData): Promise<UploadImage[]> {
+  const files = images.getAll("image").filter((value): value is File => value instanceof File);
+  return Promise.all(
     files.map(async (file) => ({ file: file.name, content: new Uint8Array(await file.arrayBuffer()) })),
   );
-  return runSave(repo, path, ({ client, config }) => saveBody(client, repo, config, { path, baseSha, body, images }));
 }
 
-/** 원문 모드 저장. 파일 전체를 받는다. */
+/** WYSIWYG 본문 저장. 본문과 본문에 넣은 이미지를 받는다. */
+export async function saveBodyAction(
+  repo: string,
+  path: string,
+  baseSha: string,
+  body: string,
+  images: FormData,
+): Promise<SaveState> {
+  if (typeof body !== "string" || !(images instanceof FormData)) {
+    return saveError("본문을 읽지 못했어요. 본문을 따로 보관한 뒤 글을 다시 열어 저장해 주세요.");
+  }
+  const uploads = await readImages(images);
+  return runSave(repo, path, ({ client, config }) =>
+    saveBody(client, repo, config, { path, baseSha, body, images: uploads }),
+  );
+}
+
+/** 원문 모드 저장. 파일 전체와 원문에 넣은 이미지를 받는다. */
 export async function saveSourceAction(
   repo: string,
   path: string,
   baseSha: string,
   source: string,
+  images: FormData,
 ): Promise<SaveState> {
-  return runSave(repo, path, ({ client, config }) => saveSource(client, repo, config, { path, baseSha, source }));
+  if (typeof source !== "string" || !(images instanceof FormData)) {
+    return saveError("원문을 읽지 못했어요. 원문을 따로 보관한 뒤 글을 다시 열어 저장해 주세요.");
+  }
+  const uploads = await readImages(images);
+  return runSave(repo, path, ({ client, config }) =>
+    saveSource(client, repo, config, { path, baseSha, source, images: uploads }),
+  );
 }

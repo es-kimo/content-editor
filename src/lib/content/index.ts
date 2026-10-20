@@ -24,13 +24,17 @@ export {
   type LeaveGuardState,
 } from "./leave-guard";
 export {
+  applyBodyInsertForm,
   applyInsertForm,
+  bodyInserts,
   formDirty,
   formInitialValue,
+  imageFormTag,
   insertEntries,
   insertFormLabels,
   insertFormMessage,
   insertItemName,
+  insertLimitMessage,
   insertMenuItems,
   isTextInsert,
   type InsertFormApply,
@@ -42,6 +46,7 @@ export { fetchBlobTexts, fetchTree, listPosts, matchPosts, type PostListItem, ty
 export {
   previewMessage,
   previewOrigin,
+  previewUploads,
   trustsPreviewMessage,
   uploadPreviewMessage,
   type PreviewMessage,
@@ -83,11 +88,13 @@ export { timed } from "./timed";
 export { areaNames, newPostChanges, sourceChanged, unsavedAreas, type EditArea, type NewPostInput } from "./unsaved";
 export {
   addUpload,
+  checkSourceUploads,
   fitImageSize,
   IMAGE_COMPONENT,
   MAX_UPLOAD_BYTES,
   UPLOAD_IMAGE_TYPES,
   uploadExtension,
+  sourceUploads,
   uploadImports,
   usedUploads,
   type UploadImage,
@@ -96,6 +103,7 @@ export {
 } from "./upload";
 export {
   createUploadSession,
+  type AddedUpload,
   type AddedUploads,
   type PreparedImage,
   type UploadSession,

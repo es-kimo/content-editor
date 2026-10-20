@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 
-import { FormBlockedNotice, useFormFlow, useSaveLocked } from "@/app/_lib/unsaved";
+import { FormBlockedNotice, useFormFlow, useImagePreparing, useSaveLocked } from "@/app/_lib/unsaved";
 import type { EditorMode } from "@/lib/content";
 
 const LABELS: { [mode in EditorMode]: string } = { wysiwyg: "일반 편집", source: "원문 편집" };
@@ -26,6 +26,8 @@ export function EditorModeSwitch({
   const locked = useSaveLocked();
   // 폼을 연 편집기를 숨기면 적용·취소할 수 없게 되므로 열린 폼이 있으면 바꾸지 않는다.
   const forms = useFormFlow();
+  // 준비가 끝나면 이미지를 받은 편집기에 폼이 열리므로, 그 편집기를 숨겨 폼에 닿지 못하게 되지 않도록 바꾸지 않는다.
+  const preparing = useImagePreparing();
   const editors: { [mode in EditorMode]: ReactNode } = { wysiwyg, source };
 
   return (
@@ -36,7 +38,7 @@ export function EditorModeSwitch({
             key={m}
             type="button"
             aria-pressed={m === mode}
-            disabled={locked}
+            disabled={locked || preparing}
             onClick={() => {
               if (m !== mode && !forms.blocks("mode")) setMode(m);
             }}
@@ -46,6 +48,9 @@ export function EditorModeSwitch({
           </button>
         ))}
         {forms.form?.blocked === "mode" && <FormBlockedNotice />}
+        {preparing && (
+          <p className="text-sm text-zinc-500">이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 모드를 바꿔 주세요.</p>
+        )}
       </div>
       {(Object.keys(editors) as EditorMode[]).map((m) => (
         <div key={m} hidden={m !== mode}>

@@ -20,9 +20,12 @@ export type SaveState =
 const SAVED_AREAS: { [target in SaveTarget]: EditArea[] } = {
   metadata: ["metadata"],
   body: ["body", "images"],
-  source: ["source"],
+  source: ["source", "sourceImages"],
   new: ["title", "submenu"],
 };
+
+/** 원문 편집기는 파일 전체라 어느 영역을 저장해도 sha가 바뀌어 다시 열린다. */
+const SOURCE_AREAS: EditArea[] = ["source", "sourceImages"];
 
 /** 글 화면이 metadata 폼과 WYSIWYG 본문을 다시 열지 정하는 key. 원문은 파일 전체라 저장마다 다시 연다. */
 export type EditorKeys = { metadata: string; body: string };
@@ -41,9 +44,9 @@ export type SaveRequest =
 export function reopenedAreas(request: SaveRequest): EditArea[] {
   switch (request.target) {
     case "metadata":
-      return ["metadata", "source"];
+      return ["metadata", ...SOURCE_AREAS];
     case "body":
-      return ["body", "images", "source"];
+      return ["body", "images", ...SOURCE_AREAS];
     case "new":
       return SAVED_AREAS.new;
     case "source": {
@@ -52,7 +55,7 @@ export function reopenedAreas(request: SaveRequest): EditArea[] {
       return [
         ...(before.metadata !== after.metadata ? (["metadata"] as const) : []),
         ...(before.body !== after.body ? (["body", "images"] as const) : []),
-        "source",
+        ...SOURCE_AREAS,
       ];
     }
   }
@@ -78,8 +81,8 @@ export type SavePhase =
 /** 넣기·수정 폼을 여는 편집 영역. 폼을 적용하면 이 영역의 미저장 변경이 된다. */
 export type FormArea = Extract<EditArea, "body" | "source">;
 
-/** 폼이 열려 있어 막은 동작. 저장 대상 또는 모드 전환. */
-export type FormBlocked = SaveTarget | "mode";
+/** 폼이 열려 있어 막은 동작. 저장 대상, 모드 전환, 이미지 받기. */
+export type FormBlocked = SaveTarget | "mode" | "image";
 
 /**
  * 적용하지 않은 넣기·수정 폼.
@@ -95,12 +98,16 @@ export type SaveFlowState = {
   results: { [target in SaveTarget]?: SaveState };
   /** 열려 있는 폼. 화면에 하나만 연다. */
   form: OpenForm | null;
+  /** 이미지를 준비하는 편집 영역. 준비가 끝나면 그 영역에 폼이 열리므로 그동안 모드 전환을 막는다. */
+  preparing: { [area in FormArea]?: boolean };
 };
 
 export type SaveFlow = {
   getState(): SaveFlowState;
   subscribe(listener: () => void): () => void;
   report(area: EditArea, changed: boolean): void;
+  /** 편집 영역이 이미지를 준비하는 중인지 알린다. */
+  prepare(area: FormArea, preparing: boolean): void;
   /**
    * 저장을 시작한다. 다른 저장이 진행 중이거나 확인 중이면 하지 않고 false.
    * 다른 영역 입력이 사라지면 먼저 `confirming`으로 두고, `confirm`해야 `submit`을 부른다.
@@ -116,7 +123,7 @@ export type SaveFlow = {
   editForm(dirty: boolean): void;
   /** 적용·취소로 폼을 닫는다. 적용한 결과는 그 영역의 편집기가 미저장 변경으로 알린다. */
   closeForm(): void;
-  /** 폼이 열려 있으면 `action`을 막았다고 기록하고 true. 모드 전환처럼 저장 밖의 동작이 막을지 물을 때 쓴다. */
+  /** 폼이 열려 있으면 `action`을 막았다고 기록하고 true. 모드 전환·이미지 받기처럼 저장 밖의 동작이 막을지 물을 때 쓴다. */
   blockedByForm(action: FormBlocked): boolean;
   /** `다른 변경 버리고 저장`. 버리는 것은 저장이 성공해 화면이 다시 열릴 때뿐이다. */
   confirm(): void;
@@ -132,7 +139,7 @@ const FAILED: SaveState = { status: "error", message: "저장하지 못했어요
 
 /** 한 화면의 저장들을 하나씩만 진행하게 묶는다. @param navigate 저장에 성공하면 저장한 글 화면으로 간다. */
 export function createSaveFlow({ navigate }: { navigate: (href: string) => void }): SaveFlow {
-  let state: SaveFlowState = { phase: { kind: "idle" }, changed: {}, results: {}, form: null };
+  let state: SaveFlowState = { phase: { kind: "idle" }, changed: {}, results: {}, form: null, preparing: {} };
   let waiting: Job | null = null;
   const listeners = new Set<() => void>();
 
@@ -175,6 +182,10 @@ export function createSaveFlow({ navigate }: { navigate: (href: string) => void 
     report(area, changed) {
       if (Boolean(state.changed[area]) === changed) return;
       update({ changed: { ...state.changed, [area]: changed } });
+    },
+    prepare(area, preparing) {
+      if (Boolean(state.preparing[area]) === preparing) return;
+      update({ preparing: { ...state.preparing, [area]: preparing } });
     },
     request(request, submit, onUnchanged) {
       if (state.phase.kind !== "idle" || blockedByForm(request.target)) return false;

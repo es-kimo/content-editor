@@ -369,6 +369,27 @@ describe("addImageAt", () => {
     expect(await checkMdx(result.source, blogSyntax)).toEqual({ ok: true });
   });
 
+  test("미리 고른 파일 이름을 주면 그 이름의 import와 태그를 더한다", () => {
+    const at = SOURCE.indexOf("<TOC");
+    const result = addImageAt(SOURCE, { from: at, to: at }, { file: "5.webp", component: "Image", alt: "강아지" });
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.file).toBe("5.webp");
+    expect(result.source).toBe(
+      SOURCE.replace('"./1.png";\n', '"./1.png";\nimport image5 from "./5.webp";\n').replace(
+        "<TOC",
+        '<Image src={image5} alt="강아지" />\n\n<TOC',
+      ),
+    );
+  });
+
+  test("미리 고른 파일 이름의 번호를 원문이 이미 쓰면 넣지 않는다", () => {
+    const at = SOURCE.indexOf("<TOC");
+    expect(addImageAt(SOURCE, { from: at, to: at }, { file: "1.jpg", component: "Image" })).toEqual({
+      ok: false,
+      reason: "name-taken",
+    });
+  });
+
   test("import·metadata 구간에는 넣지 않는다", () => {
     expect(addImageAt(SOURCE, { from: 0, to: 0 }, { extension: "png", component: "Image" })).toEqual({
       ok: false,

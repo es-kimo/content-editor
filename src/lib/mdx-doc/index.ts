@@ -4,7 +4,15 @@ export { bodyChanged, editedBody, sameBodyStructure, setBody } from "./body";
 export { lookupMetadata, metadataText, parseMetadata, readMetadata } from "./metadata";
 export { setMetadata } from "./metadata-print";
 export { newMdx } from "./new-doc";
-export { addImage, addImageAs, findUnusedImageImports, isImageFile, readImageImports } from "./images";
+export {
+  addedImageFile,
+  addImage,
+  addImageAs,
+  findUnusedImageImports,
+  imageTag,
+  isImageFile,
+  readImageImports,
+} from "./images";
 export type { AddedImage, AddImageOptions, ImageImport } from "./images";
 export type { MetadataLookup, MetadataResult, MetadataValue } from "./metadata";
 export { previewMdx } from "./preview";
@@ -15,6 +23,7 @@ export { componentSnippet, insertSnippet } from "./snippet";
 export type { ComponentSnippet, InsertedSnippet } from "./snippet";
 export { addFootnote, addFootnoteRef, addImageAt, addToc, readInserts, removeToc, setInsertText } from "./inserts";
 export type {
+  ImageAtOptions,
   ImageInsertEdit,
   InsertEdit,
   InsertItem,

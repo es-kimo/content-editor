@@ -63,11 +63,17 @@ export function addImage(doc: MdxDoc, options: AddImageOptions): AddedImage {
  */
 export function addImageAs(doc: MdxDoc, file: string, options: Omit<AddImageOptions, "extension">): AddedImage | null {
   if (!doc.ok) return null;
+  const parsed = addedImageFile(file);
+  if (!parsed) return null;
+  if (!freeNumber(doc, options.files)(parsed.n, parsed.extension)) return null;
+  return insertImage(doc, parsed.n, parsed.extension, options);
+}
+
+/** `addImage`가 고르는 꼴(`N.ext`)의 이미지 파일 이름이면 번호와 확장자. 아니면 null. */
+export function addedImageFile(file: string): { n: number; extension: string } | null {
   const match = /^([1-9]\d*)\.([a-z]+)$/.exec(file);
   if (!match || !isImageFile(file)) return null;
-  const n = Number(match[1]);
-  if (!freeNumber(doc, options.files)(n, match[2])) return null;
-  return insertImage(doc, n, match[2], options);
+  return { n: Number(match[1]), extension: match[2]! };
 }
 
 /** 번호 N에 대해 변수명 `imageN`을 head·본문에서 쓰지 않고, 파일 `N.ext`를 import하지 않았고 글 폴더에도 없는지. */
@@ -97,8 +103,13 @@ function insertImage(
   const name = `image${n}`;
   const file = `${n}.${extension}`;
   const importText = formatImport(doc.head, name, `./${file}`);
-  const tag = `<${options.component} src={${name}} alt="${escapeJsxAttribute(options.alt ?? "")}" />`;
+  const tag = imageTag(options.component, name, options.alt ?? "");
   return { doc: { ...doc, head: insertImport(doc.head, importText) }, name, file, tag };
+}
+
+/** import 변수 `name`을 `src`로 쓰는 이미지 태그. 대체 텍스트는 JSX 문자열 속성으로 그대로 다시 읽히게 이스케이프한다. */
+export function imageTag(component: string, name: string, alt: string): string {
+  return `<${component} src={${name}} alt="${escapeJsxAttribute(alt)}" />`;
 }
 
 /**

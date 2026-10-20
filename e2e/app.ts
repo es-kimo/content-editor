@@ -85,6 +85,8 @@ export type App = {
   commits(): number;
   /** 가짜 레포 브랜치 끝의 파일 내용. 없으면 undefined. */
   file(path: string): string | undefined;
+  /** 앱 밖에서 파일을 고친 커밋을 브랜치에 더한다. 글을 연 뒤 다른 곳에서 고친 충돌을 만든다. */
+  pushElsewhere(path: string, content: string): void;
   close(): Promise<void>;
 };
 
@@ -127,6 +129,9 @@ export async function startApp(repo: string, files: FakeFile[]): Promise<App> {
     file(path) {
       const content = github.git.file(path);
       return content && new TextDecoder().decode(content);
+    },
+    pushElsewhere(path, content) {
+      github.git.pushElsewhere([{ path, content }]);
     },
     close,
   };

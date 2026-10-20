@@ -1,7 +1,10 @@
 // 편집 화면이 입력할 때마다 브라우저에서 부른다. GitHub 클라이언트를 import하지 않는다.
 
-/** 저장하지 않은 변경을 따로 판정하는 편집 영역. */
-export type EditArea = "metadata" | "body" | "images" | "source" | "submenu" | "title";
+/**
+ * 저장하지 않은 변경을 따로 판정하는 편집 영역. `images`는 일반 편집, `sourceImages`는 원문 편집에서 넣은 첨부다.
+ * 두 편집기는 따로 저장하고 따로 다시 열리므로 한쪽 저장이 다른 쪽 첨부를 저장한 것으로 보지 않게 나눈다.
+ */
+export type EditArea = "metadata" | "body" | "images" | "source" | "sourceImages" | "submenu" | "title";
 
 /** 화면에 보일 영역 이름. 화면 위에서 아래 순서다. 글 화면 위의 제목 입력도 글 설정으로 저장하므로 `metadata`에 든다. */
 const AREA_NAMES: { [area in EditArea]: string } = {
@@ -9,6 +12,7 @@ const AREA_NAMES: { [area in EditArea]: string } = {
   body: "본문",
   images: "첨부 이미지",
   source: "원문 편집",
+  sourceImages: "원문 편집 첨부 이미지",
   submenu: "하위 메뉴",
   title: "제목",
 };

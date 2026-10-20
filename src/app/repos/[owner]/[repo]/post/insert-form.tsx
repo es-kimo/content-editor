@@ -6,40 +6,36 @@ import { PRIMARY_BUTTON_CLASS } from "@/app/_lib/ui";
 import { useFormFlow } from "@/app/_lib/unsaved";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 폼 적용만 가져온다.
 import {
-  applyInsertForm,
   formDirty,
   formInitialValue,
   insertEntries,
   insertFormLabels,
   insertFormMessage,
   insertItemName,
+  insertLimitMessage,
   isTextInsert,
+  type InsertFormProblem,
   type InsertFormTarget,
   type TextInsertItem,
 } from "@/lib/content/insert-form";
 import type { FormArea } from "@/lib/content/save-flow";
-import type { InsertList, Syntax } from "@/lib/mdx-doc";
+import type { InsertKind, InsertList } from "@/lib/mdx-doc";
 
 import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
 
 type OpenedForm = { target: InsertFormTarget; value: string; problem: string | null };
 
 /**
- * 편집 영역 하나의 넣기·수정 폼. 일반 편집과 원문 편집이 같은 폼을 쓰도록 원문 읽기·쓰기만 영역이 정한다.
- * 폼은 적용할 때만 `write`로 원문을 바꾸고, 바꾼 원문의 미저장 판정은 영역의 편집기가 한다.
- * @param read 지금 편집 중인 그 영역의 원문(일반 편집은 본문, 원문 편집은 파일 전체).
- * @param write 적용한 원문과 적용한 항목 뒤 위치. 값이 그대로면 부르지 않는다.
+ * 편집 영역 하나의 넣기·수정 폼. 일반 편집과 원문 편집이 같은 폼을 쓰도록 편집기에 적용하는 방법만 영역이 정한다.
+ * 폼은 적용할 때만 원문을 바꾸고, 바꾼 원문의 미저장 판정은 영역의 편집기가 한다.
+ * @param apply 폼 입력을 그 영역의 편집기에 적용한다. 적용하지 못하면 원문을 그대로 두고 이유를 돌려준다.
  */
 export function useInsertForm({
   area,
-  syntax,
-  read,
-  write,
+  apply,
 }: {
   area: FormArea;
-  syntax: Syntax;
-  read: () => string;
-  write: (source: string, cursor: number) => void;
+  apply: (target: InsertFormTarget, value: string) => InsertFormProblem | null;
 }) {
   const flow = useFormFlow();
   const [opened, setOpened] = useState<OpenedForm | null>(null);
@@ -65,11 +61,16 @@ export function useInsertForm({
   return {
     /** 폼을 열 수 있는지. 저장 중이거나 확인 중이거나 다른 폼이 열려 있으면 열 수 없다. */
     canOpen: flow.canOpen,
-    /** @param from 폼을 닫으면 초점을 돌려줄 요소(연 버튼이나 연 항목). */
-    open(target: InsertFormTarget, from: HTMLElement | null) {
-      if (!flow.open(area)) return;
+    /**
+     * 폼을 연다. 열 수 없으면 false.
+     * @param from 폼을 닫으면 초점을 돌려줄 요소(연 버튼이나 연 항목).
+     */
+    open(target: InsertFormTarget, from: HTMLElement | null): boolean {
+      if (!flow.open(area)) return false;
+      flow.edit(formDirty(target, formInitialValue(target)));
       opener.current = from;
       setOpened({ target, value: formInitialValue(target), problem: null });
+      return true;
     },
     panel: opened && (
       <InsertFormPanel
@@ -81,12 +82,11 @@ export function useInsertForm({
           flow.edit(formDirty(opened.target, value));
         }}
         onApply={() => {
-          const result = applyInsertForm(read(), opened.target, opened.value, syntax);
-          if (!result.ok) {
-            setOpened({ ...opened, problem: insertFormMessage(opened.target, result.reason) });
+          const problem = apply(opened.target, opened.value);
+          if (problem) {
+            setOpened({ ...opened, problem: insertFormMessage(opened.target, problem) });
             return;
           }
-          if (result.changed) write(result.source, result.cursor);
           close();
         }}
         onCancel={close}
@@ -161,29 +161,41 @@ function InsertFormPanel({
   );
 }
 
+/** 일반 편집은 이미지만 폼으로 고치므로 목록도 이미지만 보인다. */
+const ENTRY_LISTS: { [area in FormArea]: { label: string; empty: string; kinds?: InsertKind[] } } = {
+  body: { label: "본문 이미지", empty: "본문에 이미지가 없어요.", kinds: ["image"] },
+  source: { label: "삽입 항목", empty: "이 글에는 이미지·각주·각주 출처·목차가 없어요." },
+};
+
 /**
  * 원문의 이미지·각주·각주 출처·목차 목록. 고칠 값이 있는 항목은 ‘수정’으로 폼을 연다.
- * 폼으로 고칠 수 없는 항목도 숨기지 않고 원문에서 고치라고 알린다.
+ * 폼으로 고칠 수 없는 항목도 숨기지 않고 구체적인 이유와 원문에서 고치는 방법을 알린다.
  */
 export function InsertEntryList({
+  area,
   list,
   disabled,
   onEdit,
 }: {
+  area: FormArea;
   list: InsertList;
   disabled: boolean;
   onEdit: (item: TextInsertItem, opener: HTMLElement) => void;
 }) {
-  const entries = list.ok ? insertEntries(list) : [];
+  const { label, empty, kinds } = ENTRY_LISTS[area];
+  const entries = list.ok ? insertEntries(list, kinds) : [];
   return (
     <details className="text-sm">
-      <summary className="cursor-pointer">삽입 항목{list.ok && ` ${entries.length}개`}</summary>
+      <summary className="cursor-pointer">
+        {label}
+        {list.ok && ` ${entries.length}개`}
+      </summary>
       {!list.ok ? (
         <p className="mt-2 text-amber-600">
-          원문을 읽을 수 없어 삽입 항목을 보일 수 없어요. 원문의 오류를 고쳐 주세요.
+          원문을 읽을 수 없어 {label} 목록을 보일 수 없어요. 원문의 오류를 고쳐 주세요.
         </p>
       ) : entries.length === 0 ? (
-        <p className="mt-2 text-zinc-500">이 글에는 이미지·각주·각주 출처·목차가 없어요.</p>
+        <p className="mt-2 text-zinc-500">{empty}</p>
       ) : (
         <ul className="mt-2 flex flex-col gap-1">
           {/* 적용으로 위치가 바뀌어도 고친 항목의 수정 버튼이 남아 초점을 돌려받도록 순서로 key를 둔다. */}
@@ -206,9 +218,7 @@ export function InsertEntryList({
                   </button>
                 </>
               ) : (
-                "reason" in entry && (
-                  <span className="text-amber-600">폼으로 고칠 수 없어요. 원문에서 직접 고쳐 주세요.</span>
-                )
+                "reason" in entry && <span className="text-amber-600">{insertLimitMessage(entry.reason, area)}</span>
               )}
             </li>
           ))}

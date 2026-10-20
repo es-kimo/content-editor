@@ -17,6 +17,7 @@ import { LeaveGuardProvider } from "@/app/_lib/leave";
 import { leavingAreas } from "@/lib/content/leave-guard";
 import {
   createSaveFlow,
+  type FormArea,
   type SaveFlow,
   type SaveRequest,
   type SaveState,
@@ -80,6 +81,20 @@ export function useReportUnsaved(area: EditArea, changed: boolean) {
     flow.report(area, changed);
     return () => flow.report(area, false);
   }, [flow, area, changed]);
+}
+
+/** 편집 영역이 이미지를 준비하는 중인지 알린다. 영역이 사라지면 함께 거둔다. */
+export function useReportPreparing(area: FormArea, preparing: boolean) {
+  const flow = useFlow();
+  useEffect(() => {
+    flow.prepare(area, preparing);
+    return () => flow.prepare(area, false);
+  }, [flow, area, preparing]);
+}
+
+/** 어느 편집 영역이든 이미지를 준비하는 중이면 true. */
+export function useImagePreparing(): boolean {
+  return Object.values(useFlowState(useFlow()).preparing).some(Boolean);
 }
 
 /** 저장이 진행 중이거나 확인 중이면 true. 그동안 입력·첨부·모드 전환·다른 저장·폼 열기를 막는다. */

@@ -34,11 +34,21 @@ export function uploadPreviewMessage(
   body: string,
   sizes: ReadonlyMap<string, { width: number; height: number }>,
 ): PreviewMessage {
-  const uploads = uploadImports(plan).flatMap(({ name, image }) => {
+  return previewMessage(printMdx(setBody(plan.doc, body)), previewUploads(plan, sizes));
+}
+
+/**
+ * 넣은 이미지를 미리보기에 보낼 모양으로. 원문 편집도 넣은 이미지를 같은 변수명으로 가져오므로 원문과 함께 보낸다.
+ * @param sizes 넣은 이미지 파일 이름 → 올릴 이미지의 가로·세로
+ */
+export function previewUploads(
+  plan: UploadPlan,
+  sizes: ReadonlyMap<string, { width: number; height: number }>,
+): PreviewUpload[] {
+  return uploadImports(plan).flatMap(({ name, image }) => {
     const size = sizes.get(image.file);
     return size ? [{ name, content: image.content, ...size }] : [];
   });
-  return previewMessage(printMdx(setBody(plan.doc, body)), uploads);
 }
 
 /** 미리보기 페이지의 origin. 메시지를 보낼 때 targetOrigin으로 쓴다. 주소가 아니면 null. */

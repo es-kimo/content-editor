@@ -52,7 +52,7 @@ function actuallyReopened(before: Post, after: Post): EditArea[] {
   return [
     ...(b.metadata !== a.metadata ? (["metadata"] as const) : []),
     ...(b.body !== a.body ? (["body", "images"] as const) : []),
-    ...(before.sha !== after.sha ? (["source"] as const) : []),
+    ...(before.sha !== after.sha ? (["source", "sourceImages"] as const) : []),
   ];
 }
 
@@ -81,14 +81,22 @@ describe("reopenedAreas", () => {
   });
 
   test.each([
-    ["metadata만 고친 원문", SOURCE.replace("11월 휴진 안내',", "12월 휴진 안내',"), ["metadata", "source"]],
-    ["본문만 고친 원문", SOURCE.replace("본문 <Image", "고친 본문 <Image"), ["body", "images", "source"]],
+    [
+      "metadata만 고친 원문",
+      SOURCE.replace("11월 휴진 안내',", "12월 휴진 안내',"),
+      ["metadata", "source", "sourceImages"],
+    ],
+    [
+      "본문만 고친 원문",
+      SOURCE.replace("본문 <Image", "고친 본문 <Image"),
+      ["body", "images", "source", "sourceImages"],
+    ],
     [
       "metadata와 본문을 함께 고친 원문",
       SOURCE.replace("11월 휴진 안내',", "12월 휴진 안내',").replace("본문 <Image", "고친 본문 <Image"),
-      ["metadata", "body", "images", "source"],
+      ["metadata", "body", "images", "source", "sourceImages"],
     ],
-    ["import만 고친 원문", SOURCE.replace("./1.png", "./2.png"), ["source"]],
+    ["import만 고친 원문", SOURCE.replace("./1.png", "./2.png"), ["source", "sourceImages"]],
   ])("%s을 저장하면 실제로 다시 열리는 영역을 미리 안다", async (_, edited, expected) => {
     const { client, read } = setup();
     const before = await read();
@@ -116,6 +124,16 @@ describe("discardedAreas", () => {
       "body",
       "images",
     ]);
+  });
+
+  test("일반 편집 첨부와 원문 편집 첨부는 각자의 저장으로만 저장하고, 다른 쪽 저장은 버리는지 묻거나 그대로 둔다", () => {
+    const attached = { images: true, sourceImages: true };
+
+    expect(discardedAreas({ target: "body" }, attached)).toEqual(["sourceImages"]);
+    expect(discardedAreas({ target: "metadata" }, attached)).toEqual(["sourceImages"]);
+    // 본문을 바꾸지 않는 원문 저장은 일반 편집을 다시 열지 않으므로 그 첨부는 미저장으로 남는다.
+    expect(discardedAreas(sourceSave(SOURCE.replace("./1.png", "./2.png")), attached)).toEqual([]);
+    expect(discardedAreas(sourceSave(SOURCE.replace("본문 <Image", "고친 본문 <Image")), attached)).toEqual(["images"]);
   });
 
   test("다시 열리는 영역에 미저장 입력이 없으면 버릴 것이 없다", () => {
@@ -175,7 +193,7 @@ describe("createSaveFlow", () => {
     expect(flow.getState().phase).toMatchObject({
       kind: "saved",
       target: "metadata",
-      reopened: ["metadata", "source"],
+      reopened: ["metadata", "source", "sourceImages"],
     });
     expect(flow.request({ target: "body" }, () => pending.promise)).toBe(false);
 
@@ -298,7 +316,7 @@ describe("createSaveFlow", () => {
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledOnce());
 
     expect(repo.log()).toHaveLength(2);
-    expect(flow.getState().phase).toMatchObject({ kind: "saved", reopened: ["metadata", "source"] });
+    expect(flow.getState().phase).toMatchObject({ kind: "saved", reopened: ["metadata", "source", "sourceImages"] });
   });
 });
 
@@ -326,6 +344,29 @@ describe("적용하지 않은 폼", () => {
 
     expect(flow.blockedByForm("mode")).toBe(true);
     expect(flow.getState().form?.blocked).toBe("mode");
+  });
+
+  test("영역마다 이미지를 준비하는 중인지 따로 두어, 한쪽 준비가 끝나도 다른 쪽 준비는 남는다", () => {
+    const { flow } = setupFlow();
+    flow.prepare("body", true);
+    flow.prepare("source", true);
+
+    flow.prepare("body", false);
+
+    expect(flow.getState().preparing).toEqual({ body: false, source: true });
+  });
+
+  test("폼이 열려 있으면 이미지 받기를 막고, 폼을 닫으면 막은 기록도 함께 사라진다", () => {
+    const { flow } = setupFlow();
+    flow.openForm("body");
+
+    expect(flow.blockedByForm("image")).toBe(true);
+    expect(flow.getState().form?.blocked).toBe("image");
+
+    flow.closeForm();
+
+    expect(flow.getState().form).toBeNull();
+    expect(flow.blockedByForm("image")).toBe(false);
   });
 
   test("폼을 적용하거나 취소해 닫으면 다시 저장할 수 있고 미저장 표시는 편집 영역이 알린 그대로다", async () => {

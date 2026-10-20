@@ -1,15 +1,19 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { readInserts, type InsertItem } from "@/lib/mdx-doc";
+import { parseMdx, readInserts, type InsertItem } from "@/lib/mdx-doc";
 import { yjshdConfig } from "@/test/config";
 
 import {
+  applyBodyInsertForm,
   applyInsertForm,
+  bodyInserts,
   formDirty,
   formInitialValue,
+  imageFormTag,
   insertEntries,
   insertFormLabels,
   insertItemName,
+  insertLimitMessage,
   insertMenuItems,
   isTextInsert,
   type InsertFormTarget,
@@ -147,6 +151,92 @@ describe("폼 적용과 취소", () => {
   });
 });
 
+describe("이미지 폼", () => {
+  const at = SOURCE.indexOf("<Image");
+  const newImage = (opened = SOURCE): InsertFormTarget => ({
+    kind: "image",
+    image: { file: "2.webp", name: "image2" },
+    place: { at: { from: at, to: at }, opened },
+  });
+
+  test("원문 편집에서 새 이미지를 적용하면 선택 위치에 대체 텍스트가 있는 태그와 그 import만 더하고, 취소하면 그대로다", () => {
+    const area = setup();
+
+    area.open(newImage());
+    area.input("진료 시간표");
+    area.cancel();
+    expect(area.source()).toBe(SOURCE);
+
+    area.open(newImage());
+    area.input("진료 시간표");
+    area.apply();
+    expect(area.source()).toBe(
+      SOURCE.replace('"./1.png";\n', '"./1.png";\nimport image2 from "./2.webp";\n').replace(
+        "<Image src={image1}",
+        '<Image src={image2} alt="진료 시간표" />\n\n<Image src={image1}',
+      ),
+    );
+    expect(area.flow.getState().changed.source).toBe(true);
+  });
+
+  test("새 이미지 폼은 입력 전에도 준비한 첨부를 들고 있어 떠날 때 묻는다", () => {
+    const area = setup();
+
+    area.open(newImage());
+
+    expect(formDirty(newImage(), "")).toBe(true);
+    area.input("");
+    expect(leavingAreas(area.flow.getState())).toEqual(["source"]);
+  });
+
+  test("새 이미지 폼을 연 뒤 원문이 바뀌면 다른 곳에 넣지 않는다", () => {
+    const typed = SOURCE.replace("# 휴진 안내", "# 휴진 안내 (수정)");
+
+    expect(applyInsertForm(typed, newImage(), "사진", syntax)).toEqual({ ok: false, reason: "target-changed" });
+  });
+
+  test("일반 편집의 새 이미지는 대체 텍스트를 넣은 태그로 커서 자리에 넣는다", () => {
+    const target: InsertFormTarget = { kind: "image", image: { file: "2.png", name: "image2" }, place: null };
+
+    expect(imageFormTag(target, '"입구" & 계단')).toBe('<Image src={image2} alt="&quot;입구&quot; &amp; 계단" />');
+  });
+
+  test("일반 편집은 import를 붙인 원문에서 본문 이미지를 읽고, 대체 텍스트만 고친 본문을 돌려준다", () => {
+    const doc = parseMdx(SOURCE, syntax);
+    if (!doc.ok) throw new Error("나눌 수 없음");
+    const list = bodyInserts(doc, doc.body, syntax);
+    if (!list.ok) throw new Error("읽지 못함");
+    const [image] = insertEntries(list, ["image"]);
+    if (!image || !isTextInsert(image)) throw new Error("이미지를 고칠 수 없음");
+
+    expect(insertEntries(list, ["image"])).toHaveLength(1);
+    expect(applyBodyInsertForm(doc, doc.body, { kind: "edit", item: image }, "병원 입구", syntax)).toEqual({
+      ok: true,
+      body: doc.body,
+      changed: false,
+    });
+    expect(applyBodyInsertForm(doc, doc.body, { kind: "edit", item: image }, "새 입구", syntax)).toEqual({
+      ok: true,
+      body: doc.body.replace('alt="병원 입구"', 'alt="새 입구"'),
+      changed: true,
+    });
+  });
+
+  test("폼으로 고칠 수 없는 이미지는 구체적인 이유와 원문으로 가는 방법을 알린다", () => {
+    const list = readInserts(`${SOURCE}\n<Image src={image1} alt={caption} />\n`, syntax);
+    if (!list.ok) throw new Error("읽지 못함");
+    const [limited] = list.limited;
+
+    expect(limited).toMatchObject({ kind: "image", reason: "expression" });
+    expect(insertLimitMessage(limited!.reason, "body")).toBe(
+      "폼으로 고칠 수 없어요. 값이 코드로 되어 있어요. 원문 편집에서 직접 고쳐 주세요.",
+    );
+    expect(insertLimitMessage("not-image-import", "source")).toBe(
+      "폼으로 고칠 수 없어요. 글 폴더의 이미지를 가져와 쓰는 형태가 아니에요. 원문에서 직접 고쳐 주세요.",
+    );
+  });
+});
+
 describe("바뀐 대상", () => {
   test("폼을 연 뒤 고칠 항목이 바뀌거나 사라지면 적용하지 않고 폼과 원문을 그대로 둔다", () => {
     const area = setup();
@@ -222,6 +312,7 @@ describe("삽입 항목 목록", () => {
 
   test("넣기 메뉴는 글 분류가 허용한 항목만 용도 이름으로 둔다", () => {
     expect(insertMenuItems(["Footnote", "Mermaid"]).map((item) => item.label)).toEqual(["각주"]);
+    expect(insertMenuItems(["Footnote", "Image"]).map((item) => item.label)).toEqual(["이미지", "각주"]);
     expect(insertMenuItems(["Mermaid"])).toEqual([]);
   });
 
@@ -232,5 +323,9 @@ describe("삽입 항목 목록", () => {
       field: "대체 텍스트",
     });
     expect(insertFormLabels({ kind: "footnote", at: { from: 0, to: 0 }, opened: SOURCE }).title).toBe("각주 넣기");
+    expect(insertFormLabels({ kind: "image", image: { file: "2.png", name: "image2" }, place: null })).toEqual({
+      title: "이미지 넣기",
+      field: "대체 텍스트",
+    });
   });
 });

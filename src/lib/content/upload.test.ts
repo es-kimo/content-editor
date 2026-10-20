@@ -5,6 +5,7 @@ import { GIF, JPEG, PNG, SOURCE, WEBP } from "@/test/upload-images";
 
 import {
   addUpload,
+  checkSourceUploads,
   checkUploads,
   fitImageSize,
   MAX_UPLOAD_BYTES,
@@ -147,5 +148,29 @@ describe("uploadImports", () => {
       ["image2", "2.png"],
       ["image3", "3.jpg"],
     ]);
+  });
+});
+
+describe("checkSourceUploads", () => {
+  const source = 'import image2 from "./2.png";\nimport image3 from "./3.png";\n\n본문\n';
+
+  test("원문이 가리키는 새 이름의 이미지만 통과한다", () => {
+    expect(checkSourceUploads([{ file: "2.png", content: PNG }], source, ["1.png"])).toEqual({ ok: true });
+    expect(checkSourceUploads([{ file: "4.png", content: PNG }], source, [])).toMatchObject({ problem: "unused" });
+  });
+
+  test.each([
+    ["글 폴더에 이미 있는 이름", [{ file: "2.png", content: PNG }], ["2.png"]],
+    ["넣을 때 고르는 꼴이 아닌 이름", [{ file: "../2.png", content: PNG }], []],
+    [
+      "같은 이름을 두 번",
+      [
+        { file: "2.png", content: PNG },
+        { file: "2.png", content: PNG },
+      ],
+      [],
+    ],
+  ])("%s이면 덮어쓰지 않게 받지 않는다", (_, images, folder) => {
+    expect(checkSourceUploads(images, source, folder)).toMatchObject({ ok: false, problem: "name" });
   });
 });

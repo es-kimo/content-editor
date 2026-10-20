@@ -130,6 +130,11 @@ const SOURCE_ONLY = {
 
 function BodyView({ repo, post, syntax, preview }: { repo: string; post: Post; syntax: Syntax; preview?: string }) {
   const modes = editorModes(post);
+  // 이미지는 글 분류 설정이 허용하고, import를 더할 수 있게 원문을 나눌 수 있는 글에만 넣는다.
+  const upload =
+    post.collection.components.includes(IMAGE_COMPONENT) && post.doc.ok
+      ? { files: post.images.map((image) => image.name) }
+      : null;
   // 원문은 파일 전체라 어느 영역을 저장해도 바뀐다. 저장한 파일로 다시 열도록 key를 sha로 둔다.
   const source = (
     <SourceEditor
@@ -137,6 +142,7 @@ function BodyView({ repo, post, syntax, preview }: { repo: string; post: Post; s
       source={post.source}
       syntax={syntax}
       components={sourceComponents(post.collection)}
+      upload={upload}
       preview={preview}
       action={saveSourceAction.bind(null, repo, post.path, post.sha)}
     />
@@ -165,11 +171,7 @@ function BodyView({ repo, post, syntax, preview }: { repo: string; post: Post; s
           body={post.doc.body}
           syntax={syntax}
           components={post.collection.components}
-          upload={
-            post.collection.components.includes(IMAGE_COMPONENT)
-              ? { files: post.images.map((image) => image.name) }
-              : null
-          }
+          upload={upload}
           preview={preview}
           action={saveBodyAction.bind(null, repo, post.path, post.sha)}
         />

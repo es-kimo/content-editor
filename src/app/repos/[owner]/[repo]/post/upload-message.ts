@@ -1,5 +1,12 @@
 import { MAX_UPLOAD_BYTES, type UploadProblem } from "@/lib/content/upload";
 
+/** 이미지를 받을 수 없을 때의 안내. 대체 텍스트를 이미지마다 입력하므로 한 번에 하나씩 받는다. */
+export const IMAGE_ADD_BLOCKED = {
+  many: "이미지는 한 번에 하나씩 넣어 주세요.",
+  preparing: "이미지를 준비하고 있어요. 준비가 끝난 뒤 다음 이미지를 넣어 주세요.",
+  unopened: "이미지를 넣을 폼을 열지 못했어요. 저장이 끝난 뒤 이미지를 다시 넣어 주세요.",
+};
+
 /** 이미지 검사 실패 안내. 브라우저에서 넣을 때와 서버에서 저장할 때 같은 문구를 쓴다. */
 export function uploadMessage(file: string, problem: UploadProblem): string {
   switch (problem) {

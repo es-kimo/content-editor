@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { bodyChanged, parseMdx } from "@/lib/mdx-doc";
+import { bodyChanged, imageTag, parseMdx } from "@/lib/mdx-doc";
 import { GIF, JPEG, PNG, SOURCE } from "@/test/upload-images";
 
+import { createLeaveGuard, leavingAreas, type Leave } from "./leave-guard";
+import { createSaveFlow, type SaveState } from "./save-flow";
 import { unsavedAreas } from "./unsaved";
-import { MAX_UPLOAD_BYTES, uploadExtension } from "./upload";
+import { IMAGE_COMPONENT, MAX_UPLOAD_BYTES, sourceUploads, uploadExtension } from "./upload";
 import { createUploadSession, type AddedUploads, type PreparedImage, type UploadSubmission } from "./upload-session";
 
 const doc = parseMdx(SOURCE);
@@ -51,12 +53,14 @@ function setup(files: string[] = []) {
   const add = (selected: TestFile[]) =>
     session.add(selected, (added) => {
       inserted.push(added);
-      for (const tag of added.tags) body += `\n${tag}\n`;
+      for (const tag of tagsOf(added)) body += `\n${tag}\n`;
     });
   return { session, finish, states, inserted, add, body: () => body, setBody: (next: string) => (body = next) };
 }
 
 const fileNames = (images: { file: string }[]) => images.map((image) => image.file);
+/** 편집 화면이 넣을 태그. 대체 텍스트는 비워 둔다. */
+const tagsOf = (added: AddedUploads) => added.images.map(({ name }) => imageTag(IMAGE_COMPONENT, name, ""));
 
 describe("createUploadSession 준비 중 보호", () => {
   test("준비가 끝나기 전에는 준비 중이고 저장할 수 없으며, 본문에 넣은 뒤에 풀린다", async () => {
@@ -91,7 +95,7 @@ describe("createUploadSession 준비 중 보호", () => {
     const duringInsert: { preparing: boolean; states: boolean[]; submission: UploadSubmission }[] = [];
 
     const done = session.add([png("2.png")], (added) => {
-      body += `\n${added.tags.join("\n")}\n`;
+      body += `\n${tagsOf(added).join("\n")}\n`;
       duringInsert.push({ preparing: session.preparing, states: [...states], submission: session.submission(body) });
     });
     await finish("2.png");
@@ -154,7 +158,10 @@ describe("createUploadSession 준비 중 보호", () => {
 
     expect(inserted).toEqual([
       {
-        tags: ['<Image src={image2} alt="" />', '<Image src={image3} alt="" />'],
+        images: [
+          { file: "2.png", name: "image2" },
+          { file: "3.jpg", name: "image3" },
+        ],
         problems: [{ name: "c.gif", problem: "format" }],
       },
     ]);
@@ -174,7 +181,7 @@ describe("createUploadSession 첨부 판정", () => {
 
   test("본문이 참조하는 이미지만 저장하지 않은 첨부와 제출 대상이다", async () => {
     const { session, inserted, body, setBody } = await withTwoImages();
-    const [tag2, tag3] = inserted[0]!.tags;
+    const [tag2, tag3] = tagsOf(inserted[0]!);
 
     expect(session.submission(body())).toMatchObject({ ok: true, images: [{ file: "2.png" }, { file: "3.jpg" }] });
 
@@ -208,7 +215,7 @@ describe("createUploadSession 첨부 판정", () => {
 
     expect(inserted).toEqual([
       {
-        tags: [],
+        images: [],
         problems: [
           { name: "c.gif", problem: "format" },
           { name: "d.png", problem: "format" },
@@ -259,5 +266,117 @@ describe("createUploadSession 첨부 판정", () => {
 
     expect(fileNames(session.plan.images)).toEqual(["3.png"]);
     expect(session.sizes.get("3.png")).toEqual({ width: 10, height: 10 });
+  });
+});
+
+/** 원문 편집처럼 파일 전체로 첨부를 판정하는 세션. */
+function sourceSession() {
+  const { prepare, finish } = delayedPrepare();
+  const session = createUploadSession({
+    doc,
+    files: [],
+    prepare,
+    used: sourceUploads,
+  });
+  return { session, finish };
+}
+
+/** 원문 편집 세션에 2.png를 넣고, 원문에 그 import와 태그를 더한다. */
+async function withSourceImage() {
+  const { session, finish } = sourceSession();
+  const done = session.add([png()], () => {});
+  await finish("a.png");
+  await done;
+  const source =
+    SOURCE.replace('"./1.png";\n', '"./1.png";\nimport image2 from "./2.png";\n') +
+    '\n<Image src={image2} alt="강아지" />\n';
+  return { session, source };
+}
+
+describe("createUploadSession 원문 편집 첨부 판정", () => {
+  test("원문이 import로 가리키는 첨부만 저장하지 않은 첨부와 제출 대상이다", async () => {
+    const { session, source } = await withSourceImage();
+
+    expect(session.unsaved(SOURCE)).toBe(false);
+    expect(session.submission(SOURCE)).toEqual({ ok: true, images: [] });
+    expect(session.unsaved(source)).toBe(true);
+    expect(session.submission(source)).toMatchObject({ ok: true, images: [{ file: "2.png" }] });
+  });
+
+  test("태그만 지우고 import가 남으면 사이트가 파일을 찾도록 계속 올리고, import까지 지우면 올리지 않는다", async () => {
+    const { session, source } = await withSourceImage();
+    const withoutTag = source.replace('<Image src={image2} alt="강아지" />', "");
+
+    expect(session.submission(withoutTag)).toMatchObject({ ok: true, images: [{ file: "2.png" }] });
+    expect(session.unsaved(withoutTag.replace('import image2 from "./2.png";\n', ""))).toBe(false);
+  });
+});
+
+describe("원문 편집 첨부와 저장 흐름", () => {
+  const LIST: Leave = { kind: "push", href: "/repos/es-kimo/yjshd" };
+  const syntax = {};
+
+  /** 글 화면처럼 영역별 미저장을 모으는 저장 흐름과 이탈 확인. */
+  function screen() {
+    const flow = createSaveFlow({ navigate: () => {} });
+    const guard = createLeaveGuard({ areas: () => leavingAreas(flow.getState()), go: () => {} });
+    return { flow, guard };
+  }
+
+  test("원문 편집에서 이미지를 준비하는 동안 원문을 저장할 수 없고, 떠나려 하면 원문 편집 첨부를 잃는다고 묻는다", async () => {
+    const { session, finish } = sourceSession();
+    const { flow, guard } = screen();
+
+    const done = session.add([png()], () => {});
+    flow.report("sourceImages", session.unsaved(SOURCE));
+
+    expect(session.submission(SOURCE)).toEqual({ ok: false, reason: "preparing" });
+    expect(guard.request(LIST)).toBe(false);
+    expect(guard.getState().areas).toEqual(["sourceImages"]);
+    expect(unsavedAreas(flow.getState().changed)).toEqual(["원문 편집 첨부 이미지"]);
+    await finish("a.png");
+    await done;
+  });
+
+  test("원문 저장이 실패하거나 충돌해도 원문과 첨부가 미저장으로 남고 같은 첨부로 다시 제출한다", async () => {
+    const { session, source } = await withSourceImage();
+    const { flow, guard } = screen();
+    flow.report("source", true);
+    flow.report("sourceImages", session.unsaved(source));
+    const conflict: SaveState = { status: "error", message: "글을 연 뒤 다른 곳에서 글이 바뀌었어요." };
+
+    flow.request({ target: "source", before: SOURCE, after: source, syntax }, async () => conflict);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(flow.getState().phase).toEqual({ kind: "idle" });
+    expect(flow.getState().changed).toEqual({ source: true, sourceImages: true });
+    expect(session.submission(source)).toMatchObject({ ok: true, images: [{ file: "2.png" }] });
+    expect(guard.request(LIST)).toBe(false);
+  });
+
+  test("원문 이미지 저장이 성공해도 일반 편집의 미저장 첨부를 저장한 것으로 치지 않는다", async () => {
+    const { source } = await withSourceImage();
+    const { flow, guard } = screen();
+    flow.report("images", true);
+    flow.report("sourceImages", true);
+
+    // 본문이 바뀌는 원문 저장은 일반 편집을 다시 열므로 그 첨부를 버릴지 먼저 묻는다.
+    flow.request({ target: "source", before: SOURCE, after: source, syntax }, async () => ({
+      status: "saved",
+      href: "/saved",
+    }));
+    expect(flow.getState().phase).toMatchObject({ kind: "confirming", discarded: ["images"] });
+    flow.cancel();
+
+    // 본문을 바꾸지 않는 원문 저장이 성공하면 일반 편집 첨부는 미저장으로 남아 떠날 때 묻는다.
+    const importOnly = SOURCE.replace('"./1.png";\n', '"./1.png";\nimport image2 from "./2.png";\n');
+    flow.request({ target: "source", before: SOURCE, after: importOnly, syntax }, async () => ({
+      status: "saved",
+      href: "/saved",
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(flow.getState().phase).toMatchObject({ kind: "saved" });
+    expect(guard.request(LIST)).toBe(false);
+    expect(guard.getState().areas).toEqual(["images"]);
   });
 });

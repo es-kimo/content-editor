@@ -106,11 +106,16 @@ async function openPost(path = POST) {
 
 const POST_EDITED = "저장하지 않은 변경이 있어요. 바뀐 곳: 글 설정, 본문, 첨부 이미지";
 
-/** 본문 끝에 이미지를 넣는다. 도구 막대의 이미지 버튼처럼 본문에 커서를 둔 채 파일을 고른다. */
+/** 본문 끝에 이미지를 넣는다. 본문에 커서를 둔 채 도구 막대의 이미지 버튼으로 파일을 고르고 대체 텍스트 폼을 적용한다. */
 async function attachImage() {
   await page.locator(".body-editor-content").click();
   await page.keyboard.press("Control+End");
-  await page.locator('input[type="file"]').setInputFiles({ name: "사진.png", mimeType: "image/png", buffer: PNG });
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByTitle("이미지 넣기").click();
+  await (await chooser).setFiles({ name: "사진.png", mimeType: "image/png", buffer: PNG });
+  const form = page.getByRole("form", { name: "이미지 넣기" });
+  await form.getByRole("textbox", { name: "대체 텍스트" }).fill("병원 입구");
+  await form.getByRole("button", { name: "적용" }).click();
   await page.getByText(/넣은 이미지: /).waitFor();
 }
 
