@@ -54,7 +54,7 @@ export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from ".
 export { newPostPath, postSlug } from "./slug";
 export { summarizePost, type PostSummary } from "./summary";
 export { timed } from "./timed";
-export { newPostChanges, sourceChanged, unsavedAreas, type EditArea, type NewPostInput } from "./unsaved";
+export { areaNames, newPostChanges, sourceChanged, unsavedAreas, type EditArea, type NewPostInput } from "./unsaved";
 export {
   addUpload,
   fitImageSize,

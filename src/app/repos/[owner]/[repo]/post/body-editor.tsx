@@ -1,15 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { startTransition, useActionState, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { useReportUnsaved } from "@/app/_lib/unsaved";
+import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
 import { uploadPreviewMessage } from "@/lib/content/preview";
+import type { SaveState } from "@/lib/content/save-flow";
 import { MAX_IMAGE_SIDE, uploadImports } from "@/lib/content/upload";
 import { createUploadSession } from "@/lib/content/upload-session";
 import { editedBody, sameBodyStructure, type MdxDoc, type PreviewImages, type Syntax } from "@/lib/mdx-doc";
 
-import type { SaveState } from "./actions";
 import { BodyPreview } from "./body-preview";
 import { prepareImage } from "./prepare-image";
 import { SaveRow } from "./save-row";
@@ -40,9 +40,9 @@ export function BodyEditor({
   upload: BodyImageUpload | null;
   /** config `preview`. 있으면 사이트 미리보기를 띄운다. */
   preview?: string;
-  action: (state: SaveState, data: FormData) => Promise<SaveState>;
+  action: (data: FormData) => Promise<SaveState>;
 }) {
-  const [state, dispatch, pending] = useActionState(action, { status: "idle" });
+  const save = useSave("body");
   const [problem, setProblem] = useState<string | null>(null);
   const normalized = useRef<string | null>(null);
   const edited = useRef<string | null>(null);
@@ -56,7 +56,9 @@ export function BodyEditor({
   const [current, setCurrent] = useState(body);
   // 저장할 본문(`editedBody`). 본문이 참조하는 첨부를 이 값으로 판정한다.
   const [draft, setDraft] = useState(body);
-  const changed = draft !== body;
+  // 서버가 변경 없음으로 답한 본문. 그 본문은 저장한 것과 같으므로 미저장 판정의 기준으로 삼는다.
+  const [baseline, setBaseline] = useState(body);
+  const changed = draft !== baseline;
   // WYSIWYG로 고칠 수 없게 된 글은 입력을 저장하지 않으므로 미저장으로 알리지 않는다.
   useReportUnsaved("body", changed && problem === null);
   useReportUnsaved("images", uploads.unsaved(draft) && problem === null);
@@ -103,12 +105,17 @@ export function BodyEditor({
         for (const image of submission.images) {
           data.append("image", new File([new Uint8Array(image.content)], image.file));
         }
-        startTransition(() => dispatch(data));
+        save.request(
+          { target: "body" },
+          () => action(data),
+          () => setBaseline(next),
+        );
       }}
     >
       <MdxBodyEditor
         markdown={body}
         components={components}
+        readOnly={save.locked}
         onChange={(markdown, initialMarkdownNormalize) => {
           setCurrent(markdown);
           if (initialMarkdownNormalize) normalized.current = markdown;
@@ -156,13 +163,7 @@ export function BodyEditor({
         }
       />
       {preparing && <p className="text-sm text-zinc-500">이미지를 준비하는 중이다. 본문에 들어간 뒤 저장한다.</p>}
-      <SaveRow
-        label="본문 저장"
-        pending={pending}
-        disabled={preparing}
-        state={state}
-        unchanged="바뀐 내용이 없어 커밋하지 않았다."
-      />
+      <SaveRow label="본문 저장" save={save} disabled={preparing} unchanged="바뀐 내용이 없어 커밋하지 않았다." />
     </form>
   );
 }
