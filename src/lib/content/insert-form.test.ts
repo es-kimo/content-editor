@@ -300,7 +300,7 @@ describe("일반 편집 새 항목", () => {
   test("각주는 다음 번호와 입력 글자를 문장 안에 넣을 컴포넌트로 준다", () => {
     const target = newBodyInsertTarget("footnote", doc, body, syntax);
 
-    expect(bodyInsert(doc, body, target as never, text("토요일 <포함>"), syntax)).toEqual({
+    expect(bodyInsert(doc, body, target, text("토요일 <포함>"), syntax)).toEqual({
       ok: true,
       insert: { kind: "inline", name: "Footnote", id: 2, text: "토요일 <포함>" },
     });
@@ -310,15 +310,15 @@ describe("일반 편집 새 항목", () => {
     const ref = newBodyInsertTarget("footnote-ref", doc, body, syntax);
     const toc = newBodyInsertTarget("toc", doc, body, syntax);
 
-    expect(bodyInsert(doc, body, ref as never, { text: "달력", ids: [1] }, syntax)).toEqual({
+    expect(bodyInsert(doc, body, ref, { text: "달력", ids: [1] }, syntax)).toEqual({
       ok: true,
       insert: { kind: "block", markdown: '<FootnoteRef ids={["1"]}>\n  달력\n</FootnoteRef>' },
     });
-    expect(bodyInsert(doc, body, ref as never, text("달력"), syntax)).toEqual({
+    expect(bodyInsert(doc, body, ref, text("달력"), syntax)).toEqual({
       ok: false,
       reason: "missing-footnote",
     });
-    expect(bodyInsert(doc, body, toc as never, text(""), syntax)).toEqual({
+    expect(bodyInsert(doc, body, toc, text(""), syntax)).toEqual({
       ok: true,
       insert: { kind: "block", markdown: "<TOC items={toc} />" },
     });
@@ -331,7 +331,7 @@ describe("일반 편집 새 항목", () => {
     const item = list.ok ? insertEntries(list).find(isTocInsert) : undefined;
     if (!item) throw new Error("목차를 읽지 못함");
 
-    expect(bodyInsert(doc, withToc, toc as never, text(""), syntax)).toEqual({ ok: false, reason: "toc-exists" });
+    expect(bodyInsert(doc, withToc, toc, text(""), syntax)).toEqual({ ok: false, reason: "toc-exists" });
     expect(removeBodyInsert(doc, withToc, item, syntax)).toEqual({ ok: true, body, changed: true });
   });
 });
