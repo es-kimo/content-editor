@@ -140,7 +140,7 @@ jobs:
                 "\`../.github/planner/role.md\`를 읽고 따른다. 이번 모드는 \`$mode\`이고 지시는 \`../.github/planner/$mode.md\`에 있다. 입력은 \`context.md\`에 있다." \
                 < /dev/null \
               && jq -e . "$PLANNER_DIR/out.json" > /dev/null; then
-              msg=$(jq -r '.wiki_message // empty' "$PLANNER_DIR/out.json")
+              msg=$(jq -r 'select(.status == "done") | .wiki_message // empty' "$PLANNER_DIR/out.json")
               if [ -n "$msg" ] && [ -n "$(git -C "$wiki" status --porcelain)" ]; then
                 git -C "$wiki" add -A
                 git -C "$wiki" commit --quiet -m "$msg"
@@ -148,11 +148,11 @@ jobs:
               fi
               if ! GH_TOKEN="$BOT_TOKEN" EFFORT="$effort" node scripts/planner/run.mts apply "$job" "$PLANNER_DIR/out.json" < /dev/null; then
                 failed=1
-                GH_TOKEN="$BOT_TOKEN" EFFORT="$effort" node scripts/planner/run.mts fail "$job" < /dev/null || true
+                GH_TOKEN="$BOT_TOKEN" EFFORT="$effort" node scripts/planner/run.mts fail "$job" "$PLANNER_DIR/out.json" < /dev/null || true
               fi
             else
               failed=1
-              GH_TOKEN="$BOT_TOKEN" EFFORT="$effort" node scripts/planner/run.mts fail "$job" < /dev/null || true
+              GH_TOKEN="$BOT_TOKEN" EFFORT="$effort" node scripts/planner/run.mts fail "$job" "$PLANNER_DIR/out.json" < /dev/null || true
             fi
             echo "::endgroup::"
           done < <(jq -c '.[]' <<<"$JOBS")
