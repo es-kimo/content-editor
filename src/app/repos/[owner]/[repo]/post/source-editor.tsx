@@ -5,12 +5,18 @@ import { useMemo, useRef, useState } from "react";
 
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 미리보기 메시지와 넣기 메뉴만 가져온다.
-import { applyInsertForm, insertMenuItems } from "@/lib/content/insert-form";
+import {
+  advancedComponents,
+  applyInsertForm,
+  insertMenuItems,
+  newInsertTarget,
+  removeInsert,
+} from "@/lib/content/insert-form";
 import { previewMessage, previewUploads } from "@/lib/content/preview";
 import type { SaveState } from "@/lib/content/save-flow";
 import { sourceChanged } from "@/lib/content/unsaved";
 import { IMAGE_COMPONENT, MAX_IMAGE_SIDE, sourceUploads } from "@/lib/content/upload";
-import { parseMdx, readInserts, type Syntax } from "@/lib/mdx-doc";
+import { hasTocHeading, parseMdx, readInserts, type Syntax } from "@/lib/mdx-doc";
 
 import type { BodyImageUpload } from "./body-editor";
 import { BodyPreview } from "./body-preview";
@@ -35,7 +41,7 @@ export function SourceEditor({
 }: {
   source: string;
   syntax: Syntax;
-  /** 삽입 버튼으로 보일 컴포넌트. `sourceComponents`의 결과. */
+  /** 글 분류가 허용한 컴포넌트. `sourceComponents`의 결과. 넣기 메뉴와 고급 삽입으로 나눠 보인다. */
   components: string[];
   /** 이미지를 넣을 수 있는 글이면 글 폴더 파일 이름. 원문을 import·metadata와 본문으로 나눌 수 있어야 넣는다. */
   upload: BodyImageUpload | null;
@@ -53,8 +59,8 @@ export function SourceEditor({
   const editor = useRef<SourceEditorHandle | null>(null);
   const forms = useInsertForm({
     area: "source",
-    apply: (target, value) => {
-      const result = applyInsertForm(edited.current, target, value, syntax);
+    apply: (target, input) => {
+      const result = applyInsertForm(edited.current, target, input, syntax);
       if (!result.ok) return result.reason;
       if (result.changed) editor.current?.replace(result.source, result.cursor);
       return null;
@@ -74,6 +80,7 @@ export function SourceEditor({
   });
   useReportUnsaved("sourceImages", images.session.unsaved(current));
   const inserts = useMemo(() => readInserts(current, syntax), [current, syntax]);
+  const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
   const formLocked = save.locked || !forms.canOpen || images.preparing;
   const menu = insertMenuItems(upload ? [IMAGE_COMPONENT, ...components] : components);
 
@@ -100,15 +107,22 @@ export function SourceEditor({
           onSelect: (opener) => {
             if (kind === "image") return images.pick(opener);
             const at = editor.current?.selection();
-            if (at) forms.open({ kind, at, opened: edited.current }, opener);
+            if (at) forms.open(newInsertTarget(kind, edited.current, { at, opened: edited.current }, syntax), opener);
           },
         }))}
       />
       <InsertEntryList
         area="source"
         list={inserts}
+        tocHeading={tocHeading}
         disabled={formLocked}
         onEdit={(item, opener) => forms.open({ kind: "edit", item }, opener)}
+        onRemove={(item) => {
+          const result = removeInsert(edited.current, item, syntax);
+          if (!result.ok) return result.reason;
+          if (result.changed) editor.current?.replace(result.source, result.cursor);
+          return null;
+        }}
       />
       {forms.panel}
       <div {...(upload ? images.dropProps : {})}>
@@ -116,7 +130,7 @@ export function SourceEditor({
           handleRef={editor}
           source={source}
           syntax={syntax}
-          components={components}
+          components={advancedComponents(components)}
           readOnly={save.locked}
           onChange={(next) => {
             edited.current = next;

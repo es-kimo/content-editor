@@ -33,9 +33,12 @@ import {
 } from "@mdxeditor/editor";
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 
+// 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 폼 모듈만 가져온다.
+import { advancedComponents } from "@/lib/content/insert-form";
+
 export type MdxBodyEditorProps = {
   markdown: string;
-  /** 삽입 메뉴에 보일 컴포넌트. config `components`. */
+  /** config `components`. 넣기 메뉴가 폼으로 넣지 않는 컴포넌트는 도구 막대의 ‘고급 삽입’에 보인다. */
   components: string[];
   onChange: (markdown: string, initialMarkdownNormalize: boolean) => void;
   onError: (message: string) => void;
@@ -53,6 +56,11 @@ export type BodyEditorHandle = {
   setMarkdown(markdown: string): void;
   /** 본문의 커서 자리에 넣는다. 본문에 커서가 없었으면 끝에 넣는다. */
   insert(markdown: string): void;
+  /**
+   * 문장 안의 커서 자리에 글자만 담은 컴포넌트를 넣는다. 원문으로 넣으면 편집기가 문단 사이 요소로 읽어 문장을 나누므로
+   * 컴포넌트로 넣는다. `text`는 이스케이프하기 전의 글자다.
+   */
+  insertInline(name: string, props: Record<string, string>, text: string): void;
 };
 
 /** next/dynamic으로 브라우저에서만 불러온다. MDXEditor는 서버에서 렌더링할 수 없다. */
@@ -66,8 +74,9 @@ export default function MdxBodyEditor({
   handleRef,
 }: MdxBodyEditorProps) {
   const editor = useRef<MDXEditorMethods>(null);
-  const insertInRoot = useRef<((markdown: string) => void) | null>(null);
+  const insertInRoot = useRef<RootInserts | null>(null);
   const acceptsImages = onPickImage !== undefined;
+  const advanced = useMemo(() => advancedComponents(components), [components]);
   // 도구 막대는 처음 만든 플러그인으로 그리므로 버튼이 부를 함수는 마지막으로 그린 것을 쓴다.
   const pickImage = useRef(onPickImage);
   useEffect(() => {
@@ -79,7 +88,10 @@ export default function MdxBodyEditor({
       markdown: () => editor.current?.getMarkdown() ?? "",
       setMarkdown: (next) => editor.current?.setMarkdown(next),
       // 폼으로 옮겨 간 초점을 본문으로 돌려야 편집기가 기억한 커서 자리에 넣는다.
-      insert: (next) => editor.current?.focus(() => insertInRoot.current?.(next), { defaultSelection: "rootEnd" }),
+      insert: (next) =>
+        editor.current?.focus(() => insertInRoot.current?.markdown(next), { defaultSelection: "rootEnd" }),
+      insertInline: (name, props, text) =>
+        editor.current?.focus(() => insertInRoot.current?.inline(name, props, text), { defaultSelection: "rootEnd" }),
     };
     return () => {
       handleRef.current = null;
@@ -107,16 +119,20 @@ export default function MdxBodyEditor({
             <BlockTypeSelect />
             <ListsToggle options={["bullet", "number"]} />
             <CreateLink />
-            {(components.length > 0 || acceptsImages) && <Separator />}
+            {(advanced.length > 0 || acceptsImages) && <Separator />}
             {acceptsImages && <ImageButton onClick={(button) => pickImage.current?.(button)} />}
-            {components.map((name) => (
-              <InsertComponent key={name} name={name} />
-            ))}
+            {advanced.length > 0 && (
+              <span role="group" aria-label="고급 삽입" className="flex items-center">
+                {advanced.map((name) => (
+                  <InsertComponent key={name} name={name} />
+                ))}
+              </span>
+            )}
           </>
         ),
       }),
     ],
-    [components, acceptsImages],
+    [components, advanced, acceptsImages],
   );
 
   return (
@@ -146,20 +162,32 @@ function descriptors(components: string[]): JsxComponentDescriptor[] {
   ];
 }
 
+type RootInserts = {
+  markdown: (markdown: string) => void;
+  inline: (name: string, props: Record<string, string>, text: string) => void;
+};
+
 /**
  * 본문(루트 편집기)에 넣는 함수를 `insertRef`에 채운다. 편집기의 넣기는 마지막에 초점이 있던 편집기에 넣어,
  * 기존 컴포넌트의 내용 편집기에 초점이 있었으면 그 컴포넌트 안에 들어가거나 넣지 못한다.
  */
-function RootInsert({ insertRef }: { insertRef: RefObject<((markdown: string) => void) | null> }) {
+function RootInsert({ insertRef }: { insertRef: RefObject<RootInserts | null> }) {
   const root = useCellValue(rootEditor$);
   const setActive = usePublisher(activeEditor$);
   const insert = usePublisher(insertMarkdown$);
+  const insertJsx = usePublisher(insertJsx$);
   useEffect(() => {
-    insertRef.current = (markdown) => {
-      if (root) setActive(root);
-      insert(markdown);
+    insertRef.current = {
+      markdown: (markdown) => {
+        if (root) setActive(root);
+        insert(markdown);
+      },
+      inline: (name, props, text) => {
+        if (root) setActive(root);
+        insertJsx({ kind: "text", name, props, children: [{ type: "text", value: text }] });
+      },
     };
-  }, [insertRef, root, setActive, insert]);
+  }, [insertRef, root, setActive, insert, insertJsx]);
   return null;
 }
 

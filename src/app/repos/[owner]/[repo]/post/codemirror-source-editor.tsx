@@ -15,7 +15,7 @@ import { compileDiagnostics, insertComponent, mdxLanguage, replaceSource } from 
 export type CodeMirrorSourceEditorProps = {
   source: string;
   syntax: Syntax;
-  /** 삽입 버튼으로 보일 컴포넌트. `sourceComponents`의 결과. */
+  /** ‘고급 삽입’ 버튼으로 템플릿을 넣을 컴포넌트. `advancedComponents`의 결과. */
   components: string[];
   onChange: (source: string) => void;
   /** 저장 중이면 고치지도 컴포넌트를 넣지도 않는다. */
@@ -122,7 +122,8 @@ export default function CodeMirrorSourceEditor({
   return (
     <div className="flex flex-col gap-2">
       {components.length > 0 && (
-        <div className="flex flex-wrap gap-2" role="group" aria-label="컴포넌트 넣기">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="고급 삽입">
+          <span className="text-xs text-zinc-500">고급 삽입</span>
           {components.map((name) => (
             <button
               key={name}

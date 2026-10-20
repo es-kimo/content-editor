@@ -302,7 +302,8 @@ describe("넣기·수정 폼", () => {
     await page.getByRole("link", { name: "휴진 안내" }).click();
     await page.waitForURL(postUrl(app, FOOTNOTE_POST));
     await page.locator(".cm-content").waitFor();
-    await page.getByText("삽입 항목 1개").click();
+    // 두 편집 모드가 같은 삽입 항목 목록을 두므로 보이는 모드의 목록을 연다.
+    await page.getByText("삽입 항목 1개").filter({ visible: true }).click();
     await page.getByRole("button", { name: "각주 1 수정" }).click();
     await footnoteInput().fill("설 연휴");
   }

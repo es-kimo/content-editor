@@ -76,7 +76,8 @@ async function cursorAtLastLine() {
 }
 
 async function openInsertList() {
-  await page.getByText("삽입 항목 1개").click();
+  // 두 편집 모드가 같은 삽입 항목 목록을 두므로 보이는 모드의 목록을 연다.
+  await page.getByText("삽입 항목 1개").filter({ visible: true }).click();
   await editFootnote().waitFor();
 }
 

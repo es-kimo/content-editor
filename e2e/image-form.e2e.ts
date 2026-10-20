@@ -96,6 +96,8 @@ const sourceText = () => sourceEditor().innerText();
 const imageForm = () => page.getByRole("form", { name: "이미지 넣기" });
 const altInput = (form: Locator) => form.getByRole("textbox", { name: "대체 텍스트" });
 const unsaved = (areas: string) => page.getByText(`저장하지 않은 변경이 있어요. 바뀐 곳: ${areas}`);
+/** 보이는 편집 모드의 삽입 항목 목록. 두 편집 모드가 같은 이름의 목록을 둔다. */
+const insertList = (count: number) => page.getByText(`삽입 항목 ${count}개`).filter({ visible: true });
 const isFocused = (locator: Locator) => locator.evaluate((el) => el === document.activeElement);
 
 async function openBody(path: string) {
@@ -202,7 +204,7 @@ describe("일반 편집 이미지", () => {
     expect(app.file(`${dir(path)}/1.png`)).toBe(OLD_IMAGE);
 
     // 다시 연 글에서 넣은 이미지의 대체 텍스트를 같은 폼으로 고친다.
-    await page.getByText("본문 이미지 2개").click();
+    await insertList(2).click();
     await page.getByRole("button", { name: "이미지 수정" }).nth(1).click();
     const edit = page.getByRole("form", { name: "이미지 수정" });
     expect(await altInput(edit).inputValue()).toBe("진료 시간표");
@@ -228,7 +230,7 @@ describe("일반 편집 이미지", () => {
     await imageForm().getByRole("button", { name: "취소" }).click();
     await imageForm().waitFor({ state: "detached" });
     // 편집기는 초점이 빠질 때 기존 이미지 태그를 다시 써 본문 변경으로 알릴 수 있어, 넣은 이미지가 없는지로 본다.
-    await page.getByText("본문 이미지 1개").waitFor();
+    await insertList(1).waitFor();
     expect(await page.getByText(/저장하지 않은 변경이 있어요.*첨부 이미지/).count()).toBe(0);
 
     await giveFiles(bodyEditor(), "paste", 2);
@@ -248,7 +250,7 @@ describe("일반 편집 이미지", () => {
 
   test("폼으로 고칠 수 없는 이미지는 이유와 원문 편집 안내를 보이고 수정 버튼을 두지 않는다", async () => {
     await openBody(POSTS.limited);
-    await page.getByText("본문 이미지 2개").click();
+    await insertList(2).click();
 
     await page
       .getByText(
@@ -286,7 +288,7 @@ describe("원문 편집 이미지", () => {
     expect(app.file(`${dir(path)}/1.png`)).toBe(OLD_IMAGE);
 
     // 값을 바꾸지 않고 적용하면 원문이 그대로라 저장해도 커밋하지 않는다.
-    await page.getByText("삽입 항목 2개").click();
+    await insertList(2).click();
     const editImage = () => page.getByRole("button", { name: "이미지 수정" }).nth(1);
     await editImage().click();
     const edit = page.getByRole("form", { name: "이미지 수정" });

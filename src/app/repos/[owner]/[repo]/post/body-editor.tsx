@@ -5,15 +5,23 @@ import { useMemo, useRef, useState } from "react";
 
 import { TechDetails } from "@/app/_lib/ui";
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
-import { applyBodyInsertForm, bodyInserts, imageFormTag } from "@/lib/content/insert-form";
+import {
+  applyBodyInsertForm,
+  bodyInsert,
+  bodyInserts,
+  imageFormTag,
+  insertMenuItems,
+  newBodyInsertTarget,
+  removeBodyInsert,
+} from "@/lib/content/insert-form";
 import { uploadPreviewMessage } from "@/lib/content/preview";
 import type { SaveState } from "@/lib/content/save-flow";
 import { MAX_IMAGE_SIDE } from "@/lib/content/upload";
-import { editedBody, sameBodyStructure, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
+import { editedBody, hasTocHeading, sameBodyStructure, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
 
 import { BodyPreview } from "./body-preview";
 import { AttachedImagesNotice, ImagePreparingNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
-import { InsertEntryList, useInsertForm } from "./insert-form";
+import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
 import type { BodyEditorHandle } from "./mdx-body-editor";
 import { SaveRow } from "./save-row";
 
@@ -63,24 +71,34 @@ export function BodyEditor({
     edited.current = markdown;
     setDraft(editedBody(body, normalized.current, markdown));
   };
+  /** 폼이나 목차 제거로 고친 본문을 편집기에 쓴다. */
+  const replaceBody = (result: ReturnType<typeof applyBodyInsertForm>) => {
+    if (!result.ok) return result.reason;
+    if (result.changed) {
+      // 편집기는 코드로 바꾼 본문을 변경으로 알리지 않으므로 사용자가 고친 것처럼 직접 반영한다.
+      editor.current?.setMarkdown(result.body);
+      edit(result.body);
+    }
+    return null;
+  };
   const forms = useInsertForm({
     area: "body",
-    apply: (target, value) => {
+    apply: (target, input) => {
       const handle = editor.current;
       if (!handle) return "parse-error";
       if (target.kind === "image") {
-        handle.insert(imageFormTag(target, value));
+        handle.insert(imageFormTag(target, input.text));
         return null;
       }
-      if (target.kind !== "edit") return "invalid-position";
-      const result = applyBodyInsertForm(attachedDoc, current, target, value, syntax);
-      if (!result.ok) return result.reason;
-      if (result.changed) {
-        // 편집기는 코드로 바꾼 본문을 변경으로 알리지 않으므로 사용자가 고친 것처럼 직접 반영한다.
-        handle.setMarkdown(result.body);
-        edit(result.body);
+      if (target.kind !== "edit") {
+        const result = bodyInsert(attachedDoc, current, target, input, syntax);
+        if (!result.ok) return result.reason;
+        const { insert } = result;
+        if (insert.kind === "inline") handle.insertInline(insert.name, { id: String(insert.id) }, insert.text);
+        else handle.insert(insert.markdown);
+        return null;
       }
-      return null;
+      return replaceBody(applyBodyInsertForm(attachedDoc, current, target, input, syntax));
     },
   });
   const images = useImageUpload({
@@ -94,6 +112,10 @@ export function BodyEditor({
   useReportUnsaved("images", images.session.unsaved(draft) && problem === null);
   const { doc: attachedDoc } = images;
   const inserts = useMemo(() => bodyInserts(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
+  const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
+  const formLocked = save.locked || !forms.canOpen || images.preparing;
+  // 이미지는 넣을 수 있는 글에서만 메뉴에 둔다. 고르면 파일 선택 창을 열고, 고른 뒤 폼이 열린다.
+  const menu = insertMenuItems(components).filter((item) => item.kind !== "image" || upload);
 
   if (problem) {
     return (
@@ -120,11 +142,23 @@ export function BodyEditor({
         );
       }}
     >
+      <InsertMenu
+        disabled={formLocked}
+        items={menu.map(({ kind, label }) => ({
+          label,
+          onSelect: (opener) => {
+            if (kind === "image") return images.pick(opener);
+            forms.open(newBodyInsertTarget(kind, attachedDoc, current, syntax), opener);
+          },
+        }))}
+      />
       <InsertEntryList
         area="body"
         list={inserts}
-        disabled={save.locked || !forms.canOpen || images.preparing}
+        tocHeading={tocHeading}
+        disabled={formLocked}
         onEdit={(item, opener) => forms.open({ kind: "edit", item }, opener)}
+        onRemove={(item) => replaceBody(removeBodyInsert(attachedDoc, current, item, syntax))}
       />
       {forms.panel}
       <div {...(upload ? images.dropProps : {})}>
