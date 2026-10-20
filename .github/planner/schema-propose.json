@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "body", "wiki_message"],
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string"
+    },
+    "wiki_message": {
+      "type": ["string", "null"]
+    }
+  }
+}
