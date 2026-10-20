@@ -1,21 +1,21 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { TechDetails } from "@/app/_lib/ui";
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
-import { imageFormTag } from "@/lib/content/insert-form";
+import { applyBodyInsertForm, bodyInserts, imageFormTag } from "@/lib/content/insert-form";
 import { uploadPreviewMessage } from "@/lib/content/preview";
 import type { SaveState } from "@/lib/content/save-flow";
-import { MAX_IMAGE_SIDE, uploadImports } from "@/lib/content/upload";
-import { createUploadSession } from "@/lib/content/upload-session";
-import { editedBody, sameBodyStructure, type MdxDoc, type PreviewImages, type Syntax } from "@/lib/mdx-doc";
+import { MAX_IMAGE_SIDE } from "@/lib/content/upload";
+import { editedBody, sameBodyStructure, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
 
 import { BodyPreview } from "./body-preview";
-import { prepareImage } from "./prepare-image";
+import { useImageUpload } from "./image-upload";
+import { InsertEntryList, useInsertForm } from "./insert-form";
+import type { BodyEditorHandle } from "./mdx-body-editor";
 import { SaveRow } from "./save-row";
-import { uploadMessage } from "./upload-message";
 
 const MdxBodyEditor = dynamic(() => import("./mdx-body-editor"), {
   ssr: false,
@@ -42,36 +42,57 @@ export function BodyEditor({
   upload: BodyImageUpload | null;
   /** config `preview`. 있으면 사이트 미리보기를 띄운다. */
   preview?: string;
-  action: (data: FormData) => Promise<SaveState>;
+  /** 본문과, 넣은 이미지를 파일 이름이 `N.ext`인 `image` 파일로 담은 FormData를 보낸다. */
+  action: (body: string, images: FormData) => Promise<SaveState>;
 }) {
   const save = useSave("body");
   /** 일반 편집으로 고칠 수 없게 된 이유. `detail`은 기술 상세에 둘 오류 원문이다. */
   const [problem, setProblem] = useState<{ message: string; detail?: string } | null>(null);
   const normalized = useRef<string | null>(null);
   const edited = useRef<string | null>(null);
-  // 세션이 준비 중 여부를 바꾸면 이 상태로 다시 그려 첨부 판정과 저장 버튼을 갱신한다.
-  const [preparing, setPreparing] = useState(false);
-  const [uploads] = useState(() =>
-    createUploadSession({ doc, files: upload?.files ?? [], prepare: prepareImage, onPreparing: setPreparing }),
-  );
-  const [images, setImages] = useState<{ file: string; size: number }[]>([]);
-  const [imageProblem, setImageProblem] = useState<string | null>(null);
+  const editor = useRef<BodyEditorHandle | null>(null);
   const [current, setCurrent] = useState(body);
   // 저장할 본문(`editedBody`). 본문이 참조하는 첨부를 이 값으로 판정한다.
   const [draft, setDraft] = useState(body);
   // 서버가 변경 없음으로 답한 본문. 그 본문은 저장한 것과 같으므로 미저장 판정의 기준으로 삼는다.
   const [baseline, setBaseline] = useState(body);
   const changed = draft !== baseline;
+
+  const edit = (markdown: string) => {
+    setCurrent(markdown);
+    edited.current = markdown;
+    setDraft(editedBody(body, normalized.current, markdown));
+  };
+  const forms = useInsertForm({
+    area: "body",
+    apply: (target, value) => {
+      const handle = editor.current;
+      if (!handle) return "parse-error";
+      if (target.kind === "image") {
+        handle.insert(imageFormTag(target, value));
+        return null;
+      }
+      if (target.kind !== "edit") return "invalid-position";
+      const result = applyBodyInsertForm(attachedDoc, current, target, value, syntax);
+      if (!result.ok) return result.reason;
+      if (result.changed) {
+        // 편집기는 코드로 바꾼 본문을 변경으로 알리지 않으므로 사용자가 고친 것처럼 직접 반영한다.
+        handle.setMarkdown(result.body);
+        edit(result.body);
+      }
+      return null;
+    },
+  });
+  const images = useImageUpload({
+    doc,
+    files: upload?.files ?? [],
+    onAdded: (image, opener) => forms.open({ kind: "image", image, place: null }, opener),
+  });
   // WYSIWYG로 고칠 수 없게 된 글은 입력을 저장하지 않으므로 미저장으로 알리지 않는다.
   useReportUnsaved("body", changed && problem === null);
-  useReportUnsaved("images", uploads.unsaved(draft) && problem === null);
-  // 넣은 이미지는 커밋 전이라 레포 주소가 없으므로 미리보기는 브라우저 안의 주소로 보여 준다.
-  const objectUrls = useRef(new Map<string, string>());
-  const [previewImages, setPreviewImages] = useState<PreviewImages>({});
-  useEffect(() => {
-    const urls = objectUrls.current;
-    return () => urls.forEach((url) => URL.revokeObjectURL(url));
-  }, []);
+  useReportUnsaved("images", images.session.unsaved(draft) && problem === null);
+  const { attached, doc: attachedDoc } = images;
+  const inserts = useMemo(() => bodyInserts(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
 
   if (problem) {
     return (
@@ -83,83 +104,79 @@ export function BodyEditor({
     );
   }
 
-  const addImages = (files: File[], insert: (tags: string[]) => void) =>
-    uploads.add(files, ({ images: added, problems }) => {
-      setImages(uploads.plan.images.map(({ file, content }) => ({ file, size: content.byteLength })));
-      for (const { name, image } of uploadImports(uploads.plan)) {
-        if (!objectUrls.current.has(name)) {
-          objectUrls.current.set(name, URL.createObjectURL(new Blob([new Uint8Array(image.content)])));
-        }
-      }
-      setPreviewImages(Object.fromEntries(objectUrls.current));
-      setImageProblem(problems.length > 0 ? problems.map((p) => uploadMessage(p.name, p.problem)).join(" ") : null);
-      insert(added.map((image) => imageFormTag({ kind: "image", image, place: null }, "")));
-    });
-
   return (
     <form
       className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         const next = editedBody(body, normalized.current, edited.current);
-        const submission = uploads.submission(next);
+        const submission = images.session.submission(next);
         if (!submission.ok) return;
         const data = new FormData();
-        data.set("body", next);
         for (const image of submission.images) {
           data.append("image", new File([new Uint8Array(image.content)], image.file));
         }
         save.request(
           { target: "body" },
-          () => action(data),
+          () => action(next, data),
           () => setBaseline(next),
         );
       }}
     >
-      <MdxBodyEditor
-        markdown={body}
-        components={components}
-        readOnly={save.locked}
-        onChange={(markdown, initialMarkdownNormalize) => {
-          setCurrent(markdown);
-          if (initialMarkdownNormalize) normalized.current = markdown;
-          else edited.current = markdown;
-          setDraft(editedBody(body, normalized.current, edited.current));
-          if (!initialMarkdownNormalize) return;
-          // 렌더링 구조까지 바뀌는 글은 고치지 않은 곳까지 바꿔 저장하게 되므로 WYSIWYG로 고치지 않는다.
-          if (!sameBodyStructure(body, markdown, syntax)) {
+      <InsertEntryList
+        area="body"
+        list={inserts}
+        disabled={save.locked || !forms.canOpen || images.preparing}
+        onEdit={(item, opener) => forms.open({ kind: "edit", item }, opener)}
+      />
+      {forms.panel}
+      <div {...(upload ? images.dropProps : {})}>
+        <MdxBodyEditor
+          markdown={body}
+          components={components}
+          readOnly={save.locked}
+          handleRef={editor}
+          onChange={(markdown, initialMarkdownNormalize) => {
+            if (!initialMarkdownNormalize) return edit(markdown);
+            setCurrent(markdown);
+            normalized.current = markdown;
+            setDraft(editedBody(body, normalized.current, edited.current));
+            // 렌더링 구조까지 바뀌는 글은 고치지 않은 곳까지 바꿔 저장하게 되므로 WYSIWYG로 고치지 않는다.
+            if (!sameBodyStructure(body, markdown, syntax)) {
+              setProblem({
+                message:
+                  "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집으로 열면 글 구조가 바뀌어요.",
+              });
+            }
+          }}
+          onError={(message) =>
             setProblem({
               message:
-                "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집으로 열면 글 구조가 바뀌어요.",
-            });
+                "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집이 읽을 수 없는 내용이 있어요.",
+              detail: message,
+            })
           }
-        }}
-        onError={(message) =>
-          setProblem({
-            message:
-              "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집이 읽을 수 없는 내용이 있어요.",
-            detail: message,
-          })
-        }
-        onImages={upload ? addImages : undefined}
-      />
+          onPickImage={upload ? images.pick : undefined}
+        />
+      </div>
+      {upload && images.picker}
       {upload && (
         <p className="text-xs text-zinc-500">
-          이미지(png·jpg·webp)는 끌어 놓거나 붙여 넣거나 도구 막대의 이미지 버튼으로 넣어 주세요. 긴 변이{" "}
-          {MAX_IMAGE_SIDE}px보다 크면 줄여서 넣어요.
+          이미지(png·jpg·webp)는 하나씩 끌어 놓거나 붙여 넣거나 도구 막대의 이미지 버튼으로 넣고 대체 텍스트를 입력해
+          주세요. 긴 변이 {MAX_IMAGE_SIDE}px보다 크면 줄여서 넣어요.
         </p>
       )}
-      {images.length > 0 && (
+      {attached.length > 0 && (
         <p className="text-xs text-zinc-500">
-          넣은 이미지: {images.map(({ file, size }) => `${file} (${Math.ceil(size / 1024)}KB)`).join(", ")}. 본문을
-          저장할 때 글 폴더에 함께 저장하고, 본문에서 지운 이미지는 올리지 않아요.
+          넣은 이미지: {attached.map(({ file, size }) => `${file} (${Math.ceil(size / 1024)}KB)`).join(", ")}. 본문을
+          저장할 때 글 폴더에 함께 저장하고, 본문에서 지웠거나 넣지 않은 이미지는 올리지 않아요.
         </p>
       )}
-      {imageProblem && <p className="text-sm text-red-600">{imageProblem}</p>}
+      {images.problem && <p className="text-sm text-red-600">{images.problem}</p>}
       <BodyPreview
         markdown={current}
         syntax={syntax}
-        images={previewImages}
+        images={images.previewImages}
         site={
           preview
             ? {
@@ -167,16 +184,18 @@ export function BodyEditor({
                 // 저장할 본문과 같은 것을 보이도록 저장 때와 같은 규칙으로 본문을 고른다.
                 message: () =>
                   uploadPreviewMessage(
-                    uploads.plan,
+                    images.session.plan,
                     editedBody(body, normalized.current, edited.current),
-                    uploads.sizes,
+                    images.session.sizes,
                   ),
               }
             : undefined
         }
       />
-      {preparing && <p className="text-sm text-zinc-500">이미지를 준비하고 있어요. 본문에 들어간 뒤 저장해 주세요.</p>}
-      <SaveRow label="본문 저장" save={save} disabled={preparing} />
+      {images.preparing && (
+        <p className="text-sm text-zinc-500">이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 저장해 주세요.</p>
+      )}
+      <SaveRow label="본문 저장" save={save} disabled={images.preparing} />
     </form>
   );
 }

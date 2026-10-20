@@ -46,6 +46,7 @@ export { fetchBlobTexts, fetchTree, listPosts, matchPosts, type PostListItem, ty
 export {
   previewMessage,
   previewOrigin,
+  previewUploads,
   trustsPreviewMessage,
   uploadPreviewMessage,
   type PreviewMessage,
