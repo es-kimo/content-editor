@@ -137,6 +137,42 @@ describe("브라우저 기본 경고", () => {
   });
 });
 
+describe("적용하지 않은 폼", () => {
+  test("폼에 작성 중 입력이 있으면 목록 이동을 막고, 계속 편집하면 폼과 입력 표시를 그대로 둔다", () => {
+    const { flow, guard, go } = setup();
+    flow.openForm("source");
+    flow.editForm(true);
+
+    expect(guard.request(LIST)).toBe(false);
+    expect(guard.getState().areas).toEqual(["source"]);
+    guard.stay();
+
+    expect(go).not.toHaveBeenCalled();
+    expect(flow.getState().form).toMatchObject({ area: "source", dirty: true });
+    expect(guard.warnsUnload()).toBe(true);
+  });
+
+  test("열기만 하고 입력하지 않은 폼은 잃을 입력이 없어 묻지 않는다", () => {
+    const { flow, guard } = setup();
+    flow.openForm("body");
+
+    expect(guard.request(BACK)).toBe(true);
+    expect(guard.warnsUnload()).toBe(false);
+  });
+
+  test("본문 변경과 폼 입력이 함께 있어도 본문을 한 번만 알린다", () => {
+    const { flow, guard } = setup();
+    flow.report("body", true);
+    flow.report("metadata", true);
+    flow.openForm("body");
+    flow.editForm(true);
+
+    guard.request(LIST);
+
+    expect(guard.getState().areas).toEqual(["body", "metadata"]);
+  });
+});
+
 describe("저장 뒤 이동", () => {
   test("저장하는 동안은 입력이 아직 저장되지 않았으니 이탈을 확인한다", () => {
     const { flow, guard } = setup();

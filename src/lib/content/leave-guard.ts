@@ -2,10 +2,14 @@
 import type { SaveFlowState } from "./save-flow";
 import type { EditArea } from "./unsaved";
 
-/** 화면을 떠나면 사라지는 미저장 영역. 저장해 저장한 글 화면으로 가는 중이면 저장했거나 버리기로 한 영역은 뺀다. */
-export function leavingAreas({ phase, changed }: Pick<SaveFlowState, "phase" | "changed">): EditArea[] {
+/**
+ * 화면을 떠나면 사라지는 미저장 영역. 저장해 저장한 글 화면으로 가는 중이면 저장했거나 버리기로 한 영역은 뺀다.
+ * 적용하지 않은 폼의 작성 중 입력은 그 폼을 연 영역의 입력으로 센다.
+ */
+export function leavingAreas({ phase, changed, form }: Pick<SaveFlowState, "phase" | "changed" | "form">): EditArea[] {
   const kept = phase.kind === "saved" ? phase.reopened : [];
-  return (Object.keys(changed) as EditArea[]).filter((area) => changed[area] && !kept.includes(area));
+  const lost = (Object.keys(changed) as EditArea[]).filter((area) => changed[area] && !kept.includes(area));
+  return form?.dirty && !lost.includes(form.area) ? [...lost, form.area] : lost;
 }
 
 /** 앱이 확인을 띄울 수 있는 이동. `push`는 같은 탭의 앱 안 링크, `traverse`는 브라우저 뒤로·앞으로. */

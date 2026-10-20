@@ -75,12 +75,26 @@ export type SavePhase =
    */
   | { kind: "saved"; target: SaveTarget; href: string; reopened: EditArea[] };
 
+/** 넣기·수정 폼을 여는 편집 영역. 폼을 적용하면 이 영역의 미저장 변경이 된다. */
+export type FormArea = Extract<EditArea, "body" | "source">;
+
+/** 폼이 열려 있어 막은 동작. 저장 대상 또는 모드 전환. */
+export type FormBlocked = SaveTarget | "mode";
+
+/**
+ * 적용하지 않은 넣기·수정 폼.
+ * `dirty`는 폼 안의 작성 중 입력이 처음 값과 다른지, `blocked`는 폼 때문에 막은 마지막 동작이다.
+ */
+export type OpenForm = { area: FormArea; dirty: boolean; blocked: FormBlocked | null };
+
 export type SaveFlowState = {
   phase: SavePhase;
   /** 영역별 미저장 변경. 편집 영역이 알린다. 저장 결과로 바꾸지 않는다. */
   changed: { [area in EditArea]?: boolean };
   /** 저장 대상별 마지막 결과. */
   results: { [target in SaveTarget]?: SaveState };
+  /** 열려 있는 폼. 화면에 하나만 연다. */
+  form: OpenForm | null;
 };
 
 export type SaveFlow = {
@@ -93,6 +107,17 @@ export type SaveFlow = {
    * @param onUnchanged 서버가 변경 없음으로 답하면 부른다. 제출한 영역만 지금 입력을 저장 기준으로 삼게 한다.
    */
   request(request: SaveRequest, submit: () => Promise<SaveState>, onUnchanged?: () => void): boolean;
+  /**
+   * 폼을 연다. 저장 중이거나 확인 중이거나 다른 폼이 열려 있으면 열지 않고 false.
+   * 폼이 열려 있는 동안은 모든 저장 요청을 막는다. 폼을 열고 닫는 것만으로는 영역의 미저장 변경을 바꾸지 않는다.
+   */
+  openForm(area: FormArea): boolean;
+  /** 폼 안의 작성 중 입력이 처음 값과 다른지 알린다. 다르면 이탈 확인에 그 영역이 든다. */
+  editForm(dirty: boolean): void;
+  /** 적용·취소로 폼을 닫는다. 적용한 결과는 그 영역의 편집기가 미저장 변경으로 알린다. */
+  closeForm(): void;
+  /** 폼이 열려 있으면 `action`을 막았다고 기록하고 true. 모드 전환처럼 저장 밖의 동작이 막을지 물을 때 쓴다. */
+  blockedByForm(action: FormBlocked): boolean;
   /** `다른 변경 버리고 저장`. 버리는 것은 저장이 성공해 화면이 다시 열릴 때뿐이다. */
   confirm(): void;
   /** `계속 편집`. 제출하지 않는다. */
@@ -107,7 +132,7 @@ const FAILED: SaveState = { status: "error", message: "저장하지 못했어요
 
 /** 한 화면의 저장들을 하나씩만 진행하게 묶는다. @param navigate 저장에 성공하면 저장한 글 화면으로 간다. */
 export function createSaveFlow({ navigate }: { navigate: (href: string) => void }): SaveFlow {
-  let state: SaveFlowState = { phase: { kind: "idle" }, changed: {}, results: {} };
+  let state: SaveFlowState = { phase: { kind: "idle" }, changed: {}, results: {}, form: null };
   let waiting: Job | null = null;
   const listeners = new Set<() => void>();
 
@@ -135,6 +160,12 @@ export function createSaveFlow({ navigate }: { navigate: (href: string) => void 
     if (result.status === "saved") navigate(result.href);
   };
 
+  const blockedByForm = (action: FormBlocked) => {
+    if (!state.form) return false;
+    if (state.form.blocked !== action) update({ form: { ...state.form, blocked: action } });
+    return true;
+  };
+
   return {
     getState: () => state,
     subscribe(listener) {
@@ -146,7 +177,7 @@ export function createSaveFlow({ navigate }: { navigate: (href: string) => void 
       update({ changed: { ...state.changed, [area]: changed } });
     },
     request(request, submit, onUnchanged) {
-      if (state.phase.kind !== "idle") return false;
+      if (state.phase.kind !== "idle" || blockedByForm(request.target)) return false;
       const job = { target: request.target, reopened: reopenedAreas(request), submit, onUnchanged };
       const discarded = discardedAreas(request, state.changed);
       if (discarded.length === 0) {
@@ -163,6 +194,19 @@ export function createSaveFlow({ navigate }: { navigate: (href: string) => void 
       waiting = null;
       void run(job);
     },
+    openForm(area) {
+      if (state.phase.kind !== "idle" || state.form) return false;
+      update({ form: { area, dirty: false, blocked: null } });
+      return true;
+    },
+    editForm(dirty) {
+      if (!state.form || state.form.dirty === dirty) return;
+      update({ form: { ...state.form, dirty } });
+    },
+    closeForm() {
+      if (state.form) update({ form: null });
+    },
+    blockedByForm,
     cancel() {
       if (state.phase.kind !== "confirming") return;
       waiting = null;

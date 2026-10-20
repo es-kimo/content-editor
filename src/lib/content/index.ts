@@ -23,6 +23,18 @@ export {
   type LeaveGuard,
   type LeaveGuardState,
 } from "./leave-guard";
+export {
+  applyInsertForm,
+  formDirty,
+  formInitialValue,
+  insertFieldLabel,
+  insertFormMessage,
+  insertItemName,
+  type InsertFormApply,
+  type InsertFormProblem,
+  type InsertFormTarget,
+  type TextInsertItem,
+} from "./insert-form";
 export { fetchBlobTexts, fetchTree, listPosts, matchPosts, type PostListItem, type TreeEntry } from "./posts";
 export {
   previewMessage,
@@ -50,6 +62,9 @@ export {
   docEditorKeys,
   reopenedAreas,
   type EditorKeys,
+  type FormArea,
+  type FormBlocked,
+  type OpenForm,
   type SaveFlow,
   type SaveFlowState,
   type SavePhase,
