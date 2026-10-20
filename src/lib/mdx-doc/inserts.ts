@@ -1,7 +1,7 @@
 import type { MdxJsxTextElement } from "mdast-util-mdx";
 
 import { setBody } from "./body";
-import { addImage, escapeJsxAttribute, readImageImports, type AddImageOptions } from "./images";
+import { addImage, escapeJsxAttribute, isImageFile, readImageImports, type AddImageOptions } from "./images";
 import { arrayAttribute, attributeValue, expressionAttribute, jsxElements, type JsxElement } from "./jsx";
 import {
   componentSnippet,
@@ -101,7 +101,8 @@ const URL = /((?:https?:\/\/|www\.)[^\s<>{}\\]+)/;
 
 /**
  * 원문의 이미지·각주·각주 출처·목차를 읽는다. 폼으로 고칠 수 없는 항목도 위치와 이유를 돌려준다.
- * 이미지는 `src` 속성이 있는 컴포넌트, 각주는 `Footnote`, 출처는 `FootnoteRef`, 목차는 `TOC`다.
+ * 이미지는 `src`가 `{식}`이거나 이미지 파일 경로인 컴포넌트다. `<Video src="https://...">`처럼 `src`가 이미지가 아닌
+ * 주소인 컴포넌트는 돌려주지 않는다. 각주는 `Footnote`, 출처는 `FootnoteRef`, 목차는 `TOC`다.
  */
 export function readInserts(source: string, syntax: Syntax = {}): InsertList {
   const scanned = scan(source, syntax);
@@ -265,7 +266,7 @@ function scan(source: string, syntax: Syntax): Scan | null {
     if (element.name === "Footnote") return [footnoteEntry(source, element, span, footnotes)];
     if (element.name === "FootnoteRef") return [refEntry(source, element, span, footnotes, links)];
     if (element.name === "TOC") return [tocEntry(element, span)];
-    if (attributeValue(element, "src") !== undefined) return [imageEntry(element, span, imports)];
+    if (isImageSource(element)) return [imageEntry(element, span, imports)];
     return [];
   });
   return { entries, footnotes, links };
@@ -310,6 +311,13 @@ function tocEntry(element: JsxElement, span: InsertSpan): Entry {
   return auto
     ? { item: { ...span, kind: "toc" }, field: null }
     : { limited: { ...span, kind: "toc", reason: "custom-toc" } };
+}
+
+/** 이미지 컴포넌트 이름은 레포마다 달라서 이름 대신 `src`의 모양으로 가린다. */
+function isImageSource(element: JsxElement): boolean {
+  const value = attributeValue(element, "src");
+  if (typeof value === "string") return isImageFile(value);
+  return typeof value === "object" && value !== null;
 }
 
 function imageEntry(element: JsxElement, span: InsertSpan, imports: Map<string, string>): Entry {

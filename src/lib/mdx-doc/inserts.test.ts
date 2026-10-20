@@ -74,6 +74,22 @@ describe("readInserts", () => {
     ]);
   });
 
+  test("src가 이미지가 아닌 주소인 동영상·임베드는 이미지 항목으로 돌려주지 않는다", () => {
+    const source = [
+      'import image1 from "./1.png";',
+      "",
+      '<Video src="https://www.youtube.com/embed/abc" />',
+      "",
+      '<EmbedIframe src="https://example.com/embed" title="임베드" />',
+      "",
+      '<Image src={image1} alt="고양이" />',
+      "",
+    ].join("\n");
+    const { items, limited } = read(source);
+    expect(limited).toEqual([]);
+    expect(items.map((item) => source.slice(item.from, item.to))).toEqual(['<Image src={image1} alt="고양이" />']);
+  });
+
   test("동적 표현식·중첩 컴포넌트·서식이 있는 항목은 숨기지 않고 위치와 제한 이유를 돌려준다", () => {
     const source = [
       'import image1 from "./1.png";',
