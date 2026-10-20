@@ -1,4 +1,4 @@
-/** 사용법: node scripts/agent/classify-run.mts <execution_file> → RunInfo JSON 출력 */
+/** 사용법: node scripts/agent/classify-run.mts <메시지 배열 JSON 파일> → RunInfo JSON 출력 */
 import { existsSync, readFileSync } from "node:fs";
 
 import { classifyRun } from "./classify.mts";

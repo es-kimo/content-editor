@@ -50,76 +50,81 @@ pnpm fixtures:sync   # fixtures/<name>/ 아래에 page.mdx를 받는다 (gitigno
 
 `AGENTS.md`는 Next.js가 생성·관리하는 에이전트용 안내다. 이 버전의 Next.js API는 `node_modules/next/dist/docs/`를 기준으로 확인한다.
 
-## 무인 에이전트 루프
+## 밤 근무 (무인 에이전트)
 
-에이전트가 이슈를 하나씩 구현하고, 리뷰·수정을 거쳐 merge한다. 하나가 merge되면 바로 다음 이슈를 골라, 마일스톤의 에이전트 이슈를 사람이 돌리지 않아도 끝까지 이어 간다.
+매일 밤 실행 하나가 `agent-ready` 이슈를 하나씩 구현하고, 리뷰·수정을 거쳐 merge한다. 사람은 낮에 기획하고, 아침에 보고와 PR 본문을 읽는다.
 
 ```
-Agent implement             다음 이슈 1개 → agent/<이슈>-<실행> 브랜치 → 구현 → PR(label: agent)
-                            에이전트 PR merge, agent-ready 달림, needs-human 떨어짐, 30분마다(cron)에 돈다
-CI                           check + e2e + guard (agent/ 브랜치의 금지 변경 검사)
-Agent review (CI 완료 시)   실패: 로그로 수정 / 통과: 독립 리뷰 → 승인이면 auto-merge, 아니면 수정
-Agent report (07:00 KST)    지난 24시간 결과를 `agent-report` 이슈에 코멘트
+Night shift (23:00 KST cron, 수동 실행)
+ ├ 슬롯 1..N (차례로, 슬롯마다 새 러너)
+ │   다음 이슈 고르기 → 없으면 끝
+ │   구현 → 검사(lint·format·typecheck·test·build·e2e) → 리뷰 → 수정 (반복, 최대 AGENT_MAX_FIX번)
+ │   승인 → PR 열기 → CI → merge
+ │   사람이 정할 것 → 이슈를 소유자에게 assign + @멘션
+ │   사용량 한도 → 진행분 저장 후 남은 슬롯 취소
+ └ 아침 보고: agent-report 이슈에 @멘션 코멘트
+CI (PR)          check + e2e + guard (agent/ 브랜치의 금지 변경 검사)
 ```
 
-- 동시에 열린 에이전트 PR은 1개. 수정이 `AGENT_MAX_FIX`회를 넘거나 막히면 `needs-human`을 달고 멈춘다. 멈춘 PR은 1개에 세지 않으므로, 그 이슈에 의존하지 않는 다음 이슈는 계속 진행한다
-- 이 레포는 public이라 Actions 실행 시간이 무료다. private 레포에 같은 루프를 붙이면 job마다 1분 단위로 올림해 월 한도에서 빠지므로, 30분 cron만으로 하루 48분이 든다. 그때는 cron을 밤에만 돌리거나 간격을 늘린다
-- 사용량 한도로 멈춘 실행은 실패로 세지 않는다. 구현은 다음 cron이 다시 고르고, 리뷰·수정은 PR에 `agent-retry`를 달아 다음 cron이 그 브랜치의 리뷰를 다시 띄운다 (`scripts/agent/classify.mts`가 실행 기록으로 판단)
-- claude-code-action은 정상 종료한 실행도 `num_turns`(도구 결과 수)가 `--max-turns`(모델 호출 수)를 넘으면 실패로 끝낸다 ([claude-code-action#1795](https://github.com/anthropics/claude-code-action/issues/1795)). 워크플로는 성공 여부와 결과를 action 출력 대신 실행 기록에서 읽는다
-- 리뷰가 PR 본문을 지적하면 수정 에이전트는 `.agent/pr.md`를 고친다. 워크플로가 본문에 반영하고, push가 없으니 리뷰를 직접 다시 띄운다 (`workflow_dispatch`)
+- 트리거는 cron과 수동 실행뿐이다. 다른 워크플로를 띄우거나 라벨·이벤트로 이어 가지 않으므로, Actions에는 밤마다 Night shift 실행 1개와 PR마다 CI 1개가 남는다
+- 단계 사이 상태는 [slot.sh](scripts/agent/slot.sh)의 변수다. PR은 리뷰가 승인한 뒤에만 열리고, 리뷰 결과와 수정 이력은 PR 본문의 접힌 영역에 있다
+- 사람은 코드 대신 PR 본문을 읽는다. 에이전트가 PRD·이슈에 없어서 스스로 정한 것은 `## 에이전트가 정한 것`에 적고, 아침 보고가 이것만 모아 보여 준다
+- 끝내지 못한 작업은 `agent-wip/<이슈>` 브랜치에 저장하고 다음 시도가 이어 간다. 검사·CI·merge 실패는 다음 밤에 다시 시도하고, 마지막 사람 차례 뒤 `AGENT_MAX_ATTEMPTS`번 실패하면 사람 차례로 넘긴다
+- 사용량 한도는 실행 기록의 `rate_limit_event`와 오류 문구로 판단한다 ([classify.mts](scripts/agent/classify.mts))
+- 이 레포는 public이라 Actions 실행 시간이 무료다. 슬롯은 CI가 끝날 때까지 러너에서 기다린다
 - 규칙: `CLAUDE.md`, 역할별 지시: `.github/agent/*.md`, 리뷰 기준: `docs/review/*.md`
+
+### 사람 차례
+
+사람 차례는 assignee 하나로 나타낸다. 소유자에게 assign된 이슈가 내 할 일이고, 에이전트는 assign된 이슈를 고르지 않는다. 알림이 오도록 코멘트·assign은 봇 계정(es-kimo-bot)이 한다.
+
+| 언제                                                          | 무엇을                                           |
+| ------------------------------------------------------------- | ------------------------------------------------ |
+| 에이전트가 멈춤 (외부 계정, 금지 파일, 제품 방향이 걸린 결정) | 이슈 코멘트의 "정할 것·선택지·추천"에 답한다     |
+| 수정 `AGENT_MAX_FIX`번 뒤에도 리뷰가 막음                     | 지적을 고칠 방향·범위에서 빼기·무시하기를 정한다 |
+| 사람 작업 이슈(QA 등)의 의존이 모두 닫힘                      | 그 이슈를 한다 (아침 보고가 assign한다)          |
+| 남은 에이전트 이슈가 없음                                     | 다음 기획을 한다 (`planning` 이슈)               |
+
+답을 코멘트로 남기고 assign을 풀면 다음 밤에 이어 간다. 소유자 답은 구현·리뷰·수정 모두 이슈 본문보다 우선한다.
 
 ### 리뷰 기준
 
 리뷰는 완료 기준·정확성에 더해 유지보수성, 테스트 품질, 화면 일관성, PR 본문을 본다. 기준은 두 곳에 나뉘어 있다.
 
-| 기준                                                                  | 위치                                               | 고치는 사람                       |
-| --------------------------------------------------------------------- | -------------------------------------------------- | --------------------------------- |
-| 레포와 상관없는 일반 기준 (무엇을 보고, 무엇이 blocking인지)          | `review-kit` 플러그인 (`AGENT_SKILLS_MARKETPLACE`) | 사람                              |
-| 이 레포의 모듈 지도, 재사용할 것, 테스트 경계, 화면 토큰, 알려진 부채 | `docs/review/`                                     | 사람 (에이전트 PR은 guard가 막음) |
-| 기계로 잡을 수 있는 규칙 (mdx-doc 의존, GitHub API 직접 호출)         | `eslint.config.mjs`                                | 사람 (guard가 막음)               |
+| 기준                                                                  | 위치                                               | 고치는 사람                                |
+| --------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------ |
+| 레포와 상관없는 일반 기준 (무엇을 보고, 무엇이 blocking인지)          | `review-kit` 플러그인 (`AGENT_SKILLS_MARKETPLACE`) | 사람                                       |
+| 이 레포의 모듈 지도, 재사용할 것, 테스트 경계, 화면 토큰, 알려진 부채 | `docs/review/`                                     | 사람, 에이전트 (리뷰가 기준을 낮췄는지 봄) |
+| 기계로 잡을 수 있는 규칙 (mdx-doc 의존, GitHub API 직접 호출)         | `eslint.config.mjs`                                | 사람 (guard가 막음)                        |
 
 - 구현·수정 에이전트는 커밋 전에 같은 스킬로 셀프 체크한다.
-- 리뷰는 지적마다 `blocking`/`suggestion`을 매긴다. 판정은 워크플로가 한다: blocking 0건이고 완료 기준이 모두 충족이면 승인(auto-merge), 아니면 수정 요청이다.
-- 수정 에이전트에는 blocking과 미충족 기준만 넘긴다. suggestion은 리뷰 코멘트에 접어 둔다.
+- 리뷰는 지적마다 `blocking`/`suggestion`을 매긴다. 판정은 슬롯이 한다: blocking 0건이고 완료 기준이 모두 충족이면 승인, 아니면 수정 요청이다.
+- 수정 에이전트에는 blocking과 미충족 기준만 넘긴다. suggestion은 PR 본문의 접힌 리뷰 영역에 남긴다.
 
 ### 이슈를 고르는 조건
 
-실행될 때마다 아래 순서로 확인하고, 하나라도 걸리면 그 회차는 아무것도 하지 않는다.
+슬롯마다 아래를 모두 만족하는 이슈 중 번호가 가장 작은 것을 고른다 ([select.mts](scripts/agent/select.mts)). 마일스톤은 보지 않는다.
 
-1. `AGENT_ENABLED`가 `true`다.
-2. `agent-retry` 라벨이 붙은 열린 PR이 없다. 있으면 새 이슈 대신 그 PR 브랜치의 리뷰를 다시 띄운다.
-3. `agent` 라벨이 붙은 열린 PR이 없다. `needs-human`이 붙은 PR은 세지 않는다.
-4. (자동 실행만) 최근 12시간 동안 만든 `agent` PR이 `AGENT_MAX_PRS_PER_NIGHT`개 미만이다. 이벤트로 이어 가다 무언가 잘못돼 PR을 계속 만드는 일을 막는다.
-5. 아래 조건을 모두 만족하는 이슈가 있다 (`scripts/agent/select.mts`).
-   - 열려 있다.
-   - `agent-ready` 라벨이 있다.
-   - `needs-human`, `blocked`, `spike`, `in progress` 라벨이 없다.
-   - 본문 `## 의존` 절에 적힌 이슈(`#번호`)가 모두 닫혔다. 절이 없거나 "없음"이면 의존이 없는 것으로 본다.
+- 열려 있다.
+- `agent-ready` 라벨이 있고, `blocked`·`spike` 라벨이 없다.
+- assignee가 없다.
+- 본문 `## 의존` 절에 적힌 이슈(`#번호`)가 모두 닫혔다. 절이 없거나 "없음"이면 의존이 없는 것으로 본다.
+- 이번 밤에 이미 실패하지 않았다.
 
-후보가 여럿이면 이슈 번호가 가장 작은 것을 고른다. 마일스톤은 보지 않는다.
+누가 할지는 `agent-ready` 라벨로 나눈다. 에이전트 몫이면 단다(완료 기준을 테스트나 실행 결과로 확인할 수 있고 이 레포 밖의 작업이 없어야 한다). 사람 작업이면 달지 않는다. 잠시 빼 두려면 `blocked`를 단다.
 
-누가 할지는 `agent-ready` 라벨 하나로 나눈다.
+| 설정                                                                  | 종류     | 값                                                                                             |
+| --------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `CLAUDE_CODE_OAUTH_TOKEN`                                             | secret   | `claude setup-token` (구독 사용)                                                               |
+| `PLANNER_GH_TOKEN`                                                    | secret   | 봇 계정 classic PAT. 기획자와 같이 쓴다 ([기획자 준비](.github/planner/README.md#준비))        |
+| `AGENT_ENABLED`                                                       | variable | `true`일 때만 돈다 (끄는 스위치)                                                               |
+| `AGENT_NIGHT_SLOTS`                                                   | variable | 기본 `10`. 하룻밤 슬롯 수 (= 최대 merge 수)                                                    |
+| `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `3` / `2`                                                                                 |
+| `AGENT_MODEL`                                                         | variable | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR 본문 끝에 남는다    |
+| `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `medium` / `high` / `medium`                                                              |
+| `AGENT_SKILLS_MARKETPLACE`                                            | variable | 기본 `https://github.com/es-kimo/claude-skills.git`. `review-kit` 플러그인이 있는 마켓플레이스 |
 
-- 에이전트에게 맡길 이슈: `agent-ready`를 단다. 완료 기준을 테스트나 실행 결과로 확인할 수 있고, 이 레포 밖의 작업(다른 레포, DNS, 계정 설정)이 없어야 한다. 의존 이슈가 아직 열려 있어도 미리 달아 두면 순서가 되었을 때 고른다.
-- 사람이 할 이슈: 라벨을 달지 않는다. 사람 작업과 코드 작업이 섞이면 이슈를 나눈다.
-- 에이전트가 막히거나 수정 한도를 넘으면 워크플로가 `needs-human`을 단다. 확인하고 다시 맡기려면 `needs-human`만 뗀다.
-- 잠시 빼 두려면 `blocked`를 단다.
-
-수동 실행(`gh workflow run agent-implement.yml -f issue=<번호>`)은 4번을 적용하지 않는다. 이슈 번호를 주면 5번도 건너뛰고 그 이슈를 구현하고, 비우면 5번으로 고른다. 1~3번은 수동 실행에도 똑같이 적용된다.
-
-| 설정                                                                  | 종류     | 값                                                                                              |
-| --------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `CLAUDE_CODE_OAUTH_TOKEN`                                             | secret   | `claude setup-token` (구독 사용)                                                                |
-| `AGENT_GH_TOKEN`                                                      | secret   | fine-grained PAT, 이 레포만, Contents·Pull requests·Issues 쓰기. Workflows 권한은 주지 않는다   |
-| `AGENT_ENABLED`                                                       | variable | `true`일 때만 돈다 (끄는 스위치)                                                                |
-| `AGENT_MAX_PRS_PER_NIGHT`                                             | variable | 기본 `6`. 최근 12시간 PR 상한. 자동 실행(cron·이벤트)에만 적용                                  |
-| `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `2` / `2`                                                                                  |
-| `AGENT_MODEL`                                                         | variable | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR·리뷰 코멘트에 남는다 |
-| `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `medium` / `high` / `medium`                                                               |
-| `AGENT_SKILLS_MARKETPLACE`                                            | variable | 기본 `https://github.com/es-kimo/claude-skills.git`. `review-kit` 플러그인이 있는 마켓플레이스  |
-
-수동 실행: `gh workflow run agent-implement.yml -f issue=<번호>`
+수동 실행: `gh workflow run night-shift.yml -f issue=<번호>` (이슈 하나), `gh workflow run night-shift.yml -f slots=3` (자동 선택 3개)
 
 ## GitHub App
 

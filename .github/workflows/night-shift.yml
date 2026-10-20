@@ -1,0 +1,139 @@
+name: Night shift
+
+# 밤마다 agent-ready 이슈를 하나씩 구현해 merge한다. 실행 하나 안에서 슬롯이 차례로 돌고, 슬롯 하나가 이슈 하나를 끝낸다.
+# 트리거는 cron과 수동 실행뿐이다. 다른 워크플로를 띄우거나 이벤트로 이어 가지 않는다.
+# 사람 차례는 이슈 assign과 @멘션으로 알리고, 끝나면 아침 보고를 남긴다. 슬롯 흐름은 scripts/agent/slot.sh.
+on:
+  schedule:
+    # 23:00 KST
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "이슈 번호 (비우면 자동 선택)"
+        required: false
+      slots:
+        description: "슬롯 수 (비우면 AGENT_NIGHT_SLOTS, 그것도 없으면 10)"
+        required: false
+
+# cron과 수동 실행이 겹치면 줄을 선다. 두 실행이 같은 이슈를 고르지 않게 한다.
+concurrency:
+  group: night-shift
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # 일시적인 CI 실패를 한 번 다시 돌린다 (gh run rerun).
+  actions: write
+
+env:
+  REPO: ${{ github.repository }}
+  OWNER: ${{ github.repository_owner }}
+  # 기획자와 같은 봇 계정(es-kimo-bot)의 PAT. 소유자 토큰으로 코멘트하면 본인 활동이라 GitHub Mobile 알림이 오지 않는다.
+  # PAT로 push해야 CI가 돈다 (GITHUB_TOKEN으로 push하면 워크플로가 뜨지 않는다).
+  GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  plan:
+    if: vars.AGENT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      slots: ${{ steps.plan.outputs.slots }}
+      started: ${{ steps.plan.outputs.started }}
+    steps:
+      - id: plan
+        env:
+          ISSUE: ${{ inputs.issue }}
+          SLOTS: ${{ inputs.slots || vars.AGENT_NIGHT_SLOTS || '10' }}
+        run: |
+          n=$SLOTS
+          if [ -n "$ISSUE" ]; then n=1; fi
+          echo "slots=$(jq -cn --argjson n "$n" '[range(1; $n + 1)]')" >> "$GITHUB_OUTPUT"
+          echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+  slot:
+    needs: plan
+    strategy:
+      # 하나씩 돈다. 앞 슬롯이 merge한 main에서 다음 슬롯이 시작한다.
+      max-parallel: 1
+      # 사용량 한도나 예기치 못한 오류로 슬롯이 실패하면 남은 슬롯을 취소한다. 남은 이슈는 다음 밤에 한다.
+      fail-fast: true
+      matrix:
+        slot: ${{ fromJSON(needs.plan.outputs.slots) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      SHIFT_STARTED: ${{ needs.plan.outputs.started }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          # 모델이 읽을 수 있는 작업 폴더에 토큰을 남기지 않는다. push는 slot.sh가 명령마다 헤더로 인증한다.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 이슈 고르기
+        id: pick
+        env:
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          n=${ISSUE:-$(node scripts/agent/pick-issue.mts | jq -r '.number // empty')}
+          if [ -z "$n" ]; then echo "고를 이슈 없음"; exit 0; fi
+          echo "number=$n" >> "$GITHUB_OUTPUT"
+          echo "이슈 #$n"
+
+      - uses: pnpm/action-setup@v4
+        if: steps.pick.outputs.number
+      - uses: actions/setup-node@v4
+        if: steps.pick.outputs.number
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: 준비
+        if: steps.pick.outputs.number
+        env:
+          CLAUDE_VERSION: "2.1.303"
+          # 리뷰 기준 스킬(review-kit). 레포에 따라 달라지지 않는 기준이라 별도 레포의 플러그인으로 받는다.
+          SKILLS_MARKETPLACE: ${{ vars.AGENT_SKILLS_MARKETPLACE || 'https://github.com/es-kimo/claude-skills.git' }}
+        run: |
+          pnpm install --frozen-lockfile
+          GITHUB_TOKEN="${{ secrets.FIXTURES_TOKEN || github.token }}" pnpm fixtures:sync
+          npm install -g "@anthropic-ai/claude-code@${CLAUDE_VERSION}"
+          claude plugin marketplace add "$SKILLS_MARKETPLACE"
+          claude plugin install review-kit@es-kimo
+
+      - name: 구현 → 리뷰 → merge
+        if: steps.pick.outputs.number
+        env:
+          N: ${{ steps.pick.outputs.number }}
+          BRANCH: agent/${{ steps.pick.outputs.number }}-${{ github.run_number }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ACTIONS_TOKEN: ${{ github.token }}
+          AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}
+          EFFORT_IMPLEMENT: ${{ vars.AGENT_EFFORT_IMPLEMENT || 'medium' }}
+          EFFORT_REVIEW: ${{ vars.AGENT_EFFORT_REVIEW || 'high' }}
+          EFFORT_FIX: ${{ vars.AGENT_EFFORT_FIX || 'medium' }}
+          MAX_FIX: ${{ vars.AGENT_MAX_FIX || '3' }}
+          MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS || '2' }}
+        run: bash scripts/agent/slot.sh
+
+  report:
+    needs: [plan, slot]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 아침 보고
+        env:
+          SHIFT_STARTED: ${{ needs.plan.outputs.started }}
+          SLOTS_RESULT: ${{ needs.slot.result }}
+        run: node scripts/agent/post-report.mts

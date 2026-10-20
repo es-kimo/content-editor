@@ -56,6 +56,22 @@ describe("classifyRun", () => {
     expect(classifyRun([init, { type: "assistant", message: { content: "usage limit reached" } }]).kind).toBe("limit");
   });
 
+  test("허용 상태의 rate_limit_event가 끝에 있어도 한도로 보지 않는다", () => {
+    const allowed = { type: "rate_limit_event", rate_limit_info: { status: "allowed", rateLimitType: "five_hour" } };
+    const failed = result({ subtype: "error_during_execution", is_error: true, result: "boom" });
+    expect(classifyRun([init, allowed, failed]).kind).toBe("error");
+  });
+
+  test("거절된 rate_limit_event가 있으면 limit", () => {
+    const rejected = { type: "rate_limit_event", rate_limit_info: { status: "rejected" } };
+    expect(classifyRun([init, rejected, result({ subtype: "error_during_execution", is_error: true })]).kind).toBe(
+      "limit",
+    );
+    // 거절 뒤에 다른 메시지가 이어져 끝 문구에 한도 표시가 없어도 limit이다.
+    const said = { type: "assistant", message: { content: "작업 중" } };
+    expect(classifyRun([init, rejected, said, said, said]).kind).toBe("limit");
+  });
+
   test("그 밖의 오류는 error", () => {
     expect(
       classifyRun([init, result({ subtype: "error_during_execution", is_error: true, result: "boom" })]).kind,

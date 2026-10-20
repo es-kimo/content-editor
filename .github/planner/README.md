@@ -1,6 +1,6 @@
 # 기획자 에이전트
 
-기획자 에이전트. 사용자와 `planning` 라벨 이슈로 대화하고, 아이디어 백로그와 버전 PRD(wiki), 작업 이슈, 릴리즈 초안을 만든다. 구현은 하지 않는다. 모드마다 맡는 모델이 다르다: 기획(대화·제안)은 Codex(`gpt-6-astra`), 코드를 읽고 이슈를 쓰는 이슈 나누기는 Claude(구현과 같은 Max 구독), 릴리즈 노트는 모델 없이 만든다. GPT 구독 사용량을 기획에만 쓰기 위해서다. `agent-ready` 이슈는 개발 에이전트([agent-implement.yml](../workflows/agent-implement.yml))가 맡는다.
+기획자 에이전트. 사용자와 `planning` 라벨 이슈로 대화하고, 아이디어 백로그와 버전 PRD(wiki), 작업 이슈, 릴리즈 초안을 만든다. 구현은 하지 않는다. 모드마다 맡는 모델이 다르다: 기획(대화·제안)은 Codex(`gpt-6-astra`), 코드를 읽고 이슈를 쓰는 이슈 나누기는 Claude(구현과 같은 Max 구독), 릴리즈 노트는 모델 없이 만든다. GPT 구독 사용량을 기획에만 쓰기 위해서다. `agent-ready` 이슈는 밤 근무([night-shift.yml](../workflows/night-shift.yml))가 맡는다.
 
 ## 흐름
 

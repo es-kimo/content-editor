@@ -1,44 +1,24 @@
 /**
  * 다음에 구현할 이슈를 골라 JSON으로 출력한다. 없으면 빈 출력.
- * env: GH_TOKEN, REPO(owner/name)
+ * env: GH_TOKEN, REPO(owner/name), SHIFT_STARTED(이번 밤 근무 시작 시각, ISO. 이 뒤에 실패한 이슈는 건너뛴다)
  */
-import { selectNext, type IssueInfo } from "./select.mts";
-
-type ApiIssue = {
-  number: number;
-  title: string;
-  state: "open" | "closed";
-  body: string | null;
-  labels: { name: string }[];
-  pull_request?: unknown;
-};
+import { createGitHub, type ApiComment, type ApiIssue } from "../planner/github.mts";
+import { AGENT_PICK, candidates, failedSince, toIssueInfo } from "./select.mts";
 
 const repo = process.env.REPO!;
+const gh = createGitHub(process.env.GH_TOKEN!);
 
-async function listIssues(): Promise<IssueInfo[]> {
-  const issues: IssueInfo[] = [];
-  for (let page = 1; ; page++) {
-    const res = await fetch(`https://api.github.com/repos/${repo}/issues?state=all&per_page=100&page=${page}`, {
-      headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${process.env.GH_TOKEN}` },
-    });
-    if (!res.ok) throw new Error(`이슈 목록 조회 실패: HTTP ${res.status}`);
-    const batch = (await res.json()) as ApiIssue[];
-    for (const i of batch) {
-      if (i.pull_request) continue;
-      issues.push({
-        number: i.number,
-        title: i.title,
-        state: i.state,
-        body: i.body ?? "",
-        labels: i.labels.map((l) => l.name),
-      });
-    }
-    if (batch.length < 100) return issues;
+const issues = (await gh.list<ApiIssue>(`/repos/${repo}/issues?state=all`)).filter((i) => !i.pull_request);
+
+for (const issue of candidates(issues.map(toIssueInfo), AGENT_PICK)) {
+  const since = process.env.SHIFT_STARTED;
+  if (since) {
+    const comments = (await gh.list<ApiComment>(`/repos/${repo}/issues/${issue.number}/comments`)).map((c) => ({
+      body: c.body,
+      createdAt: c.created_at,
+    }));
+    if (failedSince(comments, since)) continue;
   }
+  console.log(JSON.stringify({ number: issue.number, title: issue.title }));
+  break;
 }
-
-const next = selectNext(await listIssues(), {
-  readyLabel: "agent-ready",
-  skipLabels: ["needs-human", "blocked", "spike", "in progress"],
-});
-if (next) console.log(JSON.stringify({ number: next.number, title: next.title }));
