@@ -93,6 +93,25 @@ export function insertComponent(state: EditorState, name: string, syntax: Syntax
   };
 }
 
+/**
+ * 폼을 적용한 원문으로 바꾸는 트랜잭션. 앞뒤가 같은 부분은 두고 달라진 구간만 바꿔,
+ * 실행 취소 한 번에 적용 전으로 돌아가고 바뀌지 않은 곳의 표시도 그대로 남는다.
+ */
+export function replaceSource(state: EditorState, next: string, cursor: number): TransactionSpec {
+  const current = state.doc.toString();
+  const limit = Math.min(current.length, next.length);
+  let start = 0;
+  while (start < limit && current[start] === next[start]) start++;
+  let end = 0;
+  while (end < limit - start && current[current.length - 1 - end] === next[next.length - 1 - end]) end++;
+  return {
+    changes: { from: start, to: current.length - end, insert: next.slice(start, next.length - end) },
+    selection: { anchor: cursor },
+    scrollIntoView: true,
+    userEvent: "input",
+  };
+}
+
 /** 저장 전 컴파일 검사. 오류는 그 줄 전체에 표시하고, 줄을 알 수 없으면 첫 줄에 둔다. */
 export async function compileDiagnostics(doc: Text, syntax: Syntax): Promise<Diagnostic[]> {
   const check = await checkMdx(doc.toString(), syntax);

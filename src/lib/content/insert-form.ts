@@ -5,6 +5,7 @@ import {
   type InsertEdit,
   type InsertItem,
   type InsertKind,
+  type InsertList,
   type InsertSpan,
   type LimitedInsert,
   type Syntax,
@@ -95,7 +96,30 @@ export function insertItemName(item: InsertItem | LimitedInsert): string {
   }
 }
 
-/** 기존 항목 수정 폼의 입력 칸 이름. */
-export function insertFieldLabel(item: TextInsertItem): string {
-  return item.kind === "image" ? "대체 텍스트" : item.kind === "footnote" ? "각주 내용" : "출처 내용";
+/** 폼의 이름과 입력 칸 이름. */
+export function insertFormLabels(target: InsertFormTarget): { title: string; field: string } {
+  if (target.kind === "footnote") return { title: "각주 넣기", field: "각주 내용" };
+  const { item } = target;
+  const field = item.kind === "image" ? "대체 텍스트" : item.kind === "footnote" ? "각주 내용" : "출처 내용";
+  return { title: `${insertItemName(item)} 수정`, field };
+}
+
+/** 넣기 메뉴로 새로 넣을 수 있는 항목과 그 항목을 쓰는 컴포넌트. */
+const MENU_COMPONENTS: { [kind in Extract<InsertFormTarget["kind"], "footnote">]: string } = { footnote: "Footnote" };
+
+/** 넣기 메뉴 항목. 글 분류 설정의 `components`가 허용한 것만, 용도 이름으로 둔다. */
+export function insertMenuItems(components: string[]): { kind: "footnote"; label: string }[] {
+  return (Object.keys(MENU_COMPONENTS) as (keyof typeof MENU_COMPONENTS)[])
+    .filter((kind) => components.includes(MENU_COMPONENTS[kind]))
+    .map((kind) => ({ kind, label: KIND_NAMES[kind] }));
+}
+
+/** 원문 편집의 삽입 항목 목록. 폼으로 고칠 수 없는 항목도 숨기지 않고 원문 순서로 함께 둔다. */
+export function insertEntries(list: Extract<InsertList, { ok: true }>): (InsertItem | LimitedInsert)[] {
+  return [...list.items, ...list.limited].sort((a, b) => a.from - b.from);
+}
+
+/** 고칠 값이 있는 항목. 삽입 항목 목록에서 수정 폼을 열 수 있다. */
+export function isTextInsert(entry: InsertItem | LimitedInsert): entry is TextInsertItem {
+  return !("reason" in entry) && entry.kind !== "toc";
 }

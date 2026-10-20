@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 import { parseMdx, type Syntax } from "@/lib/mdx-doc";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { compileDiagnostics, insertComponent, mdxLanguage } from "./mdx-source";
+import { compileDiagnostics, insertComponent, mdxLanguage, replaceSource } from "./mdx-source";
 
 const SOURCE = `import { toc } from "./toc";
 
@@ -136,6 +136,37 @@ describe("insertComponent", () => {
     expect(undone).toBe(true);
     expect(state.doc.toString()).toBe(SOURCE);
     expect(state.selection.main.head).toBe(at);
+  });
+});
+
+describe("replaceSource", () => {
+  const FOOTNOTED = `${SOURCE}\n인증서는 자동으로 갱신된다<Footnote id="1">공휴일</Footnote>.\n`;
+
+  test("폼을 적용한 원문으로 바꾸면 달라진 구간만 바뀌고 커서는 적용한 항목 뒤다", () => {
+    let state = EditorState.create({ doc: FOOTNOTED, extensions: [history()] });
+    const next = FOOTNOTED.replace(">공휴일<", ">설 연휴<");
+    const cursor = next.indexOf("</Footnote>") + "</Footnote>".length;
+
+    const spec = replaceSource(state, next, cursor);
+    state = state.update(spec).state;
+
+    expect(spec.changes).toEqual({
+      from: FOOTNOTED.indexOf("공휴일"),
+      to: FOOTNOTED.indexOf("</Footnote>"),
+      insert: "설 연휴",
+    });
+    expect(state.doc.toString()).toBe(next);
+    expect(state.selection.main.head).toBe(cursor);
+  });
+
+  test("적용한 변경은 실행 취소 한 번에 적용 전 원문으로 돌아간다", () => {
+    let state = EditorState.create({ doc: FOOTNOTED, extensions: [history()] });
+    const next = FOOTNOTED.replace("공휴일", "공휴일 공휴일");
+    state = state.update(replaceSource(state, next, 0)).state;
+
+    undo({ state, dispatch: (tr) => (state = tr.state) });
+
+    expect(state.doc.toString()).toBe(FOOTNOTED);
   });
 });
 

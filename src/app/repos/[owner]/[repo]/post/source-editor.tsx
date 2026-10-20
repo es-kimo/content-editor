@@ -1,16 +1,19 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
-// 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 미리보기 메시지만 가져온다.
+// 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 미리보기 메시지와 넣기 메뉴만 가져온다.
+import { insertMenuItems } from "@/lib/content/insert-form";
 import { previewMessage } from "@/lib/content/preview";
 import type { SaveState } from "@/lib/content/save-flow";
 import { sourceChanged } from "@/lib/content/unsaved";
-import type { Syntax } from "@/lib/mdx-doc";
+import { readInserts, type Syntax } from "@/lib/mdx-doc";
 
 import { BodyPreview } from "./body-preview";
+import type { SourceEditorHandle } from "./codemirror-source-editor";
+import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
 import { SaveRow } from "./save-row";
 
 const CodeMirrorSourceEditor = dynamic(() => import("./codemirror-source-editor"), {
@@ -40,6 +43,15 @@ export function SourceEditor({
   // 서버가 변경 없음으로 답한 원문. 그 원문은 저장한 것과 같으므로 미저장 판정의 기준으로 삼는다.
   const [baseline, setBaseline] = useState(source);
   useReportUnsaved("source", sourceChanged(baseline, current));
+  const editor = useRef<SourceEditorHandle | null>(null);
+  const forms = useInsertForm({
+    area: "source",
+    syntax,
+    read: () => edited.current,
+    write: (next, cursor) => editor.current?.replace(next, cursor),
+  });
+  const inserts = useMemo(() => readInserts(current, syntax), [current, syntax]);
+  const formLocked = save.locked || !forms.canOpen;
 
   return (
     <form
@@ -55,7 +67,24 @@ export function SourceEditor({
       }}
     >
       <p className="text-xs text-zinc-500">글 설정과 이미지 연결을 포함한 파일 전체를 고쳐요.</p>
+      <InsertMenu
+        disabled={formLocked}
+        items={insertMenuItems(components).map(({ kind, label }) => ({
+          label,
+          onSelect: (opener) => {
+            const at = editor.current?.selection();
+            if (at) forms.open({ kind, at, opened: edited.current }, opener);
+          },
+        }))}
+      />
+      <InsertEntryList
+        list={inserts}
+        disabled={formLocked}
+        onEdit={(item, opener) => forms.open({ kind: "edit", item }, opener)}
+      />
+      {forms.panel}
       <CodeMirrorSourceEditor
+        handleRef={editor}
         source={source}
         syntax={syntax}
         components={components}

@@ -5,12 +5,12 @@ import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { linter, lintGutter } from "@codemirror/lint";
 import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
-import type { Syntax } from "@/lib/mdx-doc";
+import type { InsertSpan, Syntax } from "@/lib/mdx-doc";
 
 import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
-import { compileDiagnostics, insertComponent, mdxLanguage } from "./mdx-source";
+import { compileDiagnostics, insertComponent, mdxLanguage, replaceSource } from "./mdx-source";
 
 export type CodeMirrorSourceEditorProps = {
   source: string;
@@ -20,6 +20,14 @@ export type CodeMirrorSourceEditorProps = {
   onChange: (source: string) => void;
   /** 저장 중이면 고치지도 컴포넌트를 넣지도 않는다. */
   readOnly?: boolean;
+  /** 넣기·수정 폼이 편집기의 선택 영역을 읽고 적용한 원문을 쓰는 손잡이. 편집기가 만들어지면 채운다. */
+  handleRef?: RefObject<SourceEditorHandle | null>;
+};
+
+export type SourceEditorHandle = {
+  selection(): InsertSpan;
+  /** 적용한 원문으로 바꾸고 커서를 `cursor`에 둔다. */
+  replace(source: string, cursor: number): void;
 };
 
 const locked = (readOnly: boolean) => [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)];
@@ -36,6 +44,7 @@ export default function CodeMirrorSourceEditor({
   components,
   onChange,
   readOnly = false,
+  handleRef,
 }: CodeMirrorSourceEditorProps) {
   const parent = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView>(null);
@@ -82,6 +91,22 @@ export default function CodeMirrorSourceEditor({
       created.destroy();
     };
   }, [gfm, math, lock]);
+  useEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = {
+      selection: () => {
+        const { from, to } = view.current?.state.selection.main ?? { from: 0, to: 0 };
+        return { from, to };
+      },
+      replace: (source, cursor) => {
+        const current = view.current;
+        if (current) current.dispatch(replaceSource(current.state, source, cursor));
+      },
+    };
+    return () => {
+      handleRef.current = null;
+    };
+  }, [handleRef]);
   useEffect(() => {
     readOnlyRef.current = readOnly;
     view.current?.dispatch({ effects: lock.reconfigure(locked(readOnly)) });

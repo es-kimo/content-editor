@@ -3,7 +3,17 @@ import { describe, expect, test, vi } from "vitest";
 import { readInserts, type InsertItem } from "@/lib/mdx-doc";
 import { yjshdConfig } from "@/test/config";
 
-import { applyInsertForm, formDirty, formInitialValue, insertItemName, type InsertFormTarget } from "./insert-form";
+import {
+  applyInsertForm,
+  formDirty,
+  formInitialValue,
+  insertEntries,
+  insertFormLabels,
+  insertItemName,
+  insertMenuItems,
+  isTextInsert,
+  type InsertFormTarget,
+} from "./insert-form";
 import { leavingAreas } from "./leave-guard";
 import { createSaveFlow } from "./save-flow";
 import { sourceChanged } from "./unsaved";
@@ -197,12 +207,30 @@ describe("폼과 저장·이탈", () => {
   });
 });
 
-describe("항목 이름", () => {
-  test("항목은 컴포넌트 이름이 아니라 용도와 번호로 부른다", () => {
-    const list = readInserts(
-      `${SOURCE}\n<FootnoteRef ids={["1"]}>\n  달력\n</FootnoteRef>\n\n<TOC items={toc} />\n`,
-      syntax,
-    );
-    expect(list.ok && list.items.map(insertItemName)).toEqual(["각주 1", "이미지", "각주 1 출처", "목차"]);
+describe("삽입 항목 목록", () => {
+  const LISTED = `${SOURCE}\n<Footnote id={n}>식</Footnote>\n\n<FootnoteRef ids={["1"]}>\n  달력\n</FootnoteRef>\n\n<TOC items={toc} />\n`;
+
+  test("항목은 컴포넌트 이름이 아니라 용도와 번호로 부르고, 폼으로 못 고치는 항목도 원문 순서대로 둔다", () => {
+    const list = readInserts(LISTED, syntax);
+    if (!list.ok) throw new Error("읽지 못함");
+
+    const entries = insertEntries(list);
+
+    expect(entries.map(insertItemName)).toEqual(["각주 1", "이미지", "각주", "각주 1 출처", "목차"]);
+    expect(entries.map(isTextInsert)).toEqual([true, true, false, true, false]);
+  });
+
+  test("넣기 메뉴는 글 분류가 허용한 항목만 용도 이름으로 둔다", () => {
+    expect(insertMenuItems(["Footnote", "Mermaid"]).map((item) => item.label)).toEqual(["각주"]);
+    expect(insertMenuItems(["Mermaid"])).toEqual([]);
+  });
+
+  test("수정 폼은 항목 이름과 고칠 값의 이름을 보인다", () => {
+    expect(insertFormLabels(editFootnote())).toEqual({ title: "각주 1 수정", field: "각주 내용" });
+    expect(insertFormLabels({ kind: "edit", item: itemOf(SOURCE, "image") })).toEqual({
+      title: "이미지 수정",
+      field: "대체 텍스트",
+    });
+    expect(insertFormLabels({ kind: "footnote", at: { from: 0, to: 0 }, opened: SOURCE }).title).toBe("각주 넣기");
   });
 });
