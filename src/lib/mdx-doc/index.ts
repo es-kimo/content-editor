@@ -21,8 +21,20 @@ export { checkMdx } from "./check";
 export type { MdxCheck, MdxError } from "./check";
 export { componentSnippet, insertSnippet } from "./snippet";
 export type { ComponentSnippet, InsertedSnippet } from "./snippet";
-export { addFootnote, addFootnoteRef, addImageAt, addToc, readInserts, removeToc, setInsertText } from "./inserts";
+export {
+  addFootnote,
+  addFootnoteRef,
+  addImageAt,
+  addToc,
+  footnoteRefChoices,
+  hasToc,
+  hasTocHeading,
+  readInserts,
+  removeToc,
+  setInsertText,
+} from "./inserts";
 export type {
+  FootnoteRefChoice,
   ImageAtOptions,
   ImageInsertEdit,
   InsertEdit,

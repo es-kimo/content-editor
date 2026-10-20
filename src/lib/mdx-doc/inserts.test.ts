@@ -8,6 +8,9 @@ import {
   addFootnoteRef,
   addImageAt,
   addToc,
+  footnoteRefChoices,
+  hasToc,
+  hasTocHeading,
   readInserts,
   removeToc,
   setInsertText,
@@ -323,6 +326,33 @@ describe("addFootnoteRef", () => {
   });
 });
 
+describe("footnoteRefChoices", () => {
+  test("폼으로 고칠 수 없는 출처가 가리키는 각주도 이미 연결된 것으로 보고 빼고, 연결하면 ambiguous-link다", () => {
+    const source =
+      '가<Footnote id="1">1</Footnote> 나<Footnote id="2">2</Footnote>\n\n<FootnoteRef ids={["1"]}>[링크](https://a.b)</FootnoteRef>\n';
+    expect(read(source).limited).toMatchObject([{ kind: "footnote-ref", reason: "nested" }]);
+
+    expect(footnoteRefChoices(source)).toEqual([{ id: 2, text: "2" }]);
+    const end = { from: source.length, to: source.length };
+    expect(addFootnoteRef(source, end, [1], "출처")).toEqual({ ok: false, reason: "ambiguous-link" });
+  });
+
+  test("내용에 서식이 있어 폼으로 고칠 수 없는 각주도 보이는 글자로 고를 수 있고 연결된다", () => {
+    const source = '가<Footnote id="1">**굵은** `코드` 설명</Footnote>\n';
+    expect(read(source).limited).toMatchObject([{ kind: "footnote", reason: "nested" }]);
+
+    expect(footnoteRefChoices(source)).toEqual([{ id: 1, text: "굵은 코드 설명" }]);
+    const result = edited(addFootnoteRef(source, { from: source.length, to: source.length }, [1], "출처"));
+    expect(itemOf(result, "footnote-ref")).toMatchObject({ ids: [1], text: "출처" });
+  });
+
+  test("번호가 겹치거나 숫자가 아닌 각주는 고를 수 없고, 읽을 수 없는 원문은 빈 목록이다", () => {
+    const source = '가<Footnote id="1">1</Footnote> 나<Footnote id="1">1</Footnote> 다<Footnote id="a">a</Footnote>\n';
+    expect(footnoteRefChoices(source)).toEqual([]);
+    expect(footnoteRefChoices('<Footnote id="1">1</Footnote>\n\n<Note>\n')).toEqual([]);
+  });
+});
+
 describe("addToc와 removeToc", () => {
   test("목차가 없으면 선택 위치에 자동 목차를 넣는다", () => {
     const source = "# 제목\n\n문단\n";
@@ -331,11 +361,19 @@ describe("addToc와 removeToc", () => {
     expect(read(result).items).toMatchObject([{ kind: "toc" }]);
   });
 
-  test("자동 목차나 사용자 정의 목차가 이미 있으면 넣지 않는다", () => {
+  test("자동 목차나 사용자 정의 목차가 이미 있으면 넣지 않고, hasToc도 같은 글에서 목차가 있다고 한다", () => {
     const end = { from: SOURCE.length, to: SOURCE.length };
     expect(addToc(SOURCE, end, blogSyntax)).toEqual({ ok: false, reason: "toc-exists" });
+    expect(hasToc(SOURCE, blogSyntax)).toBe(true);
     const custom = '<TOC items={[{ title: "직접", url: "#a" }]} />\n';
     expect(addToc(custom, { from: 0, to: 0 })).toEqual({ ok: false, reason: "toc-exists" });
+    expect(hasToc(custom)).toBe(true);
+  });
+
+  test("목차가 없거나 코드 블록 안에만 있거나 읽을 수 없으면 hasToc은 false다", () => {
+    expect(hasToc("# 제목\n\n문단\n")).toBe(false);
+    expect(hasToc("```mdx\n<TOC items={toc} />\n```\n")).toBe(false);
+    expect(hasToc("<TOC items={toc +} />\n")).toBe(false);
   });
 
   test("자동 목차를 지우면 앞뒤 문단이 빈 줄 하나로 이어지고 나머지는 그대로다", () => {
@@ -352,6 +390,19 @@ describe("addToc와 removeToc", () => {
       ok: false,
       reason: "custom-toc",
     });
+  });
+});
+
+describe("hasTocHeading", () => {
+  test("## 이하 소제목이 있으면 목차를 채울 수 있다", () => {
+    expect(hasTocHeading("# 제목\n\n## 소제목\n")).toBe(true);
+    expect(hasTocHeading("# 제목\n\n<Note>\n\n### 안쪽 소제목\n\n</Note>\n")).toBe(true);
+  });
+
+  test("글 제목(#)뿐이거나 코드 블록 안의 ## 줄만 있거나 읽을 수 없으면 채울 제목이 없다", () => {
+    expect(hasTocHeading("# 제목\n\n문단\n")).toBe(false);
+    expect(hasTocHeading("```md\n## 코드\n```\n")).toBe(false);
+    expect(hasTocHeading("<TOC items={toc +} />\n\n## 소제목\n")).toBe(false);
   });
 });
 
@@ -447,6 +498,26 @@ describe.each(fixtureSources)("픽스처 삽입 항목: $name", (source) => {
       expect(failed).toEqual([]);
     },
   );
+
+  test.skipIf(!fixtures)("출처에 고를 수 있다고 한 각주는 모두 글 끝에 새 출처로 연결된다", { timeout: 60_000 }, () => {
+    const failed: string[] = [];
+    for (const f of fixtures!) {
+      const end = { from: f.source.length, to: f.source.length };
+      for (const { id } of footnoteRefChoices(f.source, source.syntax)) {
+        const result = addFootnoteRef(f.source, end, [id], "출처", source.syntax);
+        if (!result.ok) failed.push(`${f.path}: ${id} ${result.reason}`);
+      }
+    }
+    expect(failed).toEqual([]);
+  });
+
+  test.skipIf(!fixtures)("자동 목차가 있는 글은 모두 목차를 채울 소제목이 있다", () => {
+    const tocPosts = fixtures!.filter((f) => {
+      const list = readInserts(f.source, source.syntax);
+      return list.ok && list.items.some((item) => item.kind === "toc");
+    });
+    expect(tocPosts.filter((f) => !hasTocHeading(f.source, source.syntax)).map((f) => f.path)).toEqual([]);
+  });
 });
 
 describe("픽스처 EOSE 각주", () => {
@@ -460,5 +531,18 @@ describe("픽스처 EOSE 각주", () => {
     const end = eose!.source.length;
     const result = addFootnote(eose!.source, { from: end, to: end }, undefined, blog.syntax);
     expect(result.ok && result.source).toBe(eose!.source + '<Footnote id="70">70</Footnote>');
+  });
+});
+
+describe("픽스처 GitHub Pages HTTPS 각주", () => {
+  const blog = fixtureSources.find((source) => source.name === "blog")!;
+  const post = loadFixtures(blog.name)?.find((fixture) =>
+    fixture.path.startsWith("Computer-Science/github-pages-enforce-https/"),
+  );
+
+  test.skipIf(!post)("링크가 든 출처가 각주 1~4를 모두 가리키므로 고를 각주가 없다", () => {
+    const refs = read(post!.source, blog.syntax).limited.filter((item) => item.kind === "footnote-ref");
+    expect(refs.length).toBeGreaterThan(0);
+    expect(footnoteRefChoices(post!.source, blog.syntax)).toEqual([]);
   });
 });

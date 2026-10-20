@@ -3,7 +3,8 @@ import { EditorState, Text } from "@codemirror/state";
 import { IterMode, type SyntaxNode, type Tree } from "@lezer/common";
 import { describe, expect, test } from "vitest";
 
-import { parseMdx, type Syntax } from "@/lib/mdx-doc";
+import { applyInsertForm, newInsertTarget, removeInsert, type InsertFormApply } from "@/lib/content/insert-form";
+import { parseMdx, readInserts, type InsertItem, type Syntax } from "@/lib/mdx-doc";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
 import { compileDiagnostics, insertComponent, mdxLanguage, replaceSource } from "./mdx-source";
@@ -167,6 +168,111 @@ describe("replaceSource", () => {
     undo({ state, dispatch: (tr) => (state = tr.state) });
 
     expect(state.doc.toString()).toBe(FOOTNOTED);
+  });
+});
+
+describe("넣기·수정 폼을 원문 편집기에 적용", () => {
+  const POST = `export const metadata = { title: "휴진 안내" };
+
+# 휴진 안내
+
+## 날짜
+
+진료를 쉬어요<Footnote id="1">공휴일</Footnote>.
+
+<Mermaid chart={\`flowchart TD\`} />
+`;
+  const syntax: Syntax = {};
+
+  /** 편집기 상태에 폼 결과를 적용한다. 원문이 그대로면 편집기에 쓰지 않는다. */
+  const applyTo = (state: EditorState, result: InsertFormApply) => {
+    if (!result.ok) throw new Error(result.reason);
+    return result.changed ? state.update(replaceSource(state, result.source, result.cursor)).state : state;
+  };
+  const cursorAt = (doc: string, at: number) =>
+    EditorState.create({ doc, selection: { anchor: at }, extensions: [history()] });
+  const placeAt = (state: EditorState) => {
+    const { from, to } = state.selection.main;
+    return { at: { from, to }, opened: state.doc.toString() };
+  };
+  const firstOf = <K extends InsertItem["kind"]>(source: string, kind: K) => {
+    const list = readInserts(source, syntax);
+    return list.ok
+      ? list.items.find((item): item is Extract<InsertItem, { kind: K }> => item.kind === kind)
+      : undefined;
+  };
+
+  test("커서 자리에 새 각주와 그 각주의 출처를 넣으면 넣은 곳 밖의 원문은 그대로이고 실행 취소 한 번에 하나씩 돌아간다", () => {
+    let state = cursorAt(POST, POST.indexOf("."));
+    const footnote = newInsertTarget("footnote", POST, placeAt(state), syntax);
+    state = applyTo(state, applyInsertForm(POST, footnote, { text: "토요일 포함", ids: [] }, syntax));
+    const withFootnote = state.doc.toString();
+    expect(withFootnote).toBe(POST.replace("</Footnote>.", '</Footnote><Footnote id="2">토요일 포함</Footnote>.'));
+
+    state = state.update({ selection: { anchor: withFootnote.length } }).state;
+    const ref = newInsertTarget("footnote-ref", withFootnote, placeAt(state), syntax);
+    expect(ref.choices.map((choice) => choice.id)).toEqual([1, 2]);
+    state = applyTo(state, applyInsertForm(withFootnote, ref, { text: "달력", ids: [2] }, syntax));
+
+    expect(state.doc.toString()).toBe(`${withFootnote}\n<FootnoteRef ids={["2"]}>\n  달력\n</FootnoteRef>\n`);
+    undo({ state, dispatch: (tr) => (state = tr.state) });
+    expect(state.doc.toString()).toBe(withFootnote);
+  });
+
+  test("각주·출처 내용을 고치면 그 내용만 바뀌고 번호와 연결은 그대로다", () => {
+    const linked = `${POST}\n<FootnoteRef ids={["1"]}>\n  달력\n</FootnoteRef>\n`;
+    let state = cursorAt(linked, 0);
+
+    state = applyTo(
+      state,
+      applyInsertForm(
+        linked,
+        { kind: "edit", item: firstOf(linked, "footnote")! },
+        { text: "설 연휴", ids: [] },
+        syntax,
+      ),
+    );
+    const current = state.doc.toString();
+    state = applyTo(
+      state,
+      applyInsertForm(
+        current,
+        { kind: "edit", item: firstOf(current, "footnote-ref")! },
+        { text: "2025년 달력", ids: [] },
+        syntax,
+      ),
+    );
+
+    expect(state.doc.toString()).toBe(linked.replace(">공휴일<", ">설 연휴<").replace("  달력\n", "  2025년 달력\n"));
+    expect(firstOf(state.doc.toString(), "footnote-ref")).toMatchObject({ ids: [1], text: "2025년 달력" });
+  });
+
+  test("같은 값으로 적용하면 편집기 상태를 바꾸지 않는다", () => {
+    const state = cursorAt(POST, 0);
+    const item = firstOf(POST, "footnote")!;
+
+    const result = applyInsertForm(POST, { kind: "edit", item }, { text: "공휴일", ids: [] }, syntax);
+
+    expect(applyTo(state, result)).toBe(state);
+  });
+
+  test("자동 목차를 넣고 지우면 처음 원문으로 돌아가고, 직접 만든 목차가 있으면 넣지 않는다", () => {
+    let state = cursorAt(POST, POST.indexOf("## 날짜"));
+    const toc = newInsertTarget("toc", POST, placeAt(state), syntax);
+    state = applyTo(state, applyInsertForm(POST, toc, { text: "", ids: [] }, syntax));
+    const withToc = state.doc.toString();
+    expect(withToc).toBe(POST.replace("## 날짜", "<TOC items={toc} />\n\n## 날짜"));
+
+    state = applyTo(state, removeInsert(withToc, firstOf(withToc, "toc")!, syntax));
+    expect(state.doc.toString()).toBe(POST);
+
+    const custom = `${POST}\n<TOC items={[{ title: "날짜", url: "#날짜" }]} />\n`;
+    const end = { from: custom.length, to: custom.length };
+    const blocked = newInsertTarget("toc", custom, { at: end, opened: custom }, syntax);
+    expect(applyInsertForm(custom, blocked, { text: "", ids: [] }, syntax)).toEqual({
+      ok: false,
+      reason: "toc-exists",
+    });
   });
 });
 

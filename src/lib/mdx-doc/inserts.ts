@@ -100,7 +100,12 @@ type Scan = {
   footnotes: Map<number, number>;
   /** 숫자 번호별 그 번호를 가리키는 `FootnoteRef` 수 */
   links: Map<number, number>;
+  /** 원문 순서의 숫자 번호 각주와 그 보이는 글자 */
+  numbered: FootnoteRefChoice[];
 };
+
+/** 새 각주 출처가 연결할 수 있는 각주. `text`는 각주에 보이는 글자다. */
+export type FootnoteRefChoice = { id: number; text: string };
 
 type Phrasing = MdxJsxTextElement["children"][number];
 
@@ -189,13 +194,34 @@ export function addFootnoteRef(
   return insertAndVerify(source, at, snippet, { kind: "footnote-ref", ids, text }, syntax);
 }
 
+/**
+ * `addFootnoteRef`가 연결할 수 있는 각주. 번호가 하나뿐이고 어느 출처도 가리키지 않는 숫자 번호 각주를 원문 순서로 준다.
+ * 내용에 서식이 있어 폼으로 고칠 수 없는 각주도 연결할 수 있고, 폼으로 고칠 수 없는 출처가 가리키는 각주는 연결할 수 없다.
+ * 읽을 수 없는 원문은 빈 목록이다.
+ */
+export function footnoteRefChoices(source: string, syntax: Syntax = {}): FootnoteRefChoice[] {
+  const scanned = scan(source, syntax);
+  if (!scanned) return [];
+  const { footnotes, links, numbered } = scanned;
+  return numbered.filter(({ id }) => footnotes.get(id) === 1 && !links.has(id));
+}
+
 /** 선택 영역에 자동 목차를 넣는다. 자동이든 사용자 정의든 목차가 이미 있으면 넣지 않는다. */
 export function addToc(source: string, at: InsertSpan, syntax: Syntax = {}): InsertEdit {
   const checked = checkPosition(source, at, syntax);
   if (!checked.ok) return checked;
-  const hasToc = checked.scan.entries.some((entry) => ("limited" in entry ? entry.limited : entry.item).kind === "toc");
-  if (hasToc) return { ok: false, reason: "toc-exists" };
+  if (tocIn(checked.scan)) return { ok: false, reason: "toc-exists" };
   return insertAndVerify(source, at, componentSnippet("TOC", ""), { kind: "toc" }, syntax);
+}
+
+/** 자동이든 사용자 정의든 목차가 이미 있는지. `addToc`이 `toc-exists`로 막는 조건과 같다. 읽을 수 없는 원문은 false다. */
+export function hasToc(source: string, syntax: Syntax = {}): boolean {
+  const scanned = scan(source, syntax);
+  return scanned !== null && tocIn(scanned);
+}
+
+function tocIn({ entries }: Scan): boolean {
+  return entries.some((entry) => ("limited" in entry ? entry.limited : entry.item).kind === "toc");
 }
 
 /** 자동 목차를 지운다. 목차만 있던 줄은 앞뒤 빈 줄이 겹치지 않게 함께 정리한다. */
@@ -215,6 +241,23 @@ export function removeToc(
   const gap =
     head === "" ? "" : rest === "" ? "\n" : "\n".repeat(Math.max(trailingNewlines(before), leadingNewlines(after)));
   return { ok: true, source: head + gap + rest, cursor: head.length + gap.length };
+}
+
+/**
+ * 자동 목차를 채울 소제목(`##`부터)이 있는지. `#`은 글 제목으로 쓰여 목차에 들지 않는다고 본다.
+ * 코드 블록 안의 `##` 줄은 제목이 아니다. 읽을 수 없는 원문은 false다.
+ */
+export function hasTocHeading(source: string, syntax: Syntax = {}): boolean {
+  let root;
+  try {
+    root = parseMarkdown(source, syntax);
+  } catch {
+    return false;
+  }
+  const visit = (node: { type: string; depth?: number; children?: unknown[] }): boolean =>
+    (node.type === "heading" && (node.depth ?? 1) >= 2) ||
+    (node.children ?? []).some((child) => visit(child as typeof node));
+  return visit(root);
 }
 
 /** `file`을 주면 그 파일 이름(`N.ext`)으로 넣는다. 없으면 `addImage`가 고른다. */
@@ -264,10 +307,14 @@ function scan(source: string, syntax: Syntax): Scan | null {
 
   const footnotes = new Map<number, number>();
   const links = new Map<number, number>();
+  const numbered: FootnoteRefChoice[] = [];
   for (const element of elements) {
     if (element.name === "Footnote") {
       const id = footnoteId(element);
-      if (typeof id === "number") footnotes.set(id, (footnotes.get(id) ?? 0) + 1);
+      if (typeof id === "number") {
+        footnotes.set(id, (footnotes.get(id) ?? 0) + 1);
+        numbered.push({ id, text: visibleText(element) });
+      }
     } else if (element.name === "FootnoteRef") {
       const ids = refIds(element);
       if (Array.isArray(ids)) for (const id of ids) links.set(id, (links.get(id) ?? 0) + 1);
@@ -282,7 +329,13 @@ function scan(source: string, syntax: Syntax): Scan | null {
     if (isImageSource(element)) return [imageEntry(element, span, imports)];
     return [];
   });
-  return { entries, footnotes, links };
+  return { entries, footnotes, links, numbered };
+}
+
+/** 서식이 있는 내용도 고를 때 알아볼 수 있게 글자만 이어 붙인다. 코드로 된 값은 뺀다. */
+function visibleText(node: { type: string; value?: unknown; children?: unknown[] }): string {
+  if (node.type === "text" || node.type === "inlineCode") return typeof node.value === "string" ? node.value : "";
+  return (node.children ?? []).map((child) => visibleText(child as typeof node)).join("");
 }
 
 function footnoteEntry(source: string, element: JsxElement, span: InsertSpan, footnotes: Map<number, number>): Entry {

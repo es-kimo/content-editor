@@ -4,18 +4,30 @@ import { parseMdx, readInserts, type InsertItem } from "@/lib/mdx-doc";
 import { yjshdConfig } from "@/test/config";
 
 import {
+  advancedComponents,
   applyBodyInsertForm,
   applyInsertForm,
+  bodyInsert,
   bodyInserts,
   formDirty,
   formInitialValue,
   imageFormTag,
   insertEntries,
   insertFormLabels,
+  insertFormMessage,
+  insertFormNotice,
   insertItemName,
   insertLimitMessage,
   insertMenuItems,
   isTextInsert,
+  isTocInsert,
+  newBodyInsertTarget,
+  newInsertTarget,
+  removeBodyInsert,
+  removeInsert,
+  TOC_NEEDS_HEADING,
+  tocRemoveMessage,
+  type InsertFormInput,
   type InsertFormTarget,
 } from "./insert-form";
 import { leavingAreas } from "./leave-guard";
@@ -23,6 +35,7 @@ import { createSaveFlow } from "./save-flow";
 import { sourceChanged } from "./unsaved";
 
 const syntax = yjshdConfig().syntax;
+const text = (value: string): InsertFormInput => ({ text: value, ids: [] });
 
 const SOURCE = `import image1 from "./1.png";
 
@@ -50,7 +63,7 @@ const itemOf = <K extends InsertItem["kind"]>(source: string, kind: K) => {
 const setup = (opened = SOURCE) => {
   const flow = createSaveFlow({ navigate: vi.fn() });
   let current = opened;
-  let form: { target: InsertFormTarget; value: string } | null = null;
+  let form: { target: InsertFormTarget; input: InsertFormInput } | null = null;
   const edit = (next: string) => {
     current = next;
     flow.report("source", sourceChanged(opened, current));
@@ -61,15 +74,15 @@ const setup = (opened = SOURCE) => {
     edit,
     open(target: InsertFormTarget) {
       if (!flow.openForm("source")) return false;
-      form = { target, value: formInitialValue(target) };
+      form = { target, input: formInitialValue(target) };
       return true;
     },
-    input(value: string) {
-      form!.value = value;
-      flow.editForm(formDirty(form!.target, value));
+    input(text: string, ids: number[] = []) {
+      form!.input = { text, ids };
+      flow.editForm(formDirty(form!.target, form!.input));
     },
     apply() {
-      const result = applyInsertForm(current, form!.target, form!.value, syntax);
+      const result = applyInsertForm(current, form!.target, form!.input, syntax);
       if (!result.ok) return result;
       if (result.changed) edit(result.source);
       form = null;
@@ -136,7 +149,10 @@ describe("폼 적용과 취소", () => {
 
   test("새 각주를 적용하면 연 위치에 넣고, 취소하면 넣지 않는다", () => {
     const at = SOURCE.indexOf(".\n\n<Image");
-    const footnote = (): InsertFormTarget => ({ kind: "footnote", at: { from: at, to: at }, opened: SOURCE });
+    const footnote = (): InsertFormTarget => ({
+      kind: "footnote",
+      place: { at: { from: at, to: at }, opened: SOURCE },
+    });
     const area = setup();
 
     area.open(footnote());
@@ -148,6 +164,175 @@ describe("폼 적용과 취소", () => {
     area.input("토요일 포함");
     area.apply();
     expect(area.source()).toContain('<Footnote id="1">공휴일</Footnote><Footnote id="2">토요일 포함</Footnote>.');
+  });
+});
+
+describe("각주 출처 폼", () => {
+  const end = { from: SOURCE.length, to: SOURCE.length };
+  const newRef = (source = SOURCE) => newInsertTarget("footnote-ref", source, { at: end, opened: source }, syntax);
+
+  test("현재 글의 각주를 골라 출처를 넣으면 다시 읽어도 고른 번호와 내용이 그대로다", () => {
+    const area = setup();
+    const target = newRef();
+    expect(target).toMatchObject({ choices: [{ id: 1, text: "공휴일" }] });
+
+    area.open(target);
+    area.input("달력 <2024>", [1]);
+    expect(area.apply()).toMatchObject({ ok: true, changed: true });
+
+    expect(area.source()).toBe(`${SOURCE}\n<FootnoteRef ids={["1"]}>\n  달력 \\<2024\\>\n</FootnoteRef>\n`);
+    expect(itemOf(area.source(), "footnote-ref")).toMatchObject({ ids: [1], text: "달력 <2024>" });
+    expect(area.flow.getState().changed.source).toBe(true);
+  });
+
+  test("각주를 고르지 않거나 내용이 비면 적용하지 않고 무엇을 할지 안내한다", () => {
+    const target = newRef();
+
+    const unselected = applyInsertForm(SOURCE, target, text("달력"), syntax);
+    const blank = applyInsertForm(SOURCE, target, { text: " ", ids: [1] }, syntax);
+
+    expect(unselected).toEqual({ ok: false, reason: "missing-footnote" });
+    expect(insertFormMessage(target, "missing-footnote")).toBe("연결할 각주를 하나 이상 선택해 주세요.");
+    expect(blank).toEqual({ ok: false, reason: "empty" });
+    expect(insertFormMessage(target, "empty")).toBe("내용을 입력해 주세요.");
+  });
+
+  test("이미 출처가 있는 각주는 고를 수 없고, 골라도 연결을 바꾸지 않는다", () => {
+    const linked = `${SOURCE}\n두 번째<Footnote id="2">대체 공휴일</Footnote>\n\n<FootnoteRef ids={["1"]}>\n  달력\n</FootnoteRef>\n`;
+    const at = linked.length;
+    const target = newInsertTarget("footnote-ref", linked, { at: { from: at, to: at }, opened: linked }, syntax);
+
+    expect(target).toMatchObject({ choices: [{ id: 2, text: "대체 공휴일" }] });
+    const result = applyInsertForm(linked, target, { text: "책", ids: [1] }, syntax);
+    expect(result).toEqual({ ok: false, reason: "ambiguous-link" });
+    expect(insertFormMessage(target, "ambiguous-link")).toBe(
+      "선택한 각주에 이미 출처가 있어요. 다른 각주를 선택해 주세요.",
+    );
+  });
+
+  test("연결할 각주가 없으면 폼을 열 때부터 각주를 먼저 넣으라고 안내하고 적용을 막는다", () => {
+    const plain = SOURCE.replace(/<Footnote id="1">공휴일<\/Footnote>/, "");
+
+    expect(insertFormNotice(newRef(plain))).toEqual({
+      text: "출처를 연결할 각주가 없어요. 먼저 각주를 넣어 주세요.",
+      blocking: true,
+    });
+    expect(insertFormNotice(newRef())).toBeNull();
+  });
+
+  test("폼으로 고칠 수 없는 출처가 가리키는 각주는 고를 수 없어 연결할 각주가 없다고 안내한다", () => {
+    const linked = `${SOURCE}\n<FootnoteRef ids={["1"]}>[달력](https://example.com)</FootnoteRef>\n`;
+
+    const target = newRef(linked);
+
+    expect(target.choices).toEqual([]);
+    expect(insertFormNotice(target)).toMatchObject({ blocking: true });
+  });
+
+  test("각주를 고르기만 해도 작성 중 입력이라 떠날 때 묻는다", () => {
+    expect(formDirty(newRef(), { text: "", ids: [1] })).toBe(true);
+    expect(formDirty(newRef(), text(""))).toBe(false);
+  });
+
+  test("기존 각주·출처 내용을 비워 적용하면 원문을 그대로 두고 내용을 입력하라고 안내한다", () => {
+    expect(applyInsertForm(SOURCE, editFootnote(), text(""), syntax)).toEqual({ ok: false, reason: "empty" });
+  });
+});
+
+describe("목차 폼", () => {
+  const HEADED = SOURCE.replace("진료를 쉬어요", "## 휴진 날짜\n\n진료를 쉬어요");
+  const at = HEADED.indexOf("## 휴진");
+  const newToc = (source = HEADED, from = at) =>
+    newInsertTarget("toc", source, { at: { from, to: from }, opened: source }, syntax);
+
+  test("목차가 없으면 선택 위치에 자동 목차를 넣고 다시 읽으면 지울 수 있는 목차다", () => {
+    const area = setup(HEADED);
+    const target = newToc();
+    expect(insertFormNotice(target)).toBeNull();
+
+    area.open(target);
+    area.apply();
+
+    expect(area.source()).toBe(HEADED.replace("## 휴진", "<TOC items={toc} />\n\n## 휴진"));
+    const list = readInserts(area.source(), syntax);
+    expect(list.ok && insertEntries(list).filter(isTocInsert)).toHaveLength(1);
+  });
+
+  test("소제목이 없는 글은 제목을 추가하라고 안내하지만 목차는 넣을 수 있다", () => {
+    const target = newToc(SOURCE, SOURCE.indexOf("진료를"));
+
+    expect(insertFormNotice(target)).toEqual({ text: TOC_NEEDS_HEADING, blocking: false });
+    expect(TOC_NEEDS_HEADING).toBe("글에 제목을 추가하면 목차가 채워져요.");
+    expect(applyInsertForm(SOURCE, target, text(""), syntax)).toMatchObject({ ok: true, changed: true });
+  });
+
+  test("자동이든 직접 만든 것이든 목차가 이미 있으면 기존 항목으로 안내하고 새로 넣지 않는다", () => {
+    const custom = `${HEADED}\n<TOC items={[{ title: "직접", url: "#a" }]} />\n`;
+    const auto = `${HEADED}\n<TOC items={toc} />\n`;
+
+    for (const source of [custom, auto]) {
+      const target = newToc(source);
+      expect(insertFormNotice(target)).toEqual({
+        text: "이미 목차가 있어요. 삽입 항목에서 기존 목차를 확인해 주세요.",
+        blocking: true,
+      });
+      expect(applyInsertForm(source, target, text(""), syntax)).toEqual({ ok: false, reason: "toc-exists" });
+    }
+  });
+
+  test("자동 목차를 지우면 목차만 빠지고, 읽은 뒤 원문이 바뀌었으면 지우지 않는다", () => {
+    const withToc = `${HEADED}\n<TOC items={toc} />\n`;
+    const toc = itemOf(withToc, "toc");
+
+    expect(removeInsert(withToc, toc, syntax)).toMatchObject({ ok: true, source: HEADED, changed: true });
+    expect(removeInsert(`앞\n\n${withToc}`, toc, syntax)).toEqual({ ok: false, reason: "target-changed" });
+    expect(tocRemoveMessage("target-changed", "source")).toBe(
+      "목차가 바뀌었거나 없어졌어요. 삽입 항목을 다시 확인해 주세요.",
+    );
+  });
+});
+
+describe("일반 편집 새 항목", () => {
+  const doc = parseMdx(SOURCE, syntax);
+  if (!doc.ok) throw new Error("나눌 수 없음");
+  const { body } = doc;
+
+  test("각주는 다음 번호와 입력 글자를 문장 안에 넣을 컴포넌트로 준다", () => {
+    const target = newBodyInsertTarget("footnote", doc, body, syntax);
+
+    expect(bodyInsert(doc, body, target, text("토요일 <포함>"), syntax)).toEqual({
+      ok: true,
+      insert: { kind: "inline", name: "Footnote", id: 2, text: "토요일 <포함>" },
+    });
+  });
+
+  test("출처와 목차는 원문 편집과 같은 규칙으로 만든 원문을 문단 사이에 넣을 것으로 준다", () => {
+    const ref = newBodyInsertTarget("footnote-ref", doc, body, syntax);
+    const toc = newBodyInsertTarget("toc", doc, body, syntax);
+
+    expect(bodyInsert(doc, body, ref, { text: "달력", ids: [1] }, syntax)).toEqual({
+      ok: true,
+      insert: { kind: "block", markdown: '<FootnoteRef ids={["1"]}>\n  달력\n</FootnoteRef>' },
+    });
+    expect(bodyInsert(doc, body, ref, text("달력"), syntax)).toEqual({
+      ok: false,
+      reason: "missing-footnote",
+    });
+    expect(bodyInsert(doc, body, toc, text(""), syntax)).toEqual({
+      ok: true,
+      insert: { kind: "block", markdown: "<TOC items={toc} />" },
+    });
+  });
+
+  test("본문에 목차가 있으면 넣지 않고, 지우면 그 목차만 뺀 본문을 돌려준다", () => {
+    const withToc = `${body}\n<TOC items={toc} />\n`;
+    const toc = newBodyInsertTarget("toc", doc, withToc, syntax);
+    const list = bodyInserts(doc, withToc, syntax);
+    const item = list.ok ? insertEntries(list).find(isTocInsert) : undefined;
+    if (!item) throw new Error("목차를 읽지 못함");
+
+    expect(bodyInsert(doc, withToc, toc, text(""), syntax)).toEqual({ ok: false, reason: "toc-exists" });
+    expect(removeBodyInsert(doc, withToc, item, syntax)).toEqual({ ok: true, body, changed: true });
   });
 });
 
@@ -184,7 +369,7 @@ describe("이미지 폼", () => {
 
     area.open(newImage());
 
-    expect(formDirty(newImage(), "")).toBe(true);
+    expect(formDirty(newImage(), text(""))).toBe(true);
     area.input("");
     expect(leavingAreas(area.flow.getState())).toEqual(["source"]);
   });
@@ -192,7 +377,7 @@ describe("이미지 폼", () => {
   test("새 이미지 폼을 연 뒤 원문이 바뀌면 다른 곳에 넣지 않는다", () => {
     const typed = SOURCE.replace("# 휴진 안내", "# 휴진 안내 (수정)");
 
-    expect(applyInsertForm(typed, newImage(), "사진", syntax)).toEqual({ ok: false, reason: "target-changed" });
+    expect(applyInsertForm(typed, newImage(), text("사진"), syntax)).toEqual({ ok: false, reason: "target-changed" });
   });
 
   test("일반 편집의 새 이미지는 대체 텍스트를 넣은 태그로 커서 자리에 넣는다", () => {
@@ -206,16 +391,17 @@ describe("이미지 폼", () => {
     if (!doc.ok) throw new Error("나눌 수 없음");
     const list = bodyInserts(doc, doc.body, syntax);
     if (!list.ok) throw new Error("읽지 못함");
-    const [image] = insertEntries(list, ["image"]);
+    const images = insertEntries(list).filter((entry) => entry.kind === "image");
+    const [image] = images;
     if (!image || !isTextInsert(image)) throw new Error("이미지를 고칠 수 없음");
 
-    expect(insertEntries(list, ["image"])).toHaveLength(1);
-    expect(applyBodyInsertForm(doc, doc.body, { kind: "edit", item: image }, "병원 입구", syntax)).toEqual({
+    expect(images).toHaveLength(1);
+    expect(applyBodyInsertForm(doc, doc.body, { kind: "edit", item: image }, text("병원 입구"), syntax)).toEqual({
       ok: true,
       body: doc.body,
       changed: false,
     });
-    expect(applyBodyInsertForm(doc, doc.body, { kind: "edit", item: image }, "새 입구", syntax)).toEqual({
+    expect(applyBodyInsertForm(doc, doc.body, { kind: "edit", item: image }, text("새 입구"), syntax)).toEqual({
       ok: true,
       body: doc.body.replace('alt="병원 입구"', 'alt="새 입구"'),
       changed: true,
@@ -258,7 +444,12 @@ describe("바뀐 대상", () => {
     const typed = SOURCE.replace("# 휴진 안내", "# 휴진 안내 (수정)");
 
     expect(
-      applyInsertForm(typed, { kind: "footnote", at: { from: at, to: at }, opened: SOURCE }, "내용", syntax),
+      applyInsertForm(
+        typed,
+        { kind: "footnote", place: { at: { from: at, to: at }, opened: SOURCE } },
+        text("내용"),
+        syntax,
+      ),
     ).toEqual({ ok: false, reason: "target-changed" });
   });
 });
@@ -313,7 +504,20 @@ describe("삽입 항목 목록", () => {
   test("넣기 메뉴는 글 분류가 허용한 항목만 용도 이름으로 둔다", () => {
     expect(insertMenuItems(["Footnote", "Mermaid"]).map((item) => item.label)).toEqual(["각주"]);
     expect(insertMenuItems(["Footnote", "Image"]).map((item) => item.label)).toEqual(["이미지", "각주"]);
+    expect(insertMenuItems(["TOC", "FootnoteRef", "Footnote"]).map((item) => item.label)).toEqual([
+      "각주",
+      "각주 출처",
+      "목차",
+    ]);
     expect(insertMenuItems(["Mermaid"])).toEqual([]);
+  });
+
+  test("고급 삽입에는 넣기 메뉴가 폼으로 넣는 컴포넌트를 빼고 설정 순서대로 둔다", () => {
+    expect(advancedComponents(["Footnote", "FootnoteRef", "Mermaid", "TOC", "Image", "Video"])).toEqual([
+      "Mermaid",
+      "Video",
+    ]);
+    expect(advancedComponents(["Footnote"])).toEqual([]);
   });
 
   test("수정 폼은 항목 이름과 고칠 값의 이름을 보인다", () => {
@@ -322,7 +526,15 @@ describe("삽입 항목 목록", () => {
       title: "이미지 수정",
       field: "대체 텍스트",
     });
-    expect(insertFormLabels({ kind: "footnote", at: { from: 0, to: 0 }, opened: SOURCE }).title).toBe("각주 넣기");
+    expect(insertFormLabels({ kind: "footnote", place: null }).title).toBe("각주 넣기");
+    expect(insertFormLabels({ kind: "footnote-ref", place: null, choices: [] })).toEqual({
+      title: "각주 출처 넣기",
+      field: "출처 내용",
+    });
+    expect(insertFormLabels({ kind: "toc", place: null, exists: false, heading: true })).toEqual({
+      title: "목차 넣기",
+      field: null,
+    });
     expect(insertFormLabels({ kind: "image", image: { file: "2.png", name: "image2" }, place: null })).toEqual({
       title: "이미지 넣기",
       field: "대체 텍스트",
