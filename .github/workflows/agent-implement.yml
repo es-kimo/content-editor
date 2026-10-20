@@ -20,7 +20,7 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
-  # 한도에 걸려 멈춘 리뷰 실행을 다시 돌리는 데 쓴다 (gh run rerun).
+  # 한도에 걸려 멈춘 리뷰를 다시 띄우는 데 쓴다 (gh workflow run).
   actions: write
 
 env:
@@ -64,14 +64,14 @@ jobs:
       - name: 다음 이슈 고르기
         id: pick
         run: |
-          # 사용량 한도로 리뷰·수정이 멈춘 PR(agent-retry)은 마지막 리뷰 실행을 다시 돌린다.
+          # 사용량 한도로 리뷰·수정이 멈춘 PR(agent-retry)은 그 브랜치의 리뷰를 새로 띄운다.
+          # 리뷰 실행은 workflow_run이라 브랜치가 main으로 기록돼 --branch로 찾을 수 없어서, 옛 실행을 다시 돌리지 않는다.
           retry=$(gh pr list -R "$REPO" --label agent-retry --state open --json number,headRefName --jq '.[0] // empty')
           if [ -n "$retry" ]; then
             head=$(echo "$retry" | jq -r .headRefName)
-            run=$(GH_TOKEN="${{ github.token }}" gh run list -R "$REPO" --workflow agent-review.yml --branch "$head" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-            if [ -n "$run" ] && GH_TOKEN="${{ github.token }}" gh run rerun "$run" -R "$REPO"; then
+            if GH_TOKEN="${{ github.token }}" gh workflow run agent-review.yml -R "$REPO" -f branch="$head"; then
               gh pr edit "$(echo "$retry" | jq -r .number)" -R "$REPO" --remove-label agent-retry
-              echo "PR $(echo "$retry" | jq -r .number)의 리뷰 실행 $run 재시도"
+              echo "PR $(echo "$retry" | jq -r .number)의 리뷰를 다시 띄움"
             fi
             exit 0
           fi

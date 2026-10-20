@@ -5,6 +5,7 @@
 - `.agent/issue.md`: 이 PR이 닫으려는 이슈
 - `.agent/wiki/`: 레포 wiki. 이슈 본문의 PRD·작업 방식 링크는 여기서 읽는다 (`PRD.md`, `작업-방식.md`)
 - `.agent/feedback.md`: 고칠 내용. 리뷰의 blocking 지적과 충족되지 않은 완료 기준이거나, CI 실패 로그다.
+- `.agent/pr.md`: 지금 PR 본문. PR 본문에 대한 지적(`writing`)은 이 파일을 고친다. 워크플로가 PR 본문에 반영하고 리뷰를 다시 돌린다. 첫 줄 `Closes #번호`와 마지막 `---` 아래 줄은 그대로 둔다. 본문만 고쳤으면 커밋하지 않아도 된다.
 - `CLAUDE.md`: 레포 규칙. 반드시 따른다.
 - `docs/review/`: 리뷰 기준 (`architecture.md`, `testing.md`, `design.md`)
 

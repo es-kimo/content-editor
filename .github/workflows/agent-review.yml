@@ -8,24 +8,32 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+  # push 없이 리뷰를 다시 돌릴 때 쓴다: PR 본문만 고친 수정, 한도로 멈춘 리뷰(agent-retry). 그 브랜치 끝 커밋의 CI 결과로 돈다.
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "에이전트 PR 브랜치 (agent/...)"
+        required: true
+
+# workflow_run 실행은 브랜치가 main으로 기록되므로, 실행 목록에서 PR을 알아보게 이름에 브랜치를 넣는다.
+run-name: Agent review ${{ github.event.workflow_run.head_branch || inputs.branch }}
 
 concurrency:
-  group: agent-review-${{ github.event.workflow_run.head_branch }}
+  group: agent-review-${{ github.event.workflow_run.head_branch || inputs.branch }}
   cancel-in-progress: false
 
 permissions:
   contents: read
-  actions: read
+  # 본문만 고친 수정 뒤에 리뷰를 다시 띄운다 (gh workflow run).
+  actions: write
   pull-requests: read
   issues: read
 
 env:
   REPO: ${{ github.repository }}
   GH_TOKEN: ${{ secrets.AGENT_GH_TOKEN }}
-  BRANCH: ${{ github.event.workflow_run.head_branch }}
-  HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-  CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-  CI_RUN_ID: ${{ github.event.workflow_run.id }}
+  BRANCH: ${{ github.event.workflow_run.head_branch || inputs.branch }}
+  # HEAD_SHA, CI_CONCLUSION, CI_RUN_ID는 "PR 찾기"가 정한다. workflow_dispatch에는 workflow_run 값이 없다.
   MAX_FIX: ${{ vars.AGENT_MAX_FIX || '2' }}
   AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}
   EFFORT_REVIEW: ${{ vars.AGENT_EFFORT_REVIEW || 'high' }}
@@ -37,27 +45,45 @@ env:
 jobs:
   review:
     # 포크 PR이 agent/ 브랜치 이름을 써도 돌지 않게 같은 레포만 허용한다.
+    # workflow_dispatch는 쓰기 권한이 있는 사람과 이 레포의 워크플로만 띄울 수 있고, PR은 아래에서 같은 레포의 agent 라벨 PR로만 찾는다.
     if: >-
-      vars.AGENT_ENABLED == 'true' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      startsWith(github.event.workflow_run.head_branch, 'agent/') &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      vars.AGENT_ENABLED == 'true' && (
+        (github.event_name == 'workflow_run' &&
+          github.event.workflow_run.event == 'pull_request' &&
+          startsWith(github.event.workflow_run.head_branch, 'agent/') &&
+          github.event.workflow_run.head_repository.full_name == github.repository) ||
+        (github.event_name == 'workflow_dispatch' && startsWith(inputs.branch, 'agent/'))
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: PR 찾기
         id: pr
+        env:
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           pr=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --label agent --json number,headRefOid,body --jq '.[0] // empty')
           if [ -z "$pr" ]; then echo "열린 에이전트 PR 없음"; exit 0; fi
-          if [ "$(echo "$pr" | jq -r .headRefOid)" != "$HEAD_SHA" ]; then echo "이미 새 커밋이 있음 → 이번 CI 결과는 건너뜀"; exit 0; fi
+          head=$(echo "$pr" | jq -r .headRefOid)
+          if [ -z "$RUN_ID" ]; then
+            ci=$(GH_TOKEN="${{ github.token }}" gh run list -R "$REPO" --workflow ci.yml --branch "$BRANCH" --commit "$head" --limit 1 \
+              --json databaseId,status,conclusion --jq '.[0] // empty')
+            if [ -z "$ci" ] || [ "$(echo "$ci" | jq -r .status)" != "completed" ]; then echo "끝 커밋의 CI가 아직 없음 → CI가 끝나면 리뷰가 돈다"; exit 0; fi
+            RUN_HEAD_SHA="$head"
+            RUN_CONCLUSION=$(echo "$ci" | jq -r .conclusion)
+            RUN_ID=$(echo "$ci" | jq -r .databaseId)
+          fi
+          if [ "$head" != "$RUN_HEAD_SHA" ]; then echo "이미 새 커밋이 있음 → 이번 CI 결과는 건너뜀"; exit 0; fi
+          { echo "HEAD_SHA=$RUN_HEAD_SHA"; echo "CI_CONCLUSION=$RUN_CONCLUSION"; echo "CI_RUN_ID=$RUN_ID"; } >> "$GITHUB_ENV"
           echo "number=$(echo "$pr" | jq -r .number)" >> "$GITHUB_OUTPUT"
           echo "issue=$(echo "$pr" | jq -r .body | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+')" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         if: steps.pr.outputs.number
         with:
-          ref: ${{ github.event.workflow_run.head_branch }}
+          ref: ${{ env.BRANCH }}
           token: ${{ secrets.AGENT_GH_TOKEN }}
           fetch-depth: 0
       - uses: pnpm/action-setup@v4
@@ -81,6 +107,8 @@ jobs:
           gh issue view "$ISSUE" -R "$REPO" --json title,body \
             --jq '"# #\(env.ISSUE) \(.title)\n\n\(.body)"' > .agent/issue.md
           gh pr view "$PR" -R "$REPO" --json body --jq .body > .agent/pr.md
+          # 수정 에이전트가 PR 본문을 고쳤는지 "수정 push"에서 비교한다.
+          cp .agent/pr.md .agent/pr.orig.md
           # 이슈 본문은 설계를 PRD(wiki)에 맡기므로 wiki를 같이 넘긴다. 받지 못해도 실행은 계속한다.
           git clone --quiet --depth 1 "https://github.com/${REPO}.wiki.git" .agent/wiki \
             || echo "::warning::wiki를 받지 못했다"
@@ -128,12 +156,14 @@ jobs:
           EXEC_FILE: ${{ steps.review.outputs.execution_file }}
           FIXES: ${{ steps.prep.outputs.fixes }}
         run: |
-          RESULT="${RESULT:-null}"
           info=$(node scripts/agent/classify-run.mts "$EXEC_FILE")
           echo "실행 결과: $info"
+          # action은 정상 종료도 턴 수를 잘못 비교해 실패로 끝내고 결과를 비운다 (classify.mts). 그때는 실행 기록의 결과를 쓴다.
+          if [ -z "$RESULT" ]; then RESULT=$(echo "$info" | jq -c '.structured // empty'); fi
+          RESULT="${RESULT:-null}"
           if ! echo "$RESULT" | jq -e '(.criteria | length) > 0 and (.findings | type) == "array"' > /dev/null 2>&1; then
             if [ "$(echo "$info" | jq -r .kind)" = "limit" ]; then
-              # 한도는 사람 확인 대상이 아니다. 다음 cron이 이 리뷰 실행을 다시 돌린다.
+              # 한도는 사람 확인 대상이 아니다. 다음 구현 cron이 이 브랜치의 리뷰를 다시 띄운다.
               gh pr edit "$PR" -R "$REPO" --add-label agent-retry
               exit 0
             fi
@@ -202,7 +232,7 @@ jobs:
           FIXES: ${{ steps.prep.outputs.fixes }}
         run: |
           if [ "$FIXES" -ge "$MAX_FIX" ]; then
-            gh pr comment "$PR" -R "$REPO" --body "수정 ${FIXES}회 후에도 CI가 실패해 멈춤. 사람 확인 필요 · [CI 로그](${{ github.event.workflow_run.html_url }})"
+            gh pr comment "$PR" -R "$REPO" --body "수정 ${FIXES}회 후에도 CI가 실패해 멈춤. 사람 확인 필요 · [CI 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${CI_RUN_ID})"
             gh pr edit "$PR" -R "$REPO" --add-label needs-human
             gh issue edit "$ISSUE" -R "$REPO" --add-label needs-human
             exit 0
@@ -238,8 +268,6 @@ jobs:
           OUTCOME: ${{ steps.fix.outcome }}
           EXEC_FILE: ${{ steps.fix.outputs.execution_file }}
         run: |
-          RESULT="${RESULT:-null}"
-          status=$(echo "$RESULT" | jq -r '.status // "failed"')
           new=$(git rev-list --count "$HEAD_SHA"..HEAD)
           info=$(node scripts/agent/classify-run.mts "$EXEC_FILE")
           echo "실행 결과: $info"
@@ -247,21 +275,38 @@ jobs:
             gh pr edit "$PR" -R "$REPO" --add-label agent-retry
             exit 0
           fi
+          # action은 정상 종료도 턴 수를 잘못 비교해 실패로 끝내고 결과를 비운다 (classify.mts). 실행 기록이 정상 종료면 그 결과를 쓴다.
+          if [ -z "$RESULT" ] && [ "$(echo "$info" | jq -r .kind)" = "ok" ]; then
+            RESULT=$(echo "$info" | jq -c '.structured // empty')
+            if [ -n "$RESULT" ]; then OUTCOME=success; fi
+          fi
+          RESULT="${RESULT:-null}"
+          status=$(echo "$RESULT" | jq -r '.status // "failed"')
+          # PR 본문에 대한 지적은 커밋이 아니라 .agent/pr.md 수정으로 고친다. 이슈를 찾는 첫 줄(Closes)이 남아 있을 때만 반영한다.
+          body=""
+          if ! cmp -s .agent/pr.md .agent/pr.orig.md && [ "$(head -1 .agent/pr.md)" = "Closes #$ISSUE" ]; then body=changed; fi
           reason=""
-          if [ "$OUTCOME" = "success" ] && [ "$status" = "done" ] && [ "$new" -gt 0 ]; then
-            # claude-code-action이 git 인증을 GITHUB_TOKEN으로 바꿔 두므로 push 전에 PAT로 되돌린다.
-            git config --unset-all http.https://github.com/.extraheader || true
-            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
-            if git push origin "HEAD:$BRANCH"; then
+          if [ "$OUTCOME" = "success" ] && [ "$status" = "done" ] && { [ "$new" -gt 0 ] || [ -n "$body" ]; }; then
+            if [ "$new" -gt 0 ]; then
+              # claude-code-action이 git 인증을 GITHUB_TOKEN으로 바꿔 두므로 push 전에 PAT로 되돌린다.
+              git config --unset-all http.https://github.com/.extraheader || true
+              git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+              git push origin "HEAD:$BRANCH" || reason="수정은 끝났지만 push에 실패 (실행 로그 확인)"
+            fi
+            if [ -z "$reason" ]; then
+              if [ -n "$body" ]; then gh pr edit "$PR" -R "$REPO" --body-file .agent/pr.md; fi
               gh pr comment "$PR" -R "$REPO" --body "<!-- agent:fix -->
           ## 에이전트 수정
 
           $(echo "$RESULT" | jq -r '.summary')
 
           모델: $(echo "$info" | jq -r '.models | join(", ")') · effort: $EFFORT_FIX · [실행 로그]($RUN_URL)"
+              # 본문만 고치면 push가 없어 CI도, CI 뒤에 도는 리뷰도 다시 오지 않는다. 같은 커밋으로 리뷰를 다시 띄운다.
+              if [ "$new" -eq 0 ]; then
+                GH_TOKEN="${{ github.token }}" gh workflow run agent-review.yml -R "$REPO" -f branch="$BRANCH"
+              fi
               exit 0
             fi
-            reason="수정은 끝났지만 push에 실패 (실행 로그 확인)"
           fi
           [ -z "$reason" ] && reason=$(echo "$RESULT" | jq -r '.blocked_reason // .summary // empty')
           gh pr comment "$PR" -R "$REPO" --body "<!-- agent:fix-failed -->
