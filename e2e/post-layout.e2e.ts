@@ -172,7 +172,11 @@ describe("제목과 글 설정 저장", () => {
 
     expect(await input("keywords").isDisabled()).toBe(true);
     expect(await input("keywords").inputValue()).toBe("");
-    expect(await settings().getByText(/원문 모드에서만 고칠 수 있다/).isVisible()).toBe(true);
+    expect(
+      await settings()
+        .getByText(/원문 모드에서만 고칠 수 있다/)
+        .isVisible(),
+    ).toBe(true);
     expect(await input("other.code").inputValue()).toBe("A-1");
     expect(await settings().getByText("other.code").count()).toBeGreaterThan(0);
     expect(await input("other.status").inputValue()).toBe("ready");
@@ -206,7 +210,9 @@ describe("제목과 글 설정 저장", () => {
     expect(await isOpen(settings())).toBe(false);
 
     await page.getByRole("button", { name: "글 설정 저장" }).click();
-    await settings().getByText(/선택지에 없는 값이다/).waitFor();
+    await settings()
+      .getByText(/선택지에 없는 값이다/)
+      .waitFor();
     expect(await isOpen(settings())).toBe(true);
     expect(await page.getByText("입력을 확인한다.").isVisible()).toBe(true);
     expect(newCommits()).toBe(0);

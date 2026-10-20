@@ -6,6 +6,7 @@ import {
   type MetadataValue,
   type Syntax,
 } from "@/lib/mdx-doc";
+import { TITLE_FIELD } from "@/lib/metadata-form";
 
 export type PostSummary = {
   title: string;
@@ -28,7 +29,7 @@ const stringAt = (value: { [key: string]: MetadataValue }, key: string): string 
 /** metadata에 저장된 제목. 폼으로 읽을 수 없거나 제목이 비었으면 null. */
 function savedTitle(metadata: MetadataResult | null): string | null {
   if (!metadata?.editable) return null;
-  return stringAt(metadata.value, "title")?.trim() || null;
+  return stringAt(metadata.value, TITLE_FIELD)?.trim() || null;
 }
 
 /** 글 원문에서 목록에 보일 값을 읽는다. 읽지 못하면 title은 `fallbackTitle`(파일명)이다. */
