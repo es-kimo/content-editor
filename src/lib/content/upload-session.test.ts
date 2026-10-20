@@ -5,7 +5,7 @@ import { GIF, JPEG, PNG, SOURCE } from "@/test/upload-images";
 
 import { unsavedAreas } from "./unsaved";
 import { MAX_UPLOAD_BYTES, uploadExtension } from "./upload";
-import { createUploadSession, type AddedUploads, type PreparedImage } from "./upload-session";
+import { createUploadSession, type AddedUploads, type PreparedImage, type UploadSubmission } from "./upload-session";
 
 const doc = parseMdx(SOURCE);
 const BODY = doc.ok ? doc.body : "";
@@ -76,6 +76,30 @@ describe("createUploadSession 준비 중 보호", () => {
     expect(session.preparing).toBe(false);
     expect(states).toEqual([true, false]);
     expect(session.submission(body())).toMatchObject({ ok: true });
+  });
+
+  test("본문에 넣는 동안에도 준비 중이고 저장할 수 없다", async () => {
+    const { prepare, finish } = delayedPrepare();
+    const states: boolean[] = [];
+    const session = createUploadSession({
+      doc,
+      files: [],
+      prepare,
+      onPreparing: (preparing) => states.push(preparing),
+    });
+    let body = BODY;
+    const duringInsert: { preparing: boolean; states: boolean[]; submission: UploadSubmission }[] = [];
+
+    const done = session.add([png("2.png")], (added) => {
+      body += `\n${added.tags.join("\n")}\n`;
+      duringInsert.push({ preparing: session.preparing, states: [...states], submission: session.submission(body) });
+    });
+    await finish("2.png");
+    await done;
+
+    expect(duringInsert).toEqual([{ preparing: true, states: [true], submission: { ok: false, reason: "preparing" } }]);
+    expect(session.preparing).toBe(false);
+    expect(session.submission(body)).toMatchObject({ ok: true, images: [{ file: "2.png" }] });
   });
 
   test("본문에 넣는 중 오류가 나도 준비 중 상태는 풀린다", async () => {
