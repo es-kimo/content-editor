@@ -42,6 +42,7 @@ export type ApiIssue = {
   user: { login: string };
   labels: { name: string }[];
   milestone: { number: number; title: string } | null;
+  assignees?: { login: string }[];
   pull_request?: unknown;
 };
 
