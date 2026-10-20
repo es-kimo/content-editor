@@ -27,6 +27,7 @@ export {
   addImageAt,
   addToc,
   footnoteRefChoices,
+  hasToc,
   hasTocHeading,
   readInserts,
   removeToc,

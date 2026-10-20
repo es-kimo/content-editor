@@ -5,6 +5,7 @@ import {
   addImageAt,
   addToc,
   footnoteRefChoices,
+  hasToc,
   hasTocHeading,
   imageTag,
   printMdx,
@@ -70,7 +71,7 @@ export type InsertFormApply =
 
 /**
  * 넣기 메뉴로 고른 항목의 폼 대상. 출처 폼에서 고를 각주와 목차 안내를 `source`(폼을 연 영역의 원문)에서 정한다.
- * 출처는 `footnoteRefChoices`가 연결할 수 있다고 한 각주만 고른다.
+ * 출처는 `footnoteRefChoices`가 연결할 수 있다고 한 각주만 고르고, 목차가 있는지는 `addToc`과 같은 `hasToc`으로 정한다.
  */
 export function newInsertTarget<K extends NewInsertKind>(
   kind: K,
@@ -84,9 +85,7 @@ export function newInsertTarget<K extends NewInsertKind>(
 function newTarget(kind: NewInsertKind, source: string, place: InsertPlace | null, syntax: Syntax): InsertFormTarget {
   if (kind === "footnote") return { kind, place };
   if (kind === "footnote-ref") return { kind, place, choices: footnoteRefChoices(source, syntax) };
-  const list = readInserts(source, syntax);
-  const exists = list.ok && [...list.items, ...list.limited].some((entry) => entry.kind === "toc");
-  return { kind, place, exists, heading: hasTocHeading(source, syntax) };
+  return { kind, place, exists: hasToc(source, syntax), heading: hasTocHeading(source, syntax) };
 }
 
 /** 폼을 열 때 입력의 처음 값. */

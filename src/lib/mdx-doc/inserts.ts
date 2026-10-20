@@ -210,9 +210,18 @@ export function footnoteRefChoices(source: string, syntax: Syntax = {}): Footnot
 export function addToc(source: string, at: InsertSpan, syntax: Syntax = {}): InsertEdit {
   const checked = checkPosition(source, at, syntax);
   if (!checked.ok) return checked;
-  const hasToc = checked.scan.entries.some((entry) => ("limited" in entry ? entry.limited : entry.item).kind === "toc");
-  if (hasToc) return { ok: false, reason: "toc-exists" };
+  if (tocIn(checked.scan)) return { ok: false, reason: "toc-exists" };
   return insertAndVerify(source, at, componentSnippet("TOC", ""), { kind: "toc" }, syntax);
+}
+
+/** 자동이든 사용자 정의든 목차가 이미 있는지. `addToc`이 `toc-exists`로 막는 조건과 같다. 읽을 수 없는 원문은 false다. */
+export function hasToc(source: string, syntax: Syntax = {}): boolean {
+  const scanned = scan(source, syntax);
+  return scanned !== null && tocIn(scanned);
+}
+
+function tocIn({ entries }: Scan): boolean {
+  return entries.some((entry) => ("limited" in entry ? entry.limited : entry.item).kind === "toc");
 }
 
 /** 자동 목차를 지운다. 목차만 있던 줄은 앞뒤 빈 줄이 겹치지 않게 함께 정리한다. */

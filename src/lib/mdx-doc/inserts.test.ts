@@ -9,6 +9,7 @@ import {
   addImageAt,
   addToc,
   footnoteRefChoices,
+  hasToc,
   hasTocHeading,
   readInserts,
   removeToc,
@@ -360,11 +361,19 @@ describe("addToc와 removeToc", () => {
     expect(read(result).items).toMatchObject([{ kind: "toc" }]);
   });
 
-  test("자동 목차나 사용자 정의 목차가 이미 있으면 넣지 않는다", () => {
+  test("자동 목차나 사용자 정의 목차가 이미 있으면 넣지 않고, hasToc도 같은 글에서 목차가 있다고 한다", () => {
     const end = { from: SOURCE.length, to: SOURCE.length };
     expect(addToc(SOURCE, end, blogSyntax)).toEqual({ ok: false, reason: "toc-exists" });
+    expect(hasToc(SOURCE, blogSyntax)).toBe(true);
     const custom = '<TOC items={[{ title: "직접", url: "#a" }]} />\n';
     expect(addToc(custom, { from: 0, to: 0 })).toEqual({ ok: false, reason: "toc-exists" });
+    expect(hasToc(custom)).toBe(true);
+  });
+
+  test("목차가 없거나 코드 블록 안에만 있거나 읽을 수 없으면 hasToc은 false다", () => {
+    expect(hasToc("# 제목\n\n문단\n")).toBe(false);
+    expect(hasToc("```mdx\n<TOC items={toc} />\n```\n")).toBe(false);
+    expect(hasToc("<TOC items={toc +} />\n")).toBe(false);
   });
 
   test("자동 목차를 지우면 앞뒤 문단이 빈 줄 하나로 이어지고 나머지는 그대로다", () => {
