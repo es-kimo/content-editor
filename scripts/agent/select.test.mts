@@ -12,7 +12,7 @@ const issue = (number: number, extra: Partial<IssueInfo> = {}): IssueInfo => ({
   body: "## 의존\n없음\n",
   ...extra,
 });
-const options = { readyLabel: "agent-ready", skipLabels: ["needs-human", "blocked", "spike"] };
+const options = { readyLabel: "agent-ready", skipLabels: ["blocked", "spike"] };
 
 describe("parseDeps", () => {
   test("의존 절의 번호만 읽는다", () => {
@@ -39,7 +39,7 @@ describe("selectNext", () => {
 
   test("건너뛸 라벨이 있으면 고르지 않는다", () => {
     const issues = [
-      issue(8, { labels: ["agent-ready", "needs-human"] }),
+      issue(8, { labels: ["agent-ready", "blocked"] }),
       issue(13, { labels: ["agent-ready", "spike"] }),
       issue(14),
     ];
