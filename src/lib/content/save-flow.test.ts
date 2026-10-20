@@ -228,8 +228,8 @@ describe("createSaveFlow", () => {
     expect(flow.request({ target: "source", before: SOURCE, after: SOURCE, syntax }, async () => SAVED)).toBe(true);
   });
 
-  test("요청 자체가 실패해도 오류를 보이고 다시 저장할 수 있다", async () => {
-    const { flow } = setupFlow();
+  test("새 글 만들기 요청 자체가 실패해도 제목·하위 메뉴 표시를 둔 채 오류를 보이고 다시 만들 수 있다", async () => {
+    const { flow } = setupFlow({ title: true, submenu: true });
     const pending = deferred();
 
     flow.request({ target: "new" }, () => pending.promise);
@@ -238,6 +238,7 @@ describe("createSaveFlow", () => {
 
     expect(flow.getState().phase).toEqual({ kind: "idle" });
     expect(flow.getState().results.new?.status).toBe("error");
+    expect(flow.getState().changed).toEqual({ title: true, submenu: true });
   });
 
   test("저장으로 사라질 다른 영역 입력이 있으면 제출하기 전에 그 영역을 알린다", () => {
