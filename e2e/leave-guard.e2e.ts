@@ -182,6 +182,46 @@ describe("기존 글", () => {
     expect(browserDialogs).toEqual([]);
   });
 
+  test("버리고 나간 글로 뒤로 가기나 목록 링크로 돌아오면 버린 입력 없이 열리고, 새로 입력하면 다시 지킨다", async () => {
+    // 버린 입력·첨부·모드가 모두 처음 상태인지.
+    const expectPostOpenedFresh = async () => {
+      expect(page.url()).toBe(postUrl(app));
+      await page.locator(".body-editor-content").waitFor();
+      expect(await titleInput().inputValue()).toBe("휴진 안내");
+      expect(await page.getByText(/저장하지 않은 변경이 있다/).count()).toBe(0);
+      expect(await page.getByText(/넣은 이미지: /).count()).toBe(0);
+      expect(await sourceMode().getAttribute("aria-pressed")).toBe("false");
+    };
+    await page.goto(listUrl(app, "게시판"));
+    await page.getByRole("link", { name: "휴진 안내" }).click();
+    await page.waitForURL(postUrl(app));
+    await page.locator(".body-editor-content").waitFor();
+
+    await editPost();
+    await listLink().click();
+    await leaveButton().click();
+    await page.waitForURL(listUrl(app, "게시판"));
+    await back();
+    await page.waitForURL(postUrl(app));
+    await expectPostOpenedFresh();
+
+    await editPost();
+    await listLink().click();
+    await leaveButton().click();
+    await page.waitForURL(listUrl(app, "게시판"));
+    await page.getByRole("link", { name: "휴진 안내" }).click();
+    await page.waitForURL(postUrl(app));
+    await expectPostOpenedFresh();
+
+    await titleInput().fill("휴진 안내 (다시 수정)");
+    await listLink().click();
+    await leaveDialog().waitFor();
+    expect(await leaveDialog().getByText("바뀐 영역: metadata").count()).toBe(1);
+    await keepButton().click();
+    expect(newCommits()).toBe(0);
+    expect(browserDialogs).toEqual([]);
+  });
+
   test("변경 없는 화면, 새 탭 열기, 페이지 내 앵커, 미리보기 조작, 모드 전환은 묻지 않는다", async () => {
     await openPost();
     await sourceMode().click();
@@ -292,6 +332,24 @@ describe("새 글", () => {
     await page.waitForURL(newUrl(app, "공지"));
     expect(await newTitleInput().inputValue()).toBe("");
     expect(newCommits()).toBe(0);
+    expect(browserDialogs).toEqual([]);
+  });
+
+  test("목록으로 버리고 나간 새 글 화면으로 뒤로 가면 버린 입력 없이 열린다", async () => {
+    await page.goto(newUrl(app, "게시판"));
+    await newTitleInput().fill("새 휴진 안내");
+
+    await listLink().click();
+    await leaveButton().click();
+    await page.waitForURL(listUrl(app, "게시판"));
+    await back();
+    await page.waitForURL(newUrl(app, "게시판"));
+
+    expect(await newTitleInput().inputValue()).toBe("");
+    expect(await page.getByText(/저장하지 않은 변경이 있다/).count()).toBe(0);
+    await listLink().click();
+    await page.waitForURL(listUrl(app, "게시판"));
+    expect(await leaveDialog().count()).toBe(0);
     expect(browserDialogs).toEqual([]);
   });
 

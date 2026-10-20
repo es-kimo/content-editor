@@ -50,6 +50,8 @@ export type LeaveGuard = {
   leave(): void;
   /** 새로고침·탭 닫기·외부 이동에 브라우저 기본 경고를 요청할지. */
   warnsUnload(): boolean;
+  /** `변경 버리고 나가기`를 골라 도착을 기다리는 중인지. 떠난 화면이 숨겨질 때 입력을 버릴지 정한다. */
+  discarding(): boolean;
   /** 화면 주소가 바뀌었다. 나가기로 한 이동이 끝났으니 다시 지킨다. */
   arrived(): void;
 };
@@ -95,6 +97,7 @@ export function createLeaveGuard({ areas, go }: { areas: () => EditArea[]; go: (
       go(leave);
     },
     warnsUnload: () => !leaving && areas().length > 0,
+    discarding: () => leaving,
     arrived() {
       leaving = false;
     },

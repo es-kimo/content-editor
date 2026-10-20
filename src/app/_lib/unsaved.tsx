@@ -1,7 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 import { ConfirmDialog } from "@/app/_lib/confirm-dialog";
 import { LeaveGuardProvider } from "@/app/_lib/leave";
@@ -24,12 +32,32 @@ const SaveFlowContext = createContext<SaveFlow | null>(null);
  * @param revision 저장한 글 화면이 열릴 때마다 바뀌는 값(`saved` 커밋). 바뀌면 저장 뒤 막아 둔 입력을 다시 받는다.
  */
 export function UnsavedProvider({ revision, children }: { revision?: string; children: ReactNode }) {
+  // 버리고 나간 화면은 숨겨진 채 남아 있다가 돌아오면 그대로 보인다(cacheComponents의 Activity).
+  // 숨겨질 때 편집 영역과 저장 상태를 처음부터 다시 열어 버린 입력이 돌아오지 않게 한다.
+  const [opened, setOpened] = useState(0);
+  const discarded = useCallback(() => setOpened((count) => count + 1), []);
+  return (
+    <UnsavedScope key={opened} revision={revision} onDiscarded={discarded}>
+      {children}
+    </UnsavedScope>
+  );
+}
+
+function UnsavedScope({
+  revision,
+  onDiscarded,
+  children,
+}: {
+  revision?: string;
+  onDiscarded: () => void;
+  children: ReactNode;
+}) {
   const router = useRouter();
   const [flow] = useState(() => createSaveFlow({ navigate: (href) => router.push(href) }));
   useEffect(() => flow.settle(), [flow, revision]);
   return (
     <SaveFlowContext value={flow}>
-      <LeaveGuardProvider areas={() => leavingAreas(flow.getState())}>
+      <LeaveGuardProvider areas={() => leavingAreas(flow.getState())} onDiscarded={onDiscarded}>
         {children}
         <DiscardDialog flow={flow} />
       </LeaveGuardProvider>
