@@ -117,7 +117,7 @@ jobs:
           EFFORT_IMPLEMENT: ${{ vars.AGENT_EFFORT_IMPLEMENT || 'medium' }}
           EFFORT_REVIEW: ${{ vars.AGENT_EFFORT_REVIEW || 'high' }}
           EFFORT_FIX: ${{ vars.AGENT_EFFORT_FIX || 'medium' }}
-          MAX_FIX: ${{ vars.AGENT_MAX_FIX || '3' }}
+          MAX_FIX: ${{ vars.AGENT_MAX_FIX || '5' }}
           MAX_ATTEMPTS: ${{ vars.AGENT_MAX_ATTEMPTS || '2' }}
         run: bash scripts/agent/slot.sh
 

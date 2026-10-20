@@ -154,19 +154,25 @@ if [ "$(git rev-list --count origin/main..HEAD)" -eq 0 ]; then attempt_failed "�
 { echo "Closes #$N"; echo; out implement .summary; } > "$A/pr.md"
 
 # ── 검사 → 리뷰 → 수정 ─────────────────────────────────────────────────
-# 리뷰는 검사를 모두 통과한 커밋에서만 돈다. 수정은 검사 실패와 리뷰 지적을 합쳐 MAX_FIX번까지 한다.
+# 리뷰는 검사를 모두 통과한 커밋에서만 돈다. 검사 실패 수정과 리뷰 지적 수정은 따로 세어 각각 MAX_FIX번까지 한다.
+# 같은 지적(분류·파일·제목)이 세 번 연달아 나오면, 두 번 고쳐도 안 되는 것이라 상한 전이라도 사람에게 넘긴다.
 
+check_fixes=0
+review_fixes=0
 fixes=0
+echo '{}' > "$A/seen.json"
+: > "$A/review-history.md"
 while true; do
   if ! run_checks > "$A/checks.log" 2>&1; then
     echo "::group::검사 실패 (마지막 100줄)"; tail -n 100 "$A/checks.log"; echo "::endgroup::"
     { echo "# 검사 실패 로그 (마지막 300줄)"; echo; echo '```'; tail -n 300 "$A/checks.log"; echo '```'; } > "$A/feedback.md"
     what="검사 실패"
     # 검사 실패는 사람이 정할 것이 아니다. 다음 밤에 진행분에서 다시 시도한다.
-    if [ "$fixes" -ge "$MAX_FIX" ]; then attempt_failed "수정을 ${fixes}번 했지만 검사가 통과하지 않았어요"; fi
+    if [ "$check_fixes" -ge "$MAX_FIX" ]; then attempt_failed "검사 실패를 ${check_fixes}번 고쳤지만 검사가 통과하지 않았어요"; fi
+    check_fixes=$((check_fixes + 1))
   else
     git diff origin/main...HEAD > "$A/diff.patch"
-    claude_run review "\`.github/agent/review.md\`의 지시를 따른다. 이슈는 \`.agent/issue.md\`, PR 본문은 \`.agent/pr.md\`, 변경은 \`.agent/diff.patch\`에 있다." \
+    claude_run review "\`.github/agent/review.md\`의 지시를 따른다. 이슈는 \`.agent/issue.md\`, PR 본문은 \`.agent/pr.md\`, 변경은 \`.agent/diff.patch\`, 지난 리뷰 지적과 수정은 \`.agent/review-history.md\`에 있다." \
       .github/agent/schema-review.json "$EFFORT_REVIEW" 60 "$REVIEW_TOOLS" "Edit,Write,$NO_TOOLS"
     if ! jq -e '(.criteria | length) > 0 and (.findings | type) == "array"' "$A/review.out.json" > /dev/null 2>&1; then
       attempt_failed "리뷰 단계가 결과를 내지 못했어요 ($(why review))"
@@ -182,12 +188,19 @@ while true; do
       if [ -n "$criteria" ]; then printf '# 충족되지 않은 완료 기준\n\n%s\n' "$criteria"; fi
     } > "$A/feedback.md"
     what="리뷰 지적 (blocking ${blocking} · 미충족 기준 ${unmet})"
-    # 고쳐도 리뷰가 계속 막으면 방향을 사람이 정한다. 답은 issue.md로 구현과 리뷰에 같이 들어간다.
-    if [ "$fixes" -ge "$MAX_FIX" ]; then
-      hand_over "수정을 ${fixes}번 했지만 리뷰가 아래를 막고 있어요. 고칠 방향, 이번 범위에서 빼기, 무시하기 중에 정해 주세요.
+    asked="고칠 방향, 이번 범위에서 빼기, 무시하기 중에 정해 주세요.
 
 $(sed 's/^# 리뷰 지적 (blocking)$/**리뷰 지적**/; s/^# 충족되지 않은 완료 기준$/**충족되지 않은 완료 기준**/' "$A/feedback.md")"
+    # 지적마다 연달아 나온 횟수. 이번 리뷰에 없는 지적은 센 것을 버린다.
+    jq --slurpfile seen "$A/seen.json" '[.findings[] | select(.severity == "blocking") | "\(.category)|\(.file)|\(.title)"]
+      | unique | map({key: ., value: (($seen[0][.] // 0) + 1)}) | from_entries' "$A/review.out.json" > "$A/seen.next.json"
+    mv "$A/seen.next.json" "$A/seen.json"
+    # 고쳐도 리뷰가 계속 막으면 방향을 사람이 정한다. 답은 issue.md로 구현과 리뷰에 같이 들어간다.
+    if jq -e 'any(.[]; . >= 3)' "$A/seen.json" > /dev/null; then
+      hand_over "같은 지적이 두 번 고친 뒤에도 다시 나왔어요. $asked"
     fi
+    if [ "$review_fixes" -ge "$MAX_FIX" ]; then hand_over "리뷰 지적을 ${review_fixes}번 고쳤지만 리뷰가 아래를 막고 있어요. $asked"; fi
+    review_fixes=$((review_fixes + 1))
   fi
 
   fixes=$((fixes + 1))
@@ -202,10 +215,14 @@ $(sed 's/^# 리뷰 지적 (blocking)$/**리뷰 지적**/; s/^# 충족되지 않�
   esac
   # 이슈를 닫는 첫 줄을 지웠으면 본문 수정을 버린다.
   if [ "$(head -1 "$A/pr.md")" != "Closes #$N" ]; then cp "$A/pr.before.md" "$A/pr.md"; fi
-  if [ "$(git rev-parse HEAD)" = "$before" ] && cmp -s "$A/pr.md" "$A/pr.before.md"; then
-    attempt_failed "수정 단계가 아무것도 바꾸지 않았어요 (${what})"
+  # 리뷰 지적이 틀렸다고 근거만 남긴 수정은 다음 리뷰가 그 근거를 본다. 검사 실패는 바꾸지 않으면 그대로 실패한다.
+  if [ "$what" = "검사 실패" ] && [ "$(git rev-parse HEAD)" = "$before" ] && cmp -s "$A/pr.md" "$A/pr.before.md"; then
+    attempt_failed "검사 실패를 고치는 단계가 아무것도 바꾸지 않았어요"
   fi
   { echo "**수정 ${fixes}** · ${what}"; echo; out "fix-$fixes" .summary; echo; } >> "$A/history.md"
+  if [ "$what" != "검사 실패" ]; then
+    { echo "## 수정 ${review_fixes}의 리뷰 지적"; echo; sed '/^# /d' "$A/feedback.md" | awk 'NF { if (gap && seen) print ""; print; seen = 1; gap = 0; next } { gap = 1 }'; echo; echo "## 수정 ${review_fixes}의 수정 요약"; echo; out "fix-$fixes" .summary; echo; } >> "$A/review-history.md"
+  fi
 done
 
 # ── PR → CI → merge ────────────────────────────────────────────────────
@@ -214,7 +231,7 @@ suggestions=$(jq '[.findings[] | select(.severity == "suggestion")] | length' "$
 {
   cat "$A/pr.md"
   echo
-  echo "<details><summary>에이전트 리뷰: 승인 · 수정 ${fixes}회 · 제안 ${suggestions}건</summary>"
+  echo "<details><summary>에이전트 리뷰: 승인 · 수정 ${fixes}회 (검사 ${check_fixes} · 리뷰 ${review_fixes}) · 제안 ${suggestions}건</summary>"
   echo
   jq -r '
     {correctness: "정확성", maintainability: "유지보수", test: "테스트", design: "화면", scope: "범위", writing: "글"} as $label
