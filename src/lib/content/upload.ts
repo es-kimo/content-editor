@@ -1,4 +1,11 @@
-import { addImage, findUnusedImageImports, readImageImports, setBody, type MdxDoc } from "@/lib/mdx-doc";
+import {
+  addedImageFile,
+  addImage,
+  findUnusedImageImports,
+  readImageImports,
+  setBody,
+  type MdxDoc,
+} from "@/lib/mdx-doc";
 
 /** 본문에 넣는 이미지 컴포넌트. 사이트가 MDX 컴포넌트로 전역 등록해 두어 import하지 않는다. */
 export const IMAGE_COMPONENT = "Image";
@@ -120,8 +127,7 @@ export function checkSourceUploads(images: UploadImage[], source: string, folder
   const taken = new Set(folder.map((name) => name.toLowerCase()));
   const referenced = new Set(sourceUploads(images, source).map(({ file }) => file));
   for (const { file } of images) {
-    if (!/^[1-9]\d*\.[a-z]+$/.test(file) || taken.has(file))
-      return { ok: false, reason: "image", file, problem: "name" };
+    if (!addedImageFile(file) || taken.has(file)) return { ok: false, reason: "image", file, problem: "name" };
     if (!referenced.has(file)) return { ok: false, reason: "image", file, problem: "unused" };
     // 같은 이름을 두 번 보내면 나중 것이 앞의 것을 덮어쓰므로 받지 않는다.
     taken.add(file);

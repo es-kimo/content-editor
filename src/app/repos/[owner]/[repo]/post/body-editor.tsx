@@ -12,7 +12,7 @@ import { MAX_IMAGE_SIDE } from "@/lib/content/upload";
 import { editedBody, sameBodyStructure, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
 
 import { BodyPreview } from "./body-preview";
-import { useImageUpload } from "./image-upload";
+import { ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, useInsertForm } from "./insert-form";
 import type { BodyEditorHandle } from "./mdx-body-editor";
 import { SaveRow } from "./save-row";
@@ -110,12 +110,8 @@ export function BodyEditor({
       onSubmit={(event) => {
         event.preventDefault();
         const next = editedBody(body, normalized.current, edited.current);
-        const submission = images.session.submission(next);
-        if (!submission.ok) return;
-        const data = new FormData();
-        for (const image of submission.images) {
-          data.append("image", new File([new Uint8Array(image.content)], image.file));
-        }
+        const data = images.upload(next);
+        if (!data) return;
         save.request(
           { target: "body" },
           () => action(next, data),
@@ -172,7 +168,7 @@ export function BodyEditor({
           저장할 때 글 폴더에 함께 저장하고, 본문에서 지웠거나 넣지 않은 이미지는 올리지 않아요.
         </p>
       )}
-      {images.problem && <p className="text-sm text-red-600">{images.problem}</p>}
+      <ImageProblemNotice problem={images.problem} />
       <BodyPreview
         markdown={current}
         syntax={syntax}

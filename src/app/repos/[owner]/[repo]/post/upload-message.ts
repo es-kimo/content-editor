@@ -4,7 +4,6 @@ import { MAX_UPLOAD_BYTES, type UploadProblem } from "@/lib/content/upload";
 export const IMAGE_ADD_BLOCKED = {
   many: "이미지는 한 번에 하나씩 넣어 주세요.",
   preparing: "이미지를 준비하고 있어요. 준비가 끝난 뒤 다음 이미지를 넣어 주세요.",
-  form: "열려 있는 폼을 먼저 적용하거나 취소해 주세요.",
   unopened: "이미지를 넣을 폼을 열지 못했어요. 저장이 끝난 뒤 이미지를 다시 넣어 주세요.",
 };
 

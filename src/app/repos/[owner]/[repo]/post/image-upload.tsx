@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 
-import { useFormFlow } from "@/app/_lib/unsaved";
+import { FormBlockedNotice, useFormFlow } from "@/app/_lib/unsaved";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 업로드 정책과 세션만 가져온다.
 import { UPLOAD_IMAGE_TYPES, uploadImports, type UploadImage, type UploadPlan } from "@/lib/content/upload";
 import { createUploadSession, type AddedUpload } from "@/lib/content/upload-session";
@@ -12,6 +12,17 @@ import { prepareImage } from "./prepare-image";
 import { IMAGE_ADD_BLOCKED, uploadMessage } from "./upload-message";
 
 type DropTarget = { preventDefault(): void; stopPropagation(): void };
+
+/** 이미지를 넣지 못한 이유. `invalid`는 받은 파일이 틀린 것, `blocked`·`form`은 지금 받을 수 없는 것이다. */
+type ImageProblem = { kind: "invalid" | "blocked"; message: string } | { kind: "form" };
+
+/** 이미지를 넣지 못한 이유를 이미지를 받는 곳 옆에 보인다. 열린 폼 때문이면 다른 동작과 같은 안내를 쓴다. */
+export function ImageProblemNotice({ problem }: { problem: ImageProblem | null }) {
+  if (!problem) return null;
+  if (problem.kind === "form") return <FormBlockedNotice />;
+  const color = problem.kind === "invalid" ? "text-red-600" : "text-amber-600";
+  return <p className={`text-sm ${color}`}>{problem.message}</p>;
+}
 
 /**
  * 일반 편집과 원문 편집이 같이 쓰는 이미지 받기. 파일 선택·붙여넣기·끌어 놓기로 받은 이미지를 하나 준비해 첨부에 더하고,
@@ -36,7 +47,7 @@ export function useImageUpload({
   const [session] = useState(() =>
     createUploadSession<File>({ doc, files, prepare: prepareImage, onPreparing: setPreparing, used }),
   );
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<ImageProblem | null>(null);
   const [attached, setAttached] = useState<{ file: string; size: number }[]>([]);
   const [attachedDoc, setAttachedDoc] = useState(doc);
   // 넣은 이미지는 커밋 전이라 레포 주소가 없으므로 미리보기는 브라우저 안의 주소로 보여 준다.
@@ -56,11 +67,11 @@ export function useImageUpload({
 
   const add = (selected: File[], opener: HTMLElement | null) => {
     if (selected.length === 0) return;
-    if (forms.form) return setProblem(IMAGE_ADD_BLOCKED.form);
+    if (forms.form) return setProblem({ kind: "form" });
     // 저장 중이거나 다른 영역 입력을 버릴지 묻는 중에는 입력을 받지 않는다.
     if (!forms.canOpen) return;
-    if (session.preparing) return setProblem(IMAGE_ADD_BLOCKED.preparing);
-    if (selected.length > 1) return setProblem(IMAGE_ADD_BLOCKED.many);
+    if (session.preparing) return setProblem({ kind: "blocked", message: IMAGE_ADD_BLOCKED.preparing });
+    if (selected.length > 1) return setProblem({ kind: "blocked", message: IMAGE_ADD_BLOCKED.many });
     void session.add(selected, ({ images, problems }) => {
       setAttached(session.plan.images.map(({ file, content }) => ({ file, size: content.byteLength })));
       setAttachedDoc(session.plan.doc);
@@ -70,9 +81,15 @@ export function useImageUpload({
         }
       }
       setPreviewImages(Object.fromEntries(objectUrls.current));
-      setProblem(problems.length > 0 ? problems.map((p) => uploadMessage(p.name, p.problem)).join(" ") : null);
+      setProblem(
+        problems.length > 0
+          ? { kind: "invalid", message: problems.map((p) => uploadMessage(p.name, p.problem)).join(" ") }
+          : null,
+      );
       const [image] = images;
-      if (image && !latestOnAdded.current(image, opener)) setProblem(IMAGE_ADD_BLOCKED.unopened);
+      if (image && !latestOnAdded.current(image, opener)) {
+        setProblem({ kind: "blocked", message: IMAGE_ADD_BLOCKED.unopened });
+      }
     });
   };
 
@@ -96,6 +113,19 @@ export function useImageUpload({
     doc: attachedDoc,
     /** 넣은 이미지의 import 변수명 → 브라우저 안 주소. */
     previewImages,
+    /**
+     * `text`를 저장할 때 함께 보낼 첨부. 파일 이름이 `N.ext`인 `image` 파일로 담는다. 준비 중이면 저장하지 않으므로 null.
+     * @param text 편집 영역의 원문(일반 편집은 본문, 원문 편집은 파일 전체).
+     */
+    upload(text: string): FormData | null {
+      const submission = session.submission(text);
+      if (!submission.ok) return null;
+      const data = new FormData();
+      for (const image of submission.images) {
+        data.append("image", new File([new Uint8Array(image.content)], image.file));
+      }
+      return data;
+    },
     /** 파일 선택 창을 연다. 고른 이미지의 폼을 닫으면 `opener`로 초점을 돌린다. */
     pick(opener: HTMLElement | null) {
       pickOpener.current = opener;

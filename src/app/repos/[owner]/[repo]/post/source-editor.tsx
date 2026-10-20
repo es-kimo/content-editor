@@ -15,7 +15,7 @@ import { parseMdx, readInserts, type Syntax } from "@/lib/mdx-doc";
 import type { BodyImageUpload } from "./body-editor";
 import { BodyPreview } from "./body-preview";
 import type { SourceEditorHandle } from "./codemirror-source-editor";
-import { useImageUpload } from "./image-upload";
+import { ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
 import { SaveRow } from "./save-row";
 
@@ -82,12 +82,8 @@ export function SourceEditor({
       onSubmit={(event) => {
         event.preventDefault();
         const next = edited.current;
-        const submission = images.session.submission(next);
-        if (!submission.ok) return;
-        const data = new FormData();
-        for (const image of submission.images) {
-          data.append("image", new File([new Uint8Array(image.content)], image.file));
-        }
+        const data = images.upload(next);
+        if (!data) return;
         save.request(
           { target: "source", before: source, after: next, syntax },
           () => action(next, data),
@@ -140,7 +136,7 @@ export function SourceEditor({
           원문을 저장할 때 글 폴더에 함께 저장하고, 원문에서 가져오지 않는 이미지는 올리지 않아요.
         </p>
       )}
-      {images.problem && <p className="text-sm text-red-600">{images.problem}</p>}
+      <ImageProblemNotice problem={images.problem} />
       <BodyPreview
         markdown={current}
         syntax={syntax}
