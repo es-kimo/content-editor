@@ -6,6 +6,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
   useSyncExternalStore,
   type ComponentProps,
@@ -30,8 +31,17 @@ const browserNavigation = () => (window as Window & { navigation?: BrowserNaviga
  * 같은 탭의 앱 안 이동(`LeaveLink`)과 브라우저 뒤로·앞으로 전에 미저장 입력을 잃는지 묻고,
  * 새로고침·탭 닫기·외부 이동에는 브라우저 기본 경고를 요청한다.
  * @param areas 지금 떠나면 사라지는 미저장 영역.
+ * @param onDiscarded `변경 버리고 나가기`로 떠난 화면이 숨겨질 때 부른다. 입력을 버리는 일은 부르는 쪽이 한다.
  */
-export function LeaveGuardProvider({ areas, children }: { areas: () => EditArea[]; children: ReactNode }) {
+export function LeaveGuardProvider({
+  areas,
+  onDiscarded,
+  children,
+}: {
+  areas: () => EditArea[];
+  onDiscarded: () => void;
+  children: ReactNode;
+}) {
   const router = useRouter();
   const [guard] = useState(() =>
     createLeaveGuard({
@@ -42,6 +52,14 @@ export function LeaveGuardProvider({ areas, children }: { areas: () => EditArea[
   const pathname = usePathname();
   const search = useSearchParams().toString();
   useEffect(() => guard.arrived(), [guard, pathname, search]);
+  // 떠난 화면은 언마운트되지 않고 숨겨지며 그때 layout effect가 정리된다. 숨겨진 화면은 effect를 다시 돌리지 않아
+  // `arrived` 전이라 나가기를 골랐는지 알 수 있고, 이동을 마친 뒤라 버린 입력이 처음 상태로 바뀌는 모습도 보이지 않는다.
+  useLayoutEffect(
+    () => () => {
+      if (guard.discarding()) onDiscarded();
+    },
+    [guard, onDiscarded],
+  );
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
