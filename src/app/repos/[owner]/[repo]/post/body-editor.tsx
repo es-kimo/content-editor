@@ -5,15 +5,9 @@ import { startTransition, useActionState, useEffect, useRef, useState } from "re
 
 import { useReportUnsaved } from "@/app/_lib/unsaved";
 import { uploadPreviewMessage } from "@/lib/content/preview";
-import { addUpload, MAX_IMAGE_SIDE, uploadImports, usedUploads, type UploadPlan } from "@/lib/content/upload";
-import {
-  bodyChanged,
-  editedBody,
-  sameBodyStructure,
-  type MdxDoc,
-  type PreviewImages,
-  type Syntax,
-} from "@/lib/mdx-doc";
+import { MAX_IMAGE_SIDE, uploadImports } from "@/lib/content/upload";
+import { createUploadSession } from "@/lib/content/upload-session";
+import { editedBody, sameBodyStructure, type MdxDoc, type PreviewImages, type Syntax } from "@/lib/mdx-doc";
 
 import type { SaveState } from "./actions";
 import { BodyPreview } from "./body-preview";
@@ -52,15 +46,20 @@ export function BodyEditor({
   const [problem, setProblem] = useState<string | null>(null);
   const normalized = useRef<string | null>(null);
   const edited = useRef<string | null>(null);
-  const plan = useRef<UploadPlan>({ doc, images: [] });
-  // 사이트 미리보기가 이미지 자리를 잡도록 넣은 이미지의 가로·세로를 파일 이름으로 기억한다.
-  const sizes = useRef(new Map<string, { width: number; height: number }>());
+  // 세션이 준비 중 여부를 바꾸면 이 상태로 다시 그려 첨부 판정과 저장 버튼을 갱신한다.
+  const [preparing, setPreparing] = useState(false);
+  const [uploads] = useState(() =>
+    createUploadSession({ doc, files: upload?.files ?? [], prepare: prepareImage, onPreparing: setPreparing }),
+  );
   const [images, setImages] = useState<{ file: string; size: number }[]>([]);
   const [imageProblem, setImageProblem] = useState<string | null>(null);
   const [current, setCurrent] = useState(body);
-  const [changed, setChanged] = useState(false);
+  // 저장할 본문(`editedBody`). 본문이 참조하는 첨부를 이 값으로 판정한다.
+  const [draft, setDraft] = useState(body);
+  const changed = draft !== body;
   // WYSIWYG로 고칠 수 없게 된 글은 입력을 저장하지 않으므로 미저장으로 알리지 않는다.
   useReportUnsaved("body", changed && problem === null);
+  useReportUnsaved("images", uploads.unsaved(draft) && problem === null);
   // 넣은 이미지는 커밋 전이라 레포 주소가 없으므로 미리보기는 브라우저 안의 주소로 보여 준다.
   const objectUrls = useRef(new Map<string, string>());
   const [previewImages, setPreviewImages] = useState<PreviewImages>({});
@@ -78,36 +77,18 @@ export function BodyEditor({
     );
   }
 
-  const addImages = async (files: File[]): Promise<string[]> => {
-    if (!upload) return [];
-    const tags: string[] = [];
-    const problems: string[] = [];
-    for (const file of files) {
-      const prepared = await prepareImage(file);
-      if (!prepared) {
-        problems.push(uploadMessage(file.name, "format"));
-        continue;
+  const addImages = (files: File[], insert: (tags: string[]) => void) =>
+    uploads.add(files, ({ tags, problems }) => {
+      setImages(uploads.plan.images.map(({ file, content }) => ({ file, size: content.byteLength })));
+      for (const { name, image } of uploadImports(uploads.plan)) {
+        if (!objectUrls.current.has(name)) {
+          objectUrls.current.set(name, URL.createObjectURL(new Blob([new Uint8Array(image.content)])));
+        }
       }
-      // 이미지를 줄이는 사이 다른 이미지를 넣었을 수 있어 기다린 뒤의 계획을 읽는다.
-      const added = addUpload(plan.current, prepared, upload.files);
-      if (!added.ok) {
-        problems.push(uploadMessage(file.name, added.problem));
-        continue;
-      }
-      plan.current = added.plan;
-      sizes.current.set(added.file, { width: prepared.width, height: prepared.height });
-      tags.push(added.tag);
-    }
-    setImages(plan.current.images.map(({ file, content }) => ({ file, size: content.byteLength })));
-    for (const { name, image } of uploadImports(plan.current)) {
-      if (!objectUrls.current.has(name)) {
-        objectUrls.current.set(name, URL.createObjectURL(new Blob([new Uint8Array(image.content)])));
-      }
-    }
-    setPreviewImages(Object.fromEntries(objectUrls.current));
-    setImageProblem(problems.length > 0 ? problems.join(" ") : null);
-    return tags;
-  };
+      setPreviewImages(Object.fromEntries(objectUrls.current));
+      setImageProblem(problems.length > 0 ? problems.map((p) => uploadMessage(p.name, p.problem)).join(" ") : null);
+      insert(tags);
+    });
 
   return (
     <form
@@ -115,9 +96,11 @@ export function BodyEditor({
       onSubmit={(event) => {
         event.preventDefault();
         const next = editedBody(body, normalized.current, edited.current);
+        const submission = uploads.submission(next);
+        if (!submission.ok) return;
         const data = new FormData();
         data.set("body", next);
-        for (const image of usedUploads(plan.current, next)) {
+        for (const image of submission.images) {
           data.append("image", new File([new Uint8Array(image.content)], image.file));
         }
         startTransition(() => dispatch(data));
@@ -130,7 +113,7 @@ export function BodyEditor({
           setCurrent(markdown);
           if (initialMarkdownNormalize) normalized.current = markdown;
           else edited.current = markdown;
-          setChanged(bodyChanged(body, normalized.current, edited.current));
+          setDraft(editedBody(body, normalized.current, edited.current));
           if (!initialMarkdownNormalize) return;
           // 렌더링 구조까지 바뀌는 글은 고치지 않은 곳까지 바꿔 저장하게 되므로 WYSIWYG로 고치지 않는다.
           if (!sameBodyStructure(body, markdown, syntax)) {
@@ -164,15 +147,22 @@ export function BodyEditor({
                 // 저장할 본문과 같은 것을 보이도록 저장 때와 같은 규칙으로 본문을 고른다.
                 message: () =>
                   uploadPreviewMessage(
-                    plan.current,
+                    uploads.plan,
                     editedBody(body, normalized.current, edited.current),
-                    sizes.current,
+                    uploads.sizes,
                   ),
               }
             : undefined
         }
       />
-      <SaveRow label="본문 저장" pending={pending} state={state} unchanged="바뀐 내용이 없어 커밋하지 않았다." />
+      {preparing && <p className="text-sm text-zinc-500">이미지를 준비하는 중이다. 본문에 들어간 뒤 저장한다.</p>}
+      <SaveRow
+        label="본문 저장"
+        pending={pending}
+        disabled={preparing}
+        state={state}
+        unchanged="바뀐 내용이 없어 커밋하지 않았다."
+      />
     </form>
   );
 }

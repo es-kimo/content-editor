@@ -13,6 +13,7 @@ import { loadFixtures } from "@/test/fixtures";
 import { editorKeys, findCollection, readPost } from "./read";
 import { saveBody } from "./save-body";
 import { addUpload, MAX_UPLOAD_BYTES, usedUploads, type UploadPlan } from "./upload";
+import { createUploadSession } from "./upload-session";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";
@@ -252,6 +253,39 @@ describe("saveBody 이미지", () => {
     expect(result.ok).toBe(true);
     expect(repo.paths().filter((p) => p.startsWith(`${DIR}/`))).toEqual([`${DIR}/3.jpg`, POST]);
     expect(text(repo.file(POST))).not.toContain("./2.png");
+  });
+
+  test("준비에 실패한 파일이 섞여도 편집 화면이 고른 제출 대상으로 저장하면 정상 첨부만 커밋된다", async () => {
+    const { repo, client } = setup([{ path: POST, content: SOURCE }]);
+    const session = createUploadSession({
+      doc: parseMdx(SOURCE, config.syntax),
+      files: [],
+      prepare: async (file: { name: string; content: Uint8Array | null }) =>
+        file.content && { extension: file.name.split(".")[1]!, content: file.content, width: 1, height: 1 },
+    });
+    let tags: string[] = [];
+    await session.add(
+      [
+        { name: "a.png", content: PNG },
+        { name: "b.png", content: null },
+        { name: "c.jpg", content: JPEG },
+      ],
+      (added) => (tags = added.tags),
+    );
+    const body = `${EDITED}\n${tags.join("\n\n")}\n`;
+    const submission = session.submission(body);
+    if (!submission.ok) throw new Error(submission.reason);
+
+    const result = await saveBody(client, REPO, config, {
+      path: POST,
+      baseSha: blobSha(SOURCE),
+      body,
+      images: submission.images,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(repo.paths().filter((p) => p.startsWith(`${DIR}/`))).toEqual([`${DIR}/2.png`, `${DIR}/3.jpg`, POST]);
+    expect(text(repo.file(POST))).toContain('<Image src={image1} alt="" />');
   });
 
   test("본문에서 쓰지 않는 이미지를 보내면 커밋하지 않는다", async () => {
