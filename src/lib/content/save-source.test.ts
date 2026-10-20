@@ -151,7 +151,7 @@ describe("saveSource 이미지", () => {
         width: 1,
         height: 1,
       }),
-      used: (plan, source) => sourceUploads(plan.images, source),
+      used: sourceUploads,
     });
     let source = SOURCE;
     await session.add([{ name: "a.png", content: PNG }], ({ images: [image] }) => {

@@ -66,7 +66,7 @@ export function SourceEditor({
     doc: opened,
     files: upload?.files ?? [],
     // 원문 편집은 import까지 사용자가 고치므로 원문이 가리키는 첨부를 모두 올린다.
-    used: (plan, text) => sourceUploads(plan.images, text),
+    used: sourceUploads,
     onAdded: (image, opener) => {
       const at = editor.current?.selection();
       return at ? forms.open({ kind: "image", image, place: { at, opened: edited.current } }, opener) : false;

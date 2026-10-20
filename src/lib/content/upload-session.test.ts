@@ -276,7 +276,7 @@ function sourceSession() {
     doc,
     files: [],
     prepare,
-    used: (plan, source) => sourceUploads(plan.images, source),
+    used: sourceUploads,
   });
   return { session, finish };
 }

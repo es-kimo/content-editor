@@ -112,7 +112,7 @@ export function usedUploads(plan: UploadPlan, body: string): UploadImage[] {
  * 원문 편집에서 넣은 이미지 중 원문이 경로(`"./N.ext"`)로 가리키는 것. 쓰지 않는 import라도 가리키면 올린다.
  * 원문 편집은 import까지 사용자가 고치므로, 가리키는 파일을 빼고 저장하면 사이트에서 글을 만들 수 없다.
  */
-export function sourceUploads(images: UploadImage[], source: string): UploadImage[] {
+export function sourceUploads({ images }: Pick<UploadPlan, "images">, source: string): UploadImage[] {
   return images.filter(({ file }) => source.includes(`"./${file}"`) || source.includes(`'./${file}'`));
 }
 
@@ -125,7 +125,7 @@ export function checkSourceUploads(images: UploadImage[], source: string, folder
   const check = checkUploads(images);
   if (!check.ok) return check;
   const taken = new Set(folder.map((name) => name.toLowerCase()));
-  const referenced = new Set(sourceUploads(images, source).map(({ file }) => file));
+  const referenced = new Set(sourceUploads({ images }, source).map(({ file }) => file));
   for (const { file } of images) {
     if (!addedImageFile(file) || taken.has(file)) return { ok: false, reason: "image", file, problem: "name" };
     if (!referenced.has(file)) return { ok: false, reason: "image", file, problem: "unused" };
