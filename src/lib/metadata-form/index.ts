@@ -2,6 +2,7 @@ export {
   applyForm,
   buildForm,
   FIELD_PREFIX,
+  metadataFormChanged,
   readFormData,
   type ApplyResult,
   type FormField,

@@ -3,9 +3,17 @@
 import dynamic from "next/dynamic";
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 
+import { useReportUnsaved } from "@/app/_lib/unsaved";
 import { uploadPreviewMessage } from "@/lib/content/preview";
 import { addUpload, MAX_IMAGE_SIDE, uploadImports, usedUploads, type UploadPlan } from "@/lib/content/upload";
-import { editedBody, sameBodyStructure, type MdxDoc, type PreviewImages, type Syntax } from "@/lib/mdx-doc";
+import {
+  bodyChanged,
+  editedBody,
+  sameBodyStructure,
+  type MdxDoc,
+  type PreviewImages,
+  type Syntax,
+} from "@/lib/mdx-doc";
 
 import type { SaveState } from "./actions";
 import { BodyPreview } from "./body-preview";
@@ -50,6 +58,9 @@ export function BodyEditor({
   const [images, setImages] = useState<{ file: string; size: number }[]>([]);
   const [imageProblem, setImageProblem] = useState<string | null>(null);
   const [current, setCurrent] = useState(body);
+  const [changed, setChanged] = useState(false);
+  // WYSIWYG로 고칠 수 없게 된 글은 입력을 저장하지 않으므로 미저장으로 알리지 않는다.
+  useReportUnsaved("body", changed && problem === null);
   // 넣은 이미지는 커밋 전이라 레포 주소가 없으므로 미리보기는 브라우저 안의 주소로 보여 준다.
   const objectUrls = useRef(new Map<string, string>());
   const [previewImages, setPreviewImages] = useState<PreviewImages>({});
@@ -117,11 +128,10 @@ export function BodyEditor({
         components={components}
         onChange={(markdown, initialMarkdownNormalize) => {
           setCurrent(markdown);
-          if (!initialMarkdownNormalize) {
-            edited.current = markdown;
-            return;
-          }
-          normalized.current = markdown;
+          if (initialMarkdownNormalize) normalized.current = markdown;
+          else edited.current = markdown;
+          setChanged(bodyChanged(body, normalized.current, edited.current));
+          if (!initialMarkdownNormalize) return;
           // 렌더링 구조까지 바뀌는 글은 고치지 않은 곳까지 바꿔 저장하게 되므로 WYSIWYG로 고치지 않는다.
           if (!sameBodyStructure(body, markdown, syntax)) {
             setProblem("WYSIWYG로 열면 글 구조가 바뀌는 글이라 원문 모드에서만 고친다.");

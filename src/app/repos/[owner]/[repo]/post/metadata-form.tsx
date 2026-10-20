@@ -1,8 +1,9 @@
 "use client";
 
-import { startTransition, useActionState } from "react";
+import { startTransition, useActionState, useState } from "react";
 
-import { FIELD_PREFIX, type FormField } from "@/lib/metadata-form";
+import { useReportUnsaved } from "@/app/_lib/unsaved";
+import { FIELD_PREFIX, metadataFormChanged, type FormField } from "@/lib/metadata-form";
 
 import type { SaveState } from "./actions";
 import { SaveRow } from "./save-row";
@@ -18,10 +19,13 @@ export function MetadataForm({
 }) {
   const [state, dispatch, pending] = useActionState(action, { status: "idle" });
   const fieldErrors = state.status === "error" ? (state.fields ?? {}) : {};
+  const [changed, setChanged] = useState(false);
+  useReportUnsaved("metadata", changed);
 
   return (
     <form
       className="flex flex-col gap-4"
+      onChange={(event) => setChanged(metadataFormChanged(fields, new FormData(event.currentTarget)))}
       // form action은 제출 뒤 입력을 초기화한다. 저장이 실패해도 입력이 남게 직접 보낸다.
       onSubmit={(event) => {
         event.preventDefault();

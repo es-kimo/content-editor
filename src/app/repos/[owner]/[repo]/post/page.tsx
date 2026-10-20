@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell } from "@/app/_lib/ui";
+import { UnsavedNotice, UnsavedProvider } from "@/app/_lib/unsaved";
 import { editorKeys, editorModes, IMAGE_COMPONENT, readPost, sourceComponents, type Post } from "@/lib/content";
 import type { Syntax } from "@/lib/mdx-doc";
 import { buildForm } from "@/lib/metadata-form";
@@ -38,7 +39,7 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
   if (!post) notFound();
 
   return (
-    <>
+    <UnsavedProvider>
       <header className="flex flex-col gap-1">
         <Link href={repoHref(repo, post.collection.name)} className="text-sm text-zinc-500 underline">
           {repo} · {post.collection.name}
@@ -46,6 +47,7 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
         <h1 className="text-xl font-semibold break-all">{post.path}</h1>
         <p className="text-xs text-zinc-500">blob {post.sha}</p>
         {typeof saved === "string" && <p className="text-sm text-green-700">저장했다. 커밋 {saved.slice(0, 7)}</p>}
+        <UnsavedNotice />
       </header>
 
       <section className="flex flex-col gap-2">
@@ -70,7 +72,7 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
           </ul>
         )}
       </section>
-    </>
+    </UnsavedProvider>
   );
 }
 

@@ -21,6 +21,8 @@ export type FormField = {
    * (yjshd 강좌의 `keywords`는 배열이 아니라 문자열인 글이 있다)
    */
   locked: string | null;
+  /** 글의 지금 값. 값이 없거나 잠긴 필드는 없다. 미저장 판정이 저장과 같은 규칙으로 비교하는 기준이다. */
+  current?: MetadataValue;
 };
 
 export type FormValues = { [key: string]: string };
@@ -29,6 +31,9 @@ export type ApplyResult =
   { ok: true; value: MetadataObject } | { ok: false; errors: { key: string; message: string }[] };
 
 export const FIELD_PREFIX = "metadata:";
+
+/** 입력 해석에 필요한 필드 정보. 서버의 config 필드와 클라이언트의 `FormField`가 같은 해석을 쓴다. */
+type InputField = { type: MetadataField["type"]; options?: readonly string[] };
 
 /** config의 metadata 정의와 글의 지금 값으로 폼을 만든다. config에 적힌 순서를 따른다. */
 export function buildForm(collection: Collection, metadata: MetadataObject): FormField[] {
@@ -46,7 +51,7 @@ export function buildForm(collection: Collection, metadata: MetadataObject): For
     const initial = toInput(field, found.value);
     if (initial === null) return { ...base, initial: "", locked: `값이 ${field.type} 형식이 아니다` };
     if (field.type === "select" && !base.options.includes(initial)) base.options.unshift(initial);
-    return { ...base, initial, locked: null };
+    return { ...base, initial, locked: null, current: found.value };
   });
 }
 
@@ -75,7 +80,7 @@ export function applyForm(collection: Collection, metadata: MetadataObject, valu
     const current = found.kind === "found" ? found.value : undefined;
     if (current !== undefined && toInput(field, current) === null) continue;
 
-    const parsed = fromInput(field, raw, current);
+    const parsed = savedValue(field, raw, current);
     if (!parsed.ok) {
       errors.push({ key, message: parsed.message });
       continue;
@@ -84,7 +89,7 @@ export function applyForm(collection: Collection, metadata: MetadataObject, valu
       errors.push({ key, message: "필수 항목이다" });
       continue;
     }
-    if (parsed.value === undefined || (current === undefined && isEmpty(parsed.value))) {
+    if (parsed.value === undefined) {
       if (current !== undefined) remove(next, key);
       continue;
     }
@@ -92,6 +97,37 @@ export function applyForm(collection: Collection, metadata: MetadataObject, valu
   }
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value: next };
 }
+
+/**
+ * metadata 폼에 저장하지 않은 변경이 있는지. 고칠 수 있는 필드의 지금 입력을 저장(`applyForm`)과 같은 규칙으로 해석해
+ * 글의 지금 값과 비교한다. 그래서 저장해도 값이 그대로인 입력(끝의 빈 줄, CRLF, 0초를 뗀 날짜)은 변경이 아니다.
+ * 잠긴 필드는 제출되지 않으므로 보지 않는다. 필수값을 비우거나 형식이 틀린 중간 입력도 변경이다.
+ * @param data 폼의 지금 입력 (`new FormData(form)`)
+ */
+export function metadataFormChanged(fields: FormField[], data: FormData): boolean {
+  return fields.some((field) => {
+    if (field.locked !== null) return false;
+    // 선택지가 고르지 않은 자리(disabled)에 있으면 FormData에 빠지므로 빈 값으로 본다.
+    const raw = data.get(FIELD_PREFIX + field.key);
+    const parsed = savedValue(field, typeof raw === "string" ? raw : "", field.current);
+    return !parsed.ok || !sameValue(parsed.value, field.current);
+  });
+}
+
+/** 입력 하나를 저장하면 그 키가 가질 값. `undefined`는 키가 없다는 뜻이다. 원래 없던 키는 빈 입력으로 더하지 않는다. */
+function savedValue(
+  field: InputField,
+  raw: string,
+  current: MetadataValue | undefined,
+): { ok: true; value: MetadataValue | undefined } | { ok: false; message: string } {
+  const parsed = fromInput(field, raw, current);
+  if (parsed.ok && current === undefined && isEmpty(parsed.value)) return { ok: true, value: undefined };
+  return parsed;
+}
+
+// 폼으로 고칠 수 있는 값은 문자열이거나 문자열 배열이다.
+const sameValue = (a: MetadataValue | undefined, b: MetadataValue | undefined) =>
+  Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((item, i) => item === b[i]) : a === b;
 
 export function set(metadata: MetadataObject, key: string, value: MetadataValue) {
   const parts = key.split(".");
@@ -142,7 +178,7 @@ function toInput(field: MetadataField, value: MetadataValue): string | null {
 
 /** 폼 입력을 metadata 값으로. `undefined`는 키를 지운다는 뜻이다. */
 function fromInput(
-  field: MetadataField,
+  field: InputField,
   raw: string,
   current: MetadataValue | undefined,
 ): { ok: true; value: MetadataValue | undefined } | { ok: false; message: string } {
@@ -155,7 +191,7 @@ function fromInput(
       return { ok: true, value: raw.replace(/\r\n?/g, "\n") };
     case "select":
       if (raw === "") return { ok: true, value: undefined };
-      if (!field.options.includes(raw) && raw !== current) {
+      if (!field.options?.includes(raw) && raw !== current) {
         return { ok: false, message: `선택지에 없는 값이다: ${raw}` };
       }
       return { ok: true, value: raw };

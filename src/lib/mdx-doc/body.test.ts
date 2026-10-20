@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { editedBody, sameBodyStructure, setBody } from "./body";
+import { bodyChanged, editedBody, sameBodyStructure, setBody } from "./body";
 import { parseMdx, printMdx } from "./split";
 
 describe.each(fixtureSources)("픽스처 본문: $name", (source) => {
@@ -66,6 +66,26 @@ describe("editedBody", () => {
   test("에디터가 앞뒤 공백을 뗀 본문이 처음 상태와 같으면 원본을 저장한다", () => {
     expect(editedBody(original, normalized, "- 하나\n- 둘")).toBe(original);
     expect(editedBody(original, null, "* 하나\n* 둘")).toBe(original);
+  });
+});
+
+describe("bodyChanged", () => {
+  const original = "* 하나\n* 둘\n";
+  const normalized = "- 하나\n- 둘\n";
+
+  test("열기만 했으면 에디터가 다시 쓴 본문이 있어도 변경이 아니다", () => {
+    expect(bodyChanged(original, null, null)).toBe(false);
+    expect(bodyChanged(original, normalized, null)).toBe(false);
+  });
+
+  test("본문을 고치면 변경이다", () => {
+    expect(bodyChanged(original, normalized, "- 하나\n- **둘**\n")).toBe(true);
+    expect(bodyChanged(original, null, "* 하나\n* 셋\n")).toBe(true);
+  });
+
+  test("고쳤다가 다시 쓴 처음 상태로 되돌리면 변경이 사라진다", () => {
+    expect(bodyChanged(original, normalized, normalized)).toBe(false);
+    expect(bodyChanged(original, normalized, "- 하나\n- 둘")).toBe(false);
   });
 });
 

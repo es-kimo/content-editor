@@ -23,6 +23,14 @@ export function editedBody(original: string, normalized: string | null, edited: 
 }
 
 /**
+ * WYSIWYG 본문에 저장하지 않은 변경이 있는지. 저장할 본문(`editedBody`)이 원본과 다를 때만 변경으로 본다.
+ * 에디터가 글을 열며 다시 쓴 것만으로는 변경이 아니고, 고친 뒤 처음 상태로 되돌리면 변경이 사라진다.
+ */
+export function bodyChanged(original: string, normalized: string | null, edited: string | null): boolean {
+  return editedBody(original, normalized, edited) !== original;
+}
+
+/**
  * 두 본문이 렌더링했을 때 같은 구조인지 본다. WYSIWYG 에디터가 다시 쓴 본문이 원본과 같은 글인지 판단하는 데 쓴다.
  * 목록 기호(`*`→`-`)나 강조 기호처럼 마크다운 표기만 다른 것은 같다고 본다. HTML은 글자 사이 공백을 하나로 보이므로
  * 텍스트의 연속 공백 차이도 같다고 본다. 둘 중 하나라도 읽을 수 없으면 다르다고 본다.

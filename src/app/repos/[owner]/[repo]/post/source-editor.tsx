@@ -3,8 +3,10 @@
 import dynamic from "next/dynamic";
 import { startTransition, useActionState, useRef, useState } from "react";
 
+import { useReportUnsaved } from "@/app/_lib/unsaved";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 미리보기 메시지만 가져온다.
 import { previewMessage } from "@/lib/content/preview";
+import { sourceChanged } from "@/lib/content/unsaved";
 import type { Syntax } from "@/lib/mdx-doc";
 
 import type { SaveState } from "./actions";
@@ -35,6 +37,7 @@ export function SourceEditor({
   const [state, dispatch, pending] = useActionState(action, { status: "idle" });
   const edited = useRef(source);
   const [current, setCurrent] = useState(source);
+  useReportUnsaved("source", sourceChanged(source, current));
 
   return (
     <form
