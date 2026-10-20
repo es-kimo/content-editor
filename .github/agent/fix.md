@@ -11,7 +11,7 @@
 
 순서
 
-1. `.agent/feedback.md`의 항목마다 원인을 코드에서 확인한다. 지적이 틀렸다고 판단되면 고치지 말고 근거를 summary에 적는다.
+1. `.agent/feedback.md`의 항목마다 원인을 코드에서 확인한다. 지적이 틀렸다고 판단되면 고치지 말고 근거를 summary에 적는다. 다음 리뷰가 이 근거를 읽고 판단하므로, 근거는 파일·줄이나 테스트 이름처럼 확인할 수 있게 쓴다.
 2. 고치고, 지적된 문제를 잡는 테스트가 없으면 추가한다. 중복 지적이면 새 코드를 지우고 기존 코드를 쓰는 쪽으로 고친다. 기존 코드를 고쳐야 하면 그 호출자도 함께 확인한다.
 3. 고친 범위에 `review-kit:maintainability-review`, `review-kit:test-review`(화면이면 `review-kit:ui-consistency-review`)를 셀프 체크 모드로 적용한다.
 4. 조사용으로 만든 임시 파일을 지우고 `pnpm format`을 돌린 뒤 `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm build`를 모두 통과시킨다. e2e는 고친 동작을 다루는 파일만 `pnpm e2e e2e/<파일>`로 돌린다. 전체 e2e는 워크플로가 수정 뒤에 돌린다.

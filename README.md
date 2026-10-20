@@ -58,7 +58,7 @@ pnpm fixtures:sync   # fixtures/<name>/ 아래에 page.mdx를 받는다 (gitigno
 Night shift (23:00 KST cron, 수동 실행)
  ├ 슬롯 1..N (차례로, 슬롯마다 새 러너)
  │   다음 이슈 고르기 → 없으면 끝
- │   구현 → 검사(lint·format·typecheck·test·build·e2e) → 리뷰 → 수정 (반복, 최대 AGENT_MAX_FIX번)
+ │   구현 → 검사(lint·format·typecheck·test·build·e2e) → 리뷰 → 수정 (반복)
  │   승인 → PR 열기 → CI → merge
  │   사람이 정할 것 → 이슈를 소유자에게 assign + @멘션
  │   사용량 한도 → 진행분 저장 후 남은 슬롯 취소
@@ -68,6 +68,7 @@ CI (PR)          check + e2e + guard (agent/ 브랜치의 금지 변경 검사)
 
 - 트리거는 cron과 수동 실행뿐이다. 다른 워크플로를 띄우거나 라벨·이벤트로 이어 가지 않으므로, Actions에는 밤마다 Night shift 실행 1개와 PR마다 CI 1개가 남는다
 - 단계 사이 상태는 [slot.sh](scripts/agent/slot.sh)의 변수다. PR은 리뷰가 승인한 뒤에만 열리고, 리뷰 결과와 수정 이력은 PR 본문의 접힌 영역에 있다
+- 리뷰는 지난 지적과 수정 요약(`.agent/review-history.md`)을 받는다. 수정 에이전트가 지적이 틀렸다고 근거만 남기면 다음 리뷰가 그 근거를 코드로 확인한다
 - 사람은 코드 대신 PR 본문을 읽는다. 에이전트가 PRD·이슈에 없어서 스스로 정한 것은 `## 에이전트가 정한 것`에 적고, 아침 보고가 이것만 모아 보여 준다
 - 끝내지 못한 작업은 `agent-wip/<이슈>` 브랜치에 저장하고 다음 시도가 이어 간다. 검사·CI·merge 실패는 다음 밤에 다시 시도하고, 마지막 사람 차례 뒤 `AGENT_MAX_ATTEMPTS`번 실패하면 사람 차례로 넘긴다
 - 사용량 한도는 실행 기록의 `rate_limit_event`와 오류 문구로 판단한다 ([classify.mts](scripts/agent/classify.mts))
@@ -78,12 +79,12 @@ CI (PR)          check + e2e + guard (agent/ 브랜치의 금지 변경 검사)
 
 사람 차례는 assignee 하나로 나타낸다. 소유자에게 assign된 이슈가 내 할 일이고, 에이전트는 assign된 이슈를 고르지 않는다. 알림이 오도록 코멘트·assign은 봇 계정(es-kimo-bot)이 한다.
 
-| 언제                                                          | 무엇을                                           |
-| ------------------------------------------------------------- | ------------------------------------------------ |
-| 에이전트가 멈춤 (외부 계정, 금지 파일, 제품 방향이 걸린 결정) | 이슈 코멘트의 "정할 것·선택지·추천"에 답한다     |
-| 수정 `AGENT_MAX_FIX`번 뒤에도 리뷰가 막음                     | 지적을 고칠 방향·범위에서 빼기·무시하기를 정한다 |
-| 사람 작업 이슈(QA 등)의 의존이 모두 닫힘                      | 그 이슈를 한다 (아침 보고가 assign한다)          |
-| 남은 에이전트 이슈가 없음                                     | 다음 기획을 한다 (`planning` 이슈)               |
+| 언제                                                                               | 무엇을                                           |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 에이전트가 멈춤 (외부 계정, 금지 파일, 제품 방향이 걸린 결정)                      | 이슈 코멘트의 "정할 것·선택지·추천"에 답한다     |
+| 리뷰 지적을 `AGENT_MAX_FIX`번 고쳐도 막음, 같은 지적이 두 번 고친 뒤에도 다시 나옴 | 지적을 고칠 방향·범위에서 빼기·무시하기를 정한다 |
+| 사람 작업 이슈(QA 등)의 의존이 모두 닫힘                                           | 그 이슈를 한다 (아침 보고가 assign한다)          |
+| 남은 에이전트 이슈가 없음                                                          | 다음 기획을 한다 (`planning` 이슈)               |
 
 답을 코멘트로 남기고 assign을 풀면 다음 밤에 이어 간다. 소유자 답은 구현·리뷰·수정 모두 이슈 본문보다 우선한다.
 
@@ -119,7 +120,7 @@ CI (PR)          check + e2e + guard (agent/ 브랜치의 금지 변경 검사)
 | `PLANNER_GH_TOKEN`                                                    | secret   | 봇 계정 classic PAT. 기획자와 같이 쓴다 ([기획자 준비](.github/planner/README.md#준비))        |
 | `AGENT_ENABLED`                                                       | variable | `true`일 때만 돈다 (끄는 스위치)                                                               |
 | `AGENT_NIGHT_SLOTS`                                                   | variable | 기본 `10`. 하룻밤 슬롯 수 (= 최대 merge 수)                                                    |
-| `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `3` / `2`                                                                                 |
+| `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `5` / `2`. 수정 상한은 검사 실패 수정과 리뷰 지적 수정에 따로 적용한다                    |
 | `AGENT_MODEL`                                                         | variable | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR 본문 끝에 남는다    |
 | `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `medium` / `high` / `medium`                                                              |
 | `AGENT_SKILLS_MARKETPLACE`                                            | variable | 기본 `https://github.com/es-kimo/claude-skills.git`. `review-kit` 플러그인이 있는 마켓플레이스 |

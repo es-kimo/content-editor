@@ -7,6 +7,7 @@
 - `.agent/issue.md`: 이 PR이 닫으려는 이슈와 소유자 코멘트. 소유자 답은 이슈 본문보다 우선한다. 소유자가 무시하라고 한 지적은 blocking으로 올리지 않는다
 - `.agent/pr.md`: PR 본문
 - `.agent/diff.patch`: `main` 대비 변경
+- `.agent/review-history.md`: 이 브랜치의 지난 리뷰 지적과 그때 수정 에이전트의 수정 요약. 처음 리뷰면 비어 있다. 수정 에이전트가 지적이 틀렸다고 근거를 남긴 항목은 그 근거를 코드로 확인한다. 근거가 맞으면 다시 올리지 않고, 틀렸으면 왜 틀렸는지를 `problem`에 쓴다. 같은 지적을 되풀이할 때는 제목을 지난번과 같게 쓴다
 - `.agent/wiki/`: 레포 wiki (`PRD.md`, `작업-방식.md`)
 - 레포 전체 (읽기만), `CLAUDE.md` 규칙
 - `docs/review/architecture.md`, `docs/review/testing.md`, `docs/review/design.md`: 이 레포의 리뷰 기준. 스킬의 일반 기준보다 우선한다
