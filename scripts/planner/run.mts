@@ -4,7 +4,7 @@
  *   node scripts/planner/run.mts jobs                 # 이번 이벤트에서 할 일 목록(JSON 배열)
  *   node scripts/planner/run.mts context '<job>'      # $PLANNER_DIR/context.md 작성
  *   node scripts/planner/run.mts apply '<job>' out.json
- *   node scripts/planner/run.mts fail '<job>'         # 실패를 기획 이슈에 알린다
+ *   node scripts/planner/run.mts fail '<job>' [out.json]   # 실패를 기획 이슈에 알린다
  *
  * env: GH_TOKEN(기획자 봇), REPO, OWNER, EVENT_NAME, EVENT_ACTION, GITHUB_EVENT_PATH, MODE, PLANNER_DIR, MODEL, EFFORT, RUN_URL
  */
@@ -20,6 +20,7 @@ import {
   type ApiPull,
 } from "./github.mts";
 import {
+  blockedReason,
   LABEL,
   nextJob,
   nextVersion,
@@ -278,6 +279,8 @@ async function applyRelease(job: Extract<Job, { mode: "release" }>, out: Release
 
 async function apply(job: Job, outPath: string): Promise<void> {
   const out = JSON.parse(await readFile(outPath, "utf8")) as unknown;
+  const reason = blockedReason(out);
+  if (reason) throw new Error(`기획자가 멈춤: ${reason}`);
   switch (job.mode) {
     case "converse":
       return applyConverse(job, out as ConverseOut);
@@ -290,10 +293,20 @@ async function apply(job: Job, outPath: string): Promise<void> {
   }
 }
 
-async function fail(job: Job): Promise<void> {
+async function fail(job: Job, outPath: string | undefined): Promise<void> {
   if (job.mode !== "converse" && job.mode !== "breakdown") return;
+  const out = outPath
+    ? await readFile(outPath, "utf8").then(
+        (text) => JSON.parse(text) as unknown,
+        () => null,
+      )
+    : null;
+  const reason = out ? blockedReason(out) : null;
   // 실패도 봇의 마지막 글이 되므로 같은 이슈를 계속 다시 돌리지 않는다. 다시 하려면 사용자가 코멘트를 단다.
-  await comment(job.issue, "기획자 실행이 실패했어요. 실행 로그를 확인해 주세요. 다시 코멘트를 달면 다시 시도해요.");
+  await comment(
+    job.issue,
+    `기획자 실행이 실패했어요.${reason ? `\n\n> ${reason}` : ""}\n\n실행 로그를 확인해 주세요. 다시 코멘트를 달면 다시 시도해요.`,
+  );
 }
 
 const [command, jobArg, outPath] = process.argv.slice(2);
@@ -309,7 +322,7 @@ switch (command) {
     await apply(job!, outPath!);
     break;
   case "fail":
-    await fail(job!);
+    await fail(job!, outPath);
     break;
   default:
     throw new Error(`알 수 없는 명령: ${command}`);

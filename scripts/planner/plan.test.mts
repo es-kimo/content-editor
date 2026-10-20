@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  blockedReason,
   conversation,
   nextJob,
   nextVersion,
@@ -131,6 +132,23 @@ describe("resolveRefs·refErrors", () => {
 
   test("만들지 않은 이슈를 가리키면 던진다", () => {
     expect(() => resolveRefs("#new2", [90])).toThrow("#new2");
+  });
+});
+
+describe("blockedReason", () => {
+  test("done이면 반영한다", () => {
+    expect(blockedReason({ status: "done", blocked_reason: null, title: "제안" })).toBeNull();
+  });
+
+  test("blocked면 모델이 적은 이유를 돌려준다", () => {
+    const out = { status: "blocked", blocked_reason: " 샌드박스 오류로 파일을 읽지 못했다 ", title: "", body: "" };
+    expect(blockedReason(out)).toBe("샌드박스 오류로 파일을 읽지 못했다");
+  });
+
+  test("status가 없거나 이유가 비면 끝내지 못한 것으로 본다", () => {
+    expect(blockedReason({ title: "실행 환경 오류로 진행 불가", body: "..." })).toBe("이유 없음");
+    expect(blockedReason({ status: "blocked", blocked_reason: "" })).toBe("이유 없음");
+    expect(blockedReason(null)).toBe("이유 없음");
   });
 });
 

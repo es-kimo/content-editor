@@ -1,8 +1,15 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["comment", "milestone_description", "issues", "wiki_message"],
+  "required": ["status", "blocked_reason", "comment", "milestone_description", "issues", "wiki_message"],
   "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["done", "blocked"]
+    },
+    "blocked_reason": {
+      "type": ["string", "null"]
+    },
     "comment": {
       "type": "string"
     },

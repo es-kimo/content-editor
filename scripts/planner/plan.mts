@@ -121,6 +121,16 @@ export function refErrors(bodies: string[]): string[] {
   return errors;
 }
 
+/**
+ * 모델이 일을 끝내지 못했다고 답했으면 그 이유. 끝냈으면 null.
+ * 입력을 못 읽어도 모델은 스키마에 맞는 "진행 불가" 글을 쓰므로, 형식만 보고 반영하면 그 글이 제안·코멘트로 올라간다.
+ */
+export function blockedReason(out: unknown): string | null {
+  const o = (typeof out === "object" && out !== null ? out : {}) as { status?: unknown; blocked_reason?: unknown };
+  if (o.status === "done") return null;
+  return typeof o.blocked_reason === "string" && o.blocked_reason.trim() ? o.blocked_reason.trim() : "이유 없음";
+}
+
 /** 마일스톤 설명에 남긴 기획 이슈 번호. */
 export function planningIssueOf(description: string | null): number | null {
   const match = description?.match(/기획 이슈 #(\d+)/);
