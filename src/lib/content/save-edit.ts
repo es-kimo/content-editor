@@ -4,9 +4,11 @@ import { checkMdx, parseMdx, printMdx, readMetadata, setMetadata } from "@/lib/m
 import {
   actionStatus,
   readStatus,
+  readTrash,
   STATUS_FIELD,
   TITLE_FIELD,
   withStatus,
+  type ActionStatus,
   type FormValues,
   type PostAction,
   type PostStatus,
@@ -62,7 +64,11 @@ export type SaveEditResult =
   | Exclude<UploadCheck, { ok: true }>
   | { ok: false; reason: StatusProblem }
   /** 고친 원문의 metadata를 읽거나 쓸 수 없거나 상태를 담을 `other`가 객체가 아니라 상태를 행동에 맞출 수 없다. */
-  | { ok: false; reason: "source-status" };
+  | { ok: false; reason: "source-status" }
+  /** 휴지통 글이다. 복구한 뒤에 고친다. */
+  | { ok: false; reason: "trashed" }
+  /** 원문이나 폼에서 휴지통 표시(`other.trashedAt`)를 더했다. 휴지통 이동은 저장이 아닌 별도 행동이다. */
+  | { ok: false; reason: "trash-edit" };
 
 /**
  * 글 전체를 커밋 하나로 저장하고 게시 상태를 행동이 정한 값으로 둔다. 폼·원문에 적힌 상태는 따르지 않는다.
@@ -100,10 +106,14 @@ export async function saveEdit(
   return saveSource(client, repo, config, opened.post, decided.status, input.action, content);
 }
 
-/** 서버에서 읽은 글의 상태로 행동을 할 수 있는지 본다. metadata를 읽을 수 없는 글은 상태를 알 수 없는 글이다. */
-function decideStatus(post: Post, action: PostAction) {
-  const current = post.metadata?.editable ? readStatus(post.metadata.value) : null;
-  return actionStatus(post.collection, current, action);
+/**
+ * 서버에서 읽은 글의 상태로 행동을 할 수 있는지 본다. metadata를 읽을 수 없는 글은 상태를 알 수 없는 글이다.
+ * 휴지통 글은 복구한 뒤에 고친다.
+ */
+function decideStatus(post: Post, action: PostAction): ActionStatus | { ok: false; reason: "trashed" } {
+  const metadata = post.metadata?.editable ? post.metadata.value : null;
+  if (metadata && readTrash(metadata).trashed) return { ok: false, reason: "trashed" };
+  return actionStatus(post.collection, metadata && readStatus(metadata), action);
 }
 
 async function saveForm(
@@ -117,6 +127,7 @@ async function saveForm(
 ): Promise<SaveEditResult> {
   const applied = applyMetadataForm(post, { ...content?.values, [STATUS_FIELD]: status });
   if (!applied.ok && applied.reason === "not-editable") return applied;
+  if (applied.ok && readTrash(applied.value).trashed) return { ok: false, reason: "trash-edit" };
   const title = applied.ok ? applied.value.title : content?.values[TITLE_FIELD];
   const body = content?.body ?? post.doc.body;
   const errors = withRequired(applied.ok ? [] : applied.errors, action, title, body);
@@ -153,6 +164,8 @@ async function saveSource(
     if (!compiled.ok) return { ok: false, reason: "compile", error: compiled.error };
     return { ok: false, reason: "source-status" };
   }
+  // 서버 원본은 휴지통 글이 아니므로(decideStatus) 원문에 휴지통 표시가 있으면 원문에서 더한 것이다.
+  if (readTrash(metadata.value).trashed) return { ok: false, reason: "trash-edit" };
 
   const errors = withRequired([], action, metadata.value.title, doc.body);
   if (errors.length > 0) return { ok: false, reason: "invalid", errors };

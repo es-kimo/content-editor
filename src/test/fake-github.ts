@@ -10,6 +10,30 @@ export function blobSha(content: string | Uint8Array): string {
   return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
+export const GRAPHQL_URL = "https://api.github.com/graphql";
+
+/**
+ * 글 목록이 blob 텍스트를 묶어 읽는 GraphQL 요청에 답한다. 쿼리 모양은 두 가짜 GitHub가 여기서만 안다.
+ * `textOf`는 없는 blob이면 `undefined`, 실제 API처럼 텍스트로 읽을 수 없는 blob이면 `null`을 돌려준다.
+ */
+export function blobTextsResponse(
+  repo: string,
+  init: RequestInit | undefined,
+  textOf: (oid: string) => string | null | undefined,
+): Response {
+  const { query, variables } = JSON.parse(String(init?.body)) as {
+    query: string;
+    variables: { owner: string; name: string };
+  };
+  if (`${variables.owner}/${variables.name}` !== repo) return json({ data: { repository: null } });
+  const repository: Record<string, { text: string | null } | null> = {};
+  for (const [, alias, oid] of query.matchAll(/(\w+): object\(oid: "([0-9a-f]+)"\)/g)) {
+    const text = textOf(oid);
+    repository[alias] = text === undefined ? null : { text };
+  }
+  return json({ data: { repository } });
+}
+
 /**
  * 파일 목록으로 GitHub API(트리, GraphQL blob, contents 폴더, blob raw)를 흉내 낸다.
  * 실제 API처럼 경로는 URL 인코딩된 채로 온다.
@@ -29,7 +53,6 @@ export function fakeGitHub(repo: string, branch: string, files: FakeFile[], opti
     typeof content === "string" ? new TextEncoder().encode(content).length : content.length;
 
   const base = `https://api.github.com/repos/${repo}`;
-  const [owner, name] = repo.split("/");
 
   return mockFetch((url, init) => {
     const href = decodeURIComponent(url.href);
@@ -40,18 +63,11 @@ export function fakeGitHub(repo: string, branch: string, files: FakeFile[], opti
       ];
       return json({ sha: "root", tree, truncated: options.truncated ?? false });
     }
-    if (url.href === "https://api.github.com/graphql") {
-      const { query, variables } = JSON.parse(String(init?.body)) as {
-        query: string;
-        variables: { owner: string; name: string };
-      };
-      if (variables.owner !== owner || variables.name !== name) return json({ data: { repository: null } });
-      const repository: Record<string, { text: string | null } | null> = {};
-      for (const [, alias, oid] of query.matchAll(/(\w+): object\(oid: "([0-9a-f]+)"\)/g)) {
+    if (url.href === GRAPHQL_URL) {
+      return blobTextsResponse(repo, init, (oid) => {
         const content = blobs.get(oid);
-        repository[alias] = content === undefined ? null : { text: typeof content === "string" ? content : null };
-      }
-      return json({ data: { repository } });
+        return content === undefined ? undefined : typeof content === "string" ? content : null;
+      });
     }
     const contents = new RegExp(`^${base}/contents/(.+)\\?ref=${branch}$`).exec(href);
     if (contents) {

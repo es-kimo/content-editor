@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { blobSha, type FakeFile } from "./fake-github";
+import { blobSha, blobTextsResponse, type FakeFile, GRAPHQL_URL } from "./fake-github";
 import { json, mockFetch } from "./mock-fetch";
 
 type Commit = { sha: string; tree: string; parents: string[]; message: string; author: unknown };
@@ -109,6 +109,19 @@ export function fakeGitRepo(repo: string, branch: string, files: FakeFile[]) {
       if (!entries) return json({ message: "Not Found" }, 404);
       const tree = [...entries].map(([path, sha]) => ({ path, type: "blob", sha, size: blobs.get(sha)!.length }));
       return json({ sha: hash([...entries].sort()), tree, truncated: false });
+    }
+
+    if (method === "POST" && url.href === GRAPHQL_URL) {
+      const decoder = new TextDecoder("utf-8", { fatal: true });
+      return blobTextsResponse(repo, init, (oid) => {
+        const data = blobs.get(oid);
+        if (!data) return undefined;
+        try {
+          return decoder.decode(data);
+        } catch {
+          return null;
+        }
+      });
     }
 
     const contents = new RegExp(`^${base}/contents/(.+)\\?ref=(.+)$`).exec(href);

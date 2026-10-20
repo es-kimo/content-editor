@@ -1,6 +1,7 @@
 import type { Collection, MetadataField } from "@/lib/editor-config";
 import type { MetadataValue } from "@/lib/mdx-doc";
 
+import { datetimeNow } from "./datetime";
 import { set, type MetadataObject } from "./form";
 import { STATUS_FIELD } from "./labels";
 import type { PostStatus } from "./status";
@@ -31,8 +32,7 @@ function defaultValue(key: string, field: MetadataField, now: Date): MetadataVal
     // 초안이 없는 설정은 상태를 다룰 수 없어 저장에서 막으므로 첫 선택지로 둔다.
     case "select":
       return key === STATUS_FIELD && field.options.includes(DRAFT) ? DRAFT : field.options[0]!;
-    // 폼이 원래 값이 없을 때 쓰는 형식(`YYYY-MM-DDTHH:mm:ssZ`)과 맞춘다.
     case "datetime":
-      return now.toISOString().replace(/\.\d{3}Z$/, "Z");
+      return datetimeNow(now);
   }
 }

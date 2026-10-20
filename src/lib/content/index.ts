@@ -59,7 +59,15 @@ export {
   type TextInsertItem,
   type TocInsertItem,
 } from "./insert-form";
-export { fetchBlobTexts, fetchTree, listPosts, matchPosts, type PostListItem, type TreeEntry } from "./posts";
+export {
+  fetchBlobTexts,
+  fetchTree,
+  listPosts,
+  listTrash,
+  matchPosts,
+  type PostListItem,
+  type TreeEntry,
+} from "./posts";
 export {
   previewMessage,
   previewOrigin,
@@ -104,6 +112,7 @@ export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from ".
 export { checkSubmenuName, newPostPath, postSlug, type SubmenuNameCheck, type SubmenuNameProblem } from "./slug";
 export { listTitle, postTitle, summarizePost, UNTITLED_POST, type PostSummary } from "./summary";
 export { timed } from "./timed";
+export { restorePost, trashPost, type TrashInput, type TrashResult } from "./trash";
 export { areaNames, newPostChanges, sourceChanged, unsavedAreas, type EditArea, type NewPostInput } from "./unsaved";
 export {
   addUpload,

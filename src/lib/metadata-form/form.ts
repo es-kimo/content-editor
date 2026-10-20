@@ -157,7 +157,7 @@ export function set(metadata: MetadataObject, key: string, value: MetadataValue)
   define(node, parts.at(-1)!, value);
 }
 
-function remove(metadata: MetadataObject, key: string) {
+export function remove(metadata: MetadataObject, key: string) {
   const parts = key.split(".");
   let node = metadata;
   for (const part of parts.slice(0, -1)) node = node[part] as MetadataObject;

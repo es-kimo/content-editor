@@ -316,6 +316,59 @@ describe("saveEdit 상태를 다룰 수 없을 때", () => {
   });
 });
 
+describe("saveEdit 휴지통 글", () => {
+  const TRASHED_AT = '\n    trashedAt: "2026-10-20T09:30:15Z",';
+  const trashed = (status: string) => post(status).replace(`status: "${status}",`, `status: "${status}",${TRASHED_AT}`);
+
+  test("휴지통 글은 일반 편집·원문·게시 내리기 어떤 저장도 커밋 없이 trashed로 거절한다", async () => {
+    for (const [source, input] of [
+      [trashed("draft"), { action: "save-draft", content: form({}, BODY) }],
+      [trashed("draft"), { action: "publish", content: form({}, BODY) }],
+      [trashed("draft"), { action: "save-draft", content: { mode: "source", source: DRAFT } }],
+      [trashed("ready"), { action: "unpublish" }],
+    ] as const) {
+      const { repo, before, result } = save(source, input);
+
+      expect(await result).toEqual({ ok: false, reason: "trashed" });
+      expect(repo.head()).toBe(before);
+    }
+  });
+
+  test("원문에서 휴지통 표시를 더한 저장은 커밋 없이 trash-edit로 거절한다", async () => {
+    const source = trashed("draft").replace("안녕하세요.", "휴진을 알려 드립니다.");
+    const { repo, before, result } = save(DRAFT, { action: "save-draft", content: { mode: "source", source } });
+
+    expect(await result).toEqual({ ok: false, reason: "trash-edit" });
+    expect(repo.head()).toBe(before);
+  });
+
+  test("설정 폼에 휴지통 시각 필드가 있어도 폼으로 휴지통 표시를 더하지 못한다", async () => {
+    const withTrashField = testConfig([
+      {
+        name: "게시판",
+        path: "content/4.게시판/{slug}/page.mdx",
+        metadata: {
+          title: { type: "string" },
+          "other.status": { type: "select", options: ["ready", "draft"] },
+          "other.trashedAt": { type: "datetime" },
+        },
+      },
+    ]);
+    const { repo, client } = setup([{ path: POST, content: DRAFT }]);
+    const before = repo.head();
+
+    const result = await saveEdit(client, REPO, withTrashField, {
+      path: POST,
+      baseSha: blobSha(DRAFT),
+      action: "save-draft",
+      content: form({ "other.trashedAt": "2026-10-20T09:30:15" }, BODY),
+    });
+
+    expect(result).toEqual({ ok: false, reason: "trash-edit" });
+    expect(repo.head()).toBe(before);
+  });
+});
+
 describe("saveEdit 실패", () => {
   test("편집을 연 뒤 다른 곳에서 글이 바뀌었으면 changed", async () => {
     const { repo, client } = setup([{ path: POST, content: DRAFT }]);

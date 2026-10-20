@@ -59,20 +59,20 @@ export async function fetchBlobTexts(client: GitHubClient, repo: string, shas: s
   return texts;
 }
 
-const byCreatedAtDesc = (a: PostListItem, b: PostListItem) => {
-  if (a.createdAt !== b.createdAt) {
-    if (a.createdAt === null) return 1;
-    if (b.createdAt === null) return -1;
-    return a.createdAt < b.createdAt ? 1 : -1;
+/** 시각 내림차순. 시각이 없는 글은 뒤로, 같으면 경로순. */
+const byDesc = (key: "createdAt" | "trashedAt") => (a: PostListItem, b: PostListItem) => {
+  const x = a[key];
+  const y = b[key];
+  if (x !== y) {
+    if (x === null) return 1;
+    if (y === null) return -1;
+    return x < y ? 1 : -1;
   }
   return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
 };
 
-/**
- * 컬렉션 하나의 글 목록. 트리 1번 + 글 100편마다 GraphQL 1번으로 끝난다.
- * 최근 글이 위로 오게 createdAt 내림차순으로 정렬한다.
- */
-export async function listPosts(
+/** 컬렉션 하나의 휴지통 글을 포함한 모든 글. 트리 1번 + 글 100편마다 GraphQL 1번으로 끝난다. */
+export async function readPostList(
   client: GitHubClient,
   repo: string,
   config: EditorConfig,
@@ -84,14 +84,37 @@ export async function listPosts(
     repo,
     files.map((f) => f.entry.sha),
   );
-  return files
-    .map(({ entry, params }): PostListItem => {
-      const text = texts.get(entry.sha);
-      const summary =
-        text === undefined ? summaryWithoutText(params.slug) : summarizePost(text, config.syntax, params.slug);
-      return { ...summary, path: entry.path, params, sha: entry.sha };
-    })
-    .sort(byCreatedAtDesc);
+  return files.map(({ entry, params }): PostListItem => {
+    const text = texts.get(entry.sha);
+    const summary =
+      text === undefined ? summaryWithoutText(params.slug) : summarizePost(text, config.syntax, params.slug);
+    return { ...summary, path: entry.path, params, sha: entry.sha };
+  });
+}
+
+/**
+ * 컬렉션 하나의 글 목록. 휴지통 글은 빼고, 최근 글이 위로 오게 createdAt 내림차순으로 정렬한다.
+ * 트리 1번 + 글 100편마다 GraphQL 1번으로 끝난다.
+ */
+export async function listPosts(
+  client: GitHubClient,
+  repo: string,
+  config: EditorConfig,
+  collection: Collection,
+): Promise<PostListItem[]> {
+  const posts = await readPostList(client, repo, config, collection);
+  return posts.filter((post) => !post.trashed).sort(byDesc("createdAt"));
+}
+
+/** 컬렉션 하나의 휴지통 글. 최근에 지운 글이 위로 오게 trashedAt 내림차순으로 정렬한다. */
+export async function listTrash(
+  client: GitHubClient,
+  repo: string,
+  config: EditorConfig,
+  collection: Collection,
+): Promise<PostListItem[]> {
+  const posts = await readPostList(client, repo, config, collection);
+  return posts.filter((post) => post.trashed).sort(byDesc("trashedAt"));
 }
 
 const summaryWithoutText = (slug: string): PostSummary => ({
@@ -99,5 +122,7 @@ const summaryWithoutText = (slug: string): PostSummary => ({
   titleFromMetadata: false,
   status: null,
   createdAt: null,
+  trashed: false,
+  trashedAt: null,
   problem: "텍스트로 읽을 수 없는 파일이다",
 });

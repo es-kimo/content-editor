@@ -32,6 +32,11 @@ function formatDatetime(d: Datetime, original: Datetime | null): string {
   return style.z ? `${text}Z` : text;
 }
 
+/** 지금 시각을 폼이 원래 값이 없을 때 쓰는 형식(`YYYY-MM-DDTHH:mm:ssZ`)으로. */
+export function datetimeNow(now: Date): string {
+  return now.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 /** metadata의 날짜 값을 datetime-local 입력 문자열로. 날짜 형식이 아니면 null. */
 export function datetimeInput(value: string): string | null {
   const parsed = parseDatetime(value);

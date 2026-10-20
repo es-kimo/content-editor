@@ -9,7 +9,7 @@ import { testConfig } from "@/test/config";
 import { fakeGitHub } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
-import { fetchTree, listPosts } from "./posts";
+import { fetchTree, listPosts, listTrash } from "./posts";
 
 const REPO = "es-kimo/yjshd";
 
@@ -47,6 +47,8 @@ describe("listPosts", () => {
         titleFromMetadata: true,
         status: "ready",
         createdAt: "2020-11-20T00:00:00Z",
+        trashed: false,
+        trashedAt: null,
         problem: null,
       },
     ]);
@@ -159,6 +161,38 @@ describe("listPosts", () => {
         : tree(input as string, init),
     );
     await expect(listBoard(client)).rejects.toThrow("rate limited");
+  });
+});
+
+describe("휴지통 글", () => {
+  const trashed = (title: string, at: string | null) =>
+    meta(`title: "${title}", other: { status: "draft"${at === null ? "" : `, trashedAt: "${at}"`} }`);
+  const client = () =>
+    createGitHubClient(
+      "t",
+      fakeGitHub(REPO, "main", [
+        { path: "content/4.게시판/초안/page.mdx", content: trashed("초안", null) },
+        { path: "content/4.게시판/a/page.mdx", content: trashed("먼저 지운 글", "2026-10-01T00:00:00Z") },
+        { path: "content/4.게시판/b/page.mdx", content: trashed("나중에 지운 글", "2026-10-20T09:30:15Z") },
+        { path: "content/4.게시판/c/page.mdx", content: meta(`title: "시각 없음", other: { trashedAt: null }`) },
+      ]),
+    );
+
+  test("listPosts는 휴지통 글을 빼고 초안은 남긴다", async () => {
+    const posts = await listBoard(client());
+
+    expect(posts.map((p) => p.title)).toEqual(["초안"]);
+  });
+
+  test("listTrash는 휴지통 글만 제목·삭제 시각과 함께 최근에 지운 순으로 돌려준다", async () => {
+    const config = boardConfig();
+    const posts = await listTrash(client(), REPO, config, config.collections[0]);
+
+    expect(posts.map(({ title, trashedAt }) => ({ title, trashedAt }))).toEqual([
+      { title: "나중에 지운 글", trashedAt: "2026-10-20T09:30:15Z" },
+      { title: "먼저 지운 글", trashedAt: "2026-10-01T00:00:00Z" },
+      { title: "시각 없음", trashedAt: null },
+    ]);
   });
 });
 
