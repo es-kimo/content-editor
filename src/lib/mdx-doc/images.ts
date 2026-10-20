@@ -84,7 +84,7 @@ function freeNumber(doc: Extract<MdxDoc, { ok: true }>, folder: string[] = []) {
 }
 
 // JSX 문자열 속성은 백슬래시 이스케이프를 해석하지 않고 문자 참조만 해석한다
-function escapeJsxAttribute(value: string): string {
+export function escapeJsxAttribute(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
 }
 

@@ -13,3 +13,14 @@ export { checkMdx } from "./check";
 export type { MdxCheck, MdxError } from "./check";
 export { componentSnippet, insertSnippet } from "./snippet";
 export type { ComponentSnippet, InsertedSnippet } from "./snippet";
+export { addFootnote, addFootnoteRef, addImageAt, addToc, readInserts, removeToc, setInsertText } from "./inserts";
+export type {
+  ImageInsertEdit,
+  InsertEdit,
+  InsertItem,
+  InsertKind,
+  InsertLimit,
+  InsertList,
+  InsertSpan,
+  LimitedInsert,
+} from "./inserts";

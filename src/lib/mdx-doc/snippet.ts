@@ -1,6 +1,4 @@
-import type { Program } from "estree";
-
-import { attributeValue, stringAttribute, type JsxElement } from "./jsx";
+import { arrayAttribute, jsxElements, stringAttribute, type JsxElement } from "./jsx";
 import { parseMarkdown, type Syntax } from "./split";
 
 /** 본문에 넣을 컴포넌트 템플릿. inline은 문장 안에, block은 앞뒤를 빈 줄로 띄워 넣는다. */
@@ -18,8 +16,7 @@ const MERMAID_TEMPLATE = "<Mermaid chart={`\nflowchart TD\n    A[시작] --> B[�
 export function componentSnippet(name: string, body: string, syntax: Syntax = {}): ComponentSnippet {
   switch (name) {
     case "Footnote": {
-      const ids = footnoteIds(body, syntax).footnotes;
-      const next = ids.length === 0 ? 1 : Math.max(...ids) + 1;
+      const next = nextFootnoteId(body, syntax);
       return { kind: "inline", text: `<Footnote id="${next}">${next}</Footnote>` };
     }
     case "FootnoteRef": {
@@ -53,12 +50,18 @@ export function insertSnippet(source: string, from: number, to: number, snippet:
   return { source: before + leading + snippet.text + trailing + after, cursor };
 }
 
-function trailingNewlines(text: string): number {
+export function trailingNewlines(text: string): number {
   return text.length - text.replace(/\n+$/, "").length;
 }
 
-function leadingNewlines(text: string): number {
+export function leadingNewlines(text: string): number {
   return text.length - text.replace(/^\n+/, "").length;
+}
+
+/** 새 `Footnote`에 쓸 번호. 순서와 상관없이 가장 큰 숫자 id 다음이다. */
+export function nextFootnoteId(body: string, syntax: Syntax = {}): number {
+  const ids = footnoteIds(body, syntax).footnotes;
+  return ids.length === 0 ? 1 : Math.max(...ids) + 1;
 }
 
 /** 숫자인 `Footnote` id 목록과, `FootnoteRef`의 `ids`에 적힌 숫자 id 집합. */
@@ -85,28 +88,13 @@ function footnoteIds(body: string, syntax: Syntax): { footnotes: number[]; refs:
   return { footnotes, refs };
 }
 
-function jsxElements(node: object): JsxElement[] {
-  const found: JsxElement[] = [];
-  const visit = (n: { type?: string; children?: object[] }) => {
-    if (n.type === "mdxJsxFlowElement" || n.type === "mdxJsxTextElement") found.push(n as JsxElement);
-    n.children?.forEach(visit);
-  };
-  visit(node);
-  return found;
-}
-
 /** `ids={["1", "2"]}`처럼 문자열 리터럴만 담은 배열 속성. 다른 모양의 원소는 건너뛴다. */
 function stringArrayAttribute(element: JsxElement, name: string): string[] {
-  const value = attributeValue(element, name);
-  if (typeof value !== "object" || value === null) return [];
-  const program = value.data?.estree as Program | undefined;
-  const statement = program?.body[0];
-  if (statement?.type !== "ExpressionStatement" || statement.expression.type !== "ArrayExpression") return [];
-  return statement.expression.elements.flatMap((item) =>
+  return (arrayAttribute(element, name) ?? []).flatMap((item) =>
     item?.type === "Literal" && typeof item.value === "string" ? [item.value] : [],
   );
 }
 
-function numericId(value: string | undefined): number | null {
+export function numericId(value: string | undefined): number | null {
   return value !== undefined && /^\d+$/.test(value) ? Number(value) : null;
 }
