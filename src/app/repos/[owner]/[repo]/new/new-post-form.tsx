@@ -2,13 +2,16 @@
 
 import { startTransition, useActionState, useState } from "react";
 
+import { useReportUnsaved } from "@/app/_lib/unsaved";
 import { newPostPath, postSlug } from "@/lib/content/slug";
+import { newPostChanges, type NewPostInput } from "@/lib/content/unsaved";
 import type { Collection } from "@/lib/editor-config";
 
 import { SaveRow } from "../post/save-row";
 import type { CreateState } from "./actions";
 
 const inputClass = "rounded border px-2 py-1 text-sm";
+const INITIAL: NewPostInput = { title: "", submenu: "" };
 
 export function NewPostForm({
   collection,
@@ -21,8 +24,11 @@ export function NewPostForm({
   action: (state: CreateState, data: FormData) => Promise<CreateState>;
 }) {
   const [state, dispatch, pending] = useActionState(action, { status: "idle" });
-  const [title, setTitle] = useState("");
-  const [submenu, setSubmenu] = useState("");
+  const [title, setTitle] = useState(INITIAL.title);
+  const [submenu, setSubmenu] = useState(INITIAL.submenu);
+  const changes = newPostChanges(INITIAL, { title, submenu });
+  useReportUnsaved("title", changes.title);
+  useReportUnsaved("submenu", changes.submenu);
   const fieldErrors = state.status === "error" ? (state.fields ?? {}) : {};
   // 아직 입력하지 않은 자리는 자리 이름으로 채워, 만들 글이 어디에 생길지 처음부터 보여 준다.
   const path = newPostPath(

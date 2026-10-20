@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CollectionTabs, newPostHref, openRepoPage, repoHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell } from "@/app/_lib/ui";
+import { UnsavedNotice, UnsavedProvider } from "@/app/_lib/unsaved";
 import { listSubmenus, needsSubmenu } from "@/lib/content";
 
 import { createPostAction } from "./actions";
@@ -38,7 +39,7 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
   const { collection, submenus } = page.value;
 
   return (
-    <>
+    <UnsavedProvider>
       <header className="flex flex-col gap-1">
         <Link href={repoHref(repo, collection.name)} className="text-sm text-zinc-500 underline">
           {repo} · {collection.name}
@@ -47,6 +48,7 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
         <p className="text-sm text-zinc-500">
           만들면 브랜치 {config.branch}에 바로 커밋하고 편집 화면으로 간다. 제목이 폴더 이름이 된다.
         </p>
+        <UnsavedNotice />
       </header>
       <CollectionTabs config={config} current={collection} href={(c) => newPostHref(repo, c)} />
       {submenus?.length === 0 ? (
@@ -62,6 +64,6 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
           action={createPostAction.bind(null, repo, collection.name)}
         />
       )}
-    </>
+    </UnsavedProvider>
   );
 }
