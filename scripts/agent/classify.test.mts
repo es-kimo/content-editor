@@ -21,6 +21,23 @@ describe("classifyRun", () => {
     });
   });
 
+  test("정상 종료면 json-schema 결과를 structured로 넘긴다", () => {
+    const output = { status: "done", summary: "요약" };
+    expect(classifyRun([init, result({ num_turns: 287, structured_output: output })])).toMatchObject({
+      kind: "ok",
+      structured: output,
+    });
+  });
+
+  test("오류로 끝나면 structured_output이 있어도 넘기지 않는다", () => {
+    const info = classifyRun([
+      init,
+      result({ subtype: "error_during_execution", is_error: true, structured_output: { status: "done" } }),
+    ]);
+    expect(info.kind).toBe("error");
+    expect(info.structured).toBeUndefined();
+  });
+
   test("턴 상한", () => {
     expect(classifyRun([init, result({ subtype: "error_max_turns", is_error: true })]).kind).toBe("max_turns");
   });

@@ -160,13 +160,18 @@ jobs:
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          RESULT="${RESULT:-null}"
-          status=$(echo "$RESULT" | jq -r '.status // "failed"')
           commits=$(git rev-list --count origin/main..HEAD)
           info=$(node scripts/agent/classify-run.mts "$EXEC_FILE")
           kind=$(echo "$info" | jq -r .kind)
           models=$(echo "$info" | jq -r '.models | join(", ")')
           echo "실행 결과: $info"
+          # action은 정상 종료도 턴 수를 잘못 비교해 실패로 끝내고 결과를 비운다 (classify.mts). 실행 기록이 정상 종료면 그 결과를 쓴다.
+          if [ -z "$RESULT" ] && [ "$kind" = "ok" ]; then
+            RESULT=$(echo "$info" | jq -c '.structured // empty')
+            if [ -n "$RESULT" ]; then OUTCOME=success; fi
+          fi
+          RESULT="${RESULT:-null}"
+          status=$(echo "$RESULT" | jq -r '.status // "failed"')
 
           # 사용량 한도는 시도 실패로 세지 않는다. 이슈를 비워 두고 다음 cron에서 다시 고른다.
           if [ "$kind" = "limit" ]; then
