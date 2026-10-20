@@ -4,7 +4,7 @@
 
 입력
 
-- `.agent/issue.md`: 이 PR이 닫으려는 이슈
+- `.agent/issue.md`: 이 PR이 닫으려는 이슈와 소유자 코멘트. 소유자 답은 이슈 본문보다 우선한다. 소유자가 무시하라고 한 지적은 blocking으로 올리지 않는다
 - `.agent/pr.md`: PR 본문
 - `.agent/diff.patch`: `main` 대비 변경
 - `.agent/wiki/`: 레포 wiki (`PRD.md`, `작업-방식.md`)
@@ -13,7 +13,7 @@
 
 확인할 것
 
-1. **완료 기준**: 이슈의 완료 기준 하나하나가 코드와 테스트로 충족되는가. 근거로 파일과 테스트 이름을 댄다. 이 리뷰는 CI(`lint`·`format:check`·`typecheck`·`test`·`build`·`e2e`)가 모두 통과한 커밋에서 시작하므로 전체 검사를 다시 돌리지 않는다. 확인이 필요한 테스트 파일만 직접 돌린다.
+1. **완료 기준**: 이슈의 완료 기준 하나하나가 코드와 테스트로 충족되는가. 근거로 파일과 테스트 이름을 댄다. 이 리뷰는 워크플로가 `lint`·`format:check`·`typecheck`·`test`·`build`·`e2e`를 모두 통과시킨 커밋에서 시작하므로 전체 검사를 다시 돌리지 않는다. 확인이 필요한 테스트 파일만 직접 돌린다.
 2. **정확성** (`correctness`): 경계 입력, 원문 보존(mdx-doc은 손대지 않은 바이트가 바뀌면 안 된다), 오류 처리.
 3. **유지보수성** (`maintainability`): `review-kit:maintainability-review` 스킬을 변경 리뷰 모드로 따른다. 새 코드마다 레포에 같은 일을 하는 코드가 이미 있는지 찾는다. `docs/review/architecture.md`의 "재사용해야 하는 것"을 우회했으면 blocking이다.
 4. **테스트** (`test`): `review-kit:test-review` 스킬을 변경 리뷰 모드로 따른다. 핵심 테스트 한두 개는 구현이 틀리면 정말 실패하는지 코드로 따라가 본다.
