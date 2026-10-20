@@ -2,8 +2,8 @@ import Link from "next/link";
 
 import { CollectionTabs, newPostHref, openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
-import { PageShell } from "@/app/_lib/ui";
-import { listPosts, timed } from "@/lib/content";
+import { PageShell, TechDetails } from "@/app/_lib/ui";
+import { listPosts, listTitle, timed } from "@/lib/content";
 
 type Params = Promise<{ owner: string; repo: string }>;
 
@@ -47,7 +47,7 @@ async function PostList({ params, searchParams }: { params: Params; searchParams
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-2">
           <p className="text-sm text-zinc-500">
-            {collection.name} {posts.length}편 · API 호출 {calls}번 · {elapsed}ms
+            {collection.name} {posts.length}편
           </p>
           <Link href={newPostHref(repo, collection.name)} className="text-sm underline">
             새 글
@@ -71,7 +71,7 @@ async function PostList({ params, searchParams }: { params: Params; searchParams
                 <tr key={post.path} className="border-t">
                   <td className="py-2">
                     <Link href={postHref(repo, post.path)} className="underline">
-                      {post.title}
+                      {listTitle(post)}
                     </Link>
                     {post.problem && (
                       <span className="ml-2 text-xs text-amber-600" title={post.problem}>
@@ -87,6 +87,12 @@ async function PostList({ params, searchParams }: { params: Params; searchParams
           </table>
         )}
       </section>
+      <TechDetails
+        items={[
+          ["API 호출", `${calls}번`],
+          ["불러온 시간", `${elapsed}ms`],
+        ]}
+      />
     </>
   );
 }

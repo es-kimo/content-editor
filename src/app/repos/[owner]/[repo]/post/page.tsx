@@ -1,18 +1,27 @@
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { LeaveLink } from "@/app/_lib/leave";
 import { openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
-import { PageShell } from "@/app/_lib/ui";
+import { PageShell, TechDetails } from "@/app/_lib/ui";
 import { UnsavedNotice, UnsavedProvider } from "@/app/_lib/unsaved";
-import { editorKeys, editorModes, IMAGE_COMPONENT, readPost, sourceComponents, type Post } from "@/lib/content";
+import {
+  editorKeys,
+  editorModes,
+  IMAGE_COMPONENT,
+  postTitle,
+  readPost,
+  sourceComponents,
+  type Post,
+} from "@/lib/content";
 import type { Syntax } from "@/lib/mdx-doc";
-import { buildForm } from "@/lib/metadata-form";
+import { buildForm, type FormField } from "@/lib/metadata-form";
 
 import { saveBodyAction, saveMetadataAction, saveSourceAction } from "./actions";
 import { BodyEditor } from "./body-editor";
 import { EditorModeSwitch } from "./editor-mode-switch";
-import { MetadataForm } from "./metadata-form";
+import { MetadataForm, MetadataSettings, MetadataTitleInput } from "./metadata-form";
 import { SourceEditor } from "./source-editor";
 
 type Params = Promise<{ owner: string; repo: string }>;
@@ -38,27 +47,35 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
   const { config, value: post } = page;
   if (!post) notFound();
 
-  return (
-    // 저장하면 새 커밋을 `saved`로 받아 다시 열리므로, 그 커밋으로 저장한 글 화면이 열렸는지 안다.
-    <UnsavedProvider revision={typeof saved === "string" ? saved : undefined}>
+  const commit = typeof saved === "string" ? saved : undefined;
+  const fields = metadataFields(post);
+  const content = (
+    <>
       <header className="flex flex-col gap-1">
         <LeaveLink href={repoHref(repo, post.collection.name)} className="text-sm text-zinc-500 underline">
           {repo} · {post.collection.name}
         </LeaveLink>
-        <h1 className="text-xl font-semibold break-all">{post.path}</h1>
-        <p className="text-xs text-zinc-500">blob {post.sha}</p>
-        {typeof saved === "string" && <p className="text-sm text-green-700">저장했다. 커밋 {saved.slice(0, 7)}</p>}
+        <h1 className="text-2xl font-semibold break-words">{postTitle(post.metadata)}</h1>
+        {commit && <p className="text-sm text-green-700">저장했어요. 사이트에 반영되기까지 시간이 걸릴 수 있어요.</p>}
         <UnsavedNotice />
       </header>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">metadata</h2>
-        <MetadataView repo={repo} post={post} />
-      </section>
+      {fields.ok && <MetadataTitleInput />}
 
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">본문</h2>
         <BodyView repo={repo} post={post} syntax={config.syntax} preview={config.preview} />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        {fields.ok ? (
+          <MetadataSettings />
+        ) : (
+          <>
+            <h2 className="font-medium">글 설정</h2>
+            {fields.notice}
+          </>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">
@@ -73,6 +90,31 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
           </ul>
         )}
       </section>
+
+      <TechDetails
+        items={[
+          ["파일 경로", post.path],
+          ["blob SHA", post.sha],
+          ...(commit ? [["저장한 커밋", commit] satisfies [string, string]] : []),
+        ]}
+      />
+    </>
+  );
+
+  return (
+    // 저장하면 새 커밋을 `saved`로 받아 다시 열리므로, 그 커밋으로 저장한 글 화면이 열렸는지 안다.
+    <UnsavedProvider revision={commit}>
+      {fields.ok ? (
+        <MetadataForm
+          version={editorKeys(post).metadata}
+          fields={fields.fields}
+          action={saveMetadataAction.bind(null, repo, post.path, post.sha)}
+        >
+          {content}
+        </MetadataForm>
+      ) : (
+        content
+      )}
     </UnsavedProvider>
   );
 }
@@ -132,21 +174,20 @@ function BodyView({ repo, post, syntax, preview }: { repo: string; post: Post; s
   );
 }
 
-function MetadataView({ repo, post }: { repo: string; post: Post }) {
-  if (!post.metadata) return <p className="text-sm text-zinc-500">metadata export가 없다.</p>;
+/** 글 설정 폼에 실을 필드. 폼으로 고칠 수 없으면 글 설정 자리에 대신 보일 안내. */
+function metadataFields(post: Post): { ok: true; fields: FormField[] } | { ok: false; notice: ReactNode } {
+  if (!post.metadata) return { ok: false, notice: <p className="text-sm text-zinc-500">metadata export가 없다.</p> };
   if (!post.metadata.editable) {
-    return <p className="text-sm text-amber-600">폼으로 읽을 수 없어 원문 모드로만 편집한다: {post.metadata.reason}</p>;
+    return {
+      ok: false,
+      notice: (
+        <p className="text-sm text-amber-600">폼으로 읽을 수 없어 원문 모드로만 편집한다: {post.metadata.reason}</p>
+      ),
+    };
   }
   const fields = buildForm(post.collection, post.metadata.value);
   if (fields.length === 0) {
-    return <p className="text-sm text-zinc-500">config에 이 컬렉션의 metadata 필드가 없다.</p>;
+    return { ok: false, notice: <p className="text-sm text-zinc-500">config에 이 컬렉션의 metadata 필드가 없다.</p> };
   }
-  // 본문을 저장해도 고치던 폼 입력이 남도록 key를 sha가 아닌 metadata 원본으로 둔다.
-  return (
-    <MetadataForm
-      key={editorKeys(post).metadata}
-      fields={fields}
-      action={saveMetadataAction.bind(null, repo, post.path, post.sha)}
-    />
-  );
+  return { ok: true, fields };
 }
