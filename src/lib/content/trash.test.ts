@@ -58,21 +58,24 @@ describe("trashPost", () => {
   test.each([
     ["초안", "draft"],
     ["게시 대상", "ready"],
-  ])("%s 글을 휴지통으로 옮기면 커밋 1개에 상태 draft와 삭제 시각만 들어가고 경로·본문·이미지·다른 글은 그대로다", async (_, status) => {
-    const source = post("11월 휴진 안내", status);
-    const { repo, client } = setup([{ path: DRAFT_POST, content: source }]);
-    const before = repo.head();
-    const paths = repo.paths();
+  ])(
+    "%s 글을 휴지통으로 옮기면 커밋 1개에 상태 draft와 삭제 시각만 들어가고 경로·본문·이미지·다른 글은 그대로다",
+    async (_, status) => {
+      const source = post("11월 휴진 안내", status);
+      const { repo, client } = setup([{ path: DRAFT_POST, content: source }]);
+      const before = repo.head();
+      const paths = repo.paths();
 
-    const result = await trashPost(client, REPO, config, { path: DRAFT_POST, baseSha: blobSha(source) }, NOW);
+      const result = await trashPost(client, REPO, config, { path: DRAFT_POST, baseSha: blobSha(source) }, NOW);
 
-    expect(result).toEqual({ ok: true, commit: repo.head(), parent: before });
-    expect(repo.log()).toHaveLength(2);
-    expect(text(repo.file(DRAFT_POST))).toBe(post("11월 휴진 안내", "draft", TRASHED_AT));
-    expect(repo.paths()).toEqual(paths);
-    expect(repo.file(IMAGE)).toEqual(PNG);
-    expect(text(repo.file(OTHER))).toBe(OTHER_SOURCE);
-  });
+      expect(result).toEqual({ ok: true, commit: repo.head(), parent: before });
+      expect(repo.log()).toHaveLength(2);
+      expect(text(repo.file(DRAFT_POST))).toBe(post("11월 휴진 안내", "draft", TRASHED_AT));
+      expect(repo.paths()).toEqual(paths);
+      expect(repo.file(IMAGE)).toEqual(PNG);
+      expect(text(repo.file(OTHER))).toBe(OTHER_SOURCE);
+    },
+  );
 
   test("휴지통 글은 글 목록에서 빠지고 휴지통 목록에 제목·삭제 시각과 함께 나온다", async () => {
     const source = post("11월 휴진 안내", "ready");
@@ -204,21 +207,24 @@ describe("휴지통 이동·복구의 충돌과 거절", () => {
     expect(repo.head()).toBe(before);
   });
 
-  test.each(actions)("%s: 글의 상태가 draft·ready가 아니거나 metadata를 읽을 수 없으면 거절한다", async (_, source, act) => {
-    for (const changed of [
-      source.replace('status: "ready"', 'status: "hidden"'),
-      source.replace('status: "ready",', ""),
-      source.replace('title: "11월 휴진 안내"', "title: TITLE"),
-    ]) {
-      const { repo, client } = setup([{ path: DRAFT_POST, content: changed }]);
-      const before = repo.head();
+  test.each(actions)(
+    "%s: 글의 상태가 draft·ready가 아니거나 metadata를 읽을 수 없으면 거절한다",
+    async (_, source, act) => {
+      for (const changed of [
+        source.replace('status: "ready"', 'status: "hidden"'),
+        source.replace('status: "ready",', ""),
+        source.replace('title: "11월 휴진 안내"', "title: TITLE"),
+      ]) {
+        const { repo, client } = setup([{ path: DRAFT_POST, content: changed }]);
+        const before = repo.head();
 
-      const result = await act(client, REPO, config, { path: DRAFT_POST, baseSha: blobSha(changed) }, NOW);
+        const result = await act(client, REPO, config, { path: DRAFT_POST, baseSha: blobSha(changed) }, NOW);
 
-      expect(result).toEqual({ ok: false, reason: "status-value" });
-      expect(repo.head()).toBe(before);
-    }
-  });
+        expect(result).toEqual({ ok: false, reason: "status-value" });
+        expect(repo.head()).toBe(before);
+      }
+    },
+  );
 
   test.each(actions)("%s: 없는 글은 not-found다", async (_, source, act) => {
     const { client } = setup([]);
