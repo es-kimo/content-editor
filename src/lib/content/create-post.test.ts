@@ -237,6 +237,16 @@ describe("createPost", () => {
     }
   });
 
+  test("설정이 초안·게시 상태를 다루지 못하면 상태를 넘겨짚지 않고 커밋하지 않는다", async () => {
+    const noStatus = { ...config, collections: [{ ...board!, metadata: { title: board!.metadata.title! } }] };
+    const { repo, client } = setup();
+
+    const result = await createPost(client, REPO, noStatus, draft("11월 휴진 안내"), NOW);
+
+    expect(result).toEqual({ ok: false, reason: "status-field" });
+    expect(repo.log()).toHaveLength(1);
+  });
+
   test("하위 메뉴가 있는 컬렉션은 고른 기존 하위 메뉴 폴더 안에 만든다", async () => {
     const { repo, client } = setup();
 

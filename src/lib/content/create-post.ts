@@ -112,6 +112,7 @@ export async function createPost(
   if (!applied.ok || !submenu.ok || slug === null || errors.length > 0) return { ok: false, reason: "invalid", errors };
 
   const path = newPostPath(collection, slug, submenu.name);
+  // 새 글 원문의 틀(metadata 출력과 구간 사이 빈 줄)만 newMdx에서 받고, 그 제목 줄은 입력한 본문으로 바꾼다.
   const doc = parseMdx(newMdx(applied.value, title), config.syntax);
   const edited = editBody({ images: [] }, doc, input.body, images);
   if (!edited.ok) return edited;

@@ -16,6 +16,7 @@ const EXISTING = "content/4.게시판/10월 휴진 안내/page.mdx";
 const setup = () => {
   const repo = fakeGitRepo(REPO, "main", [
     { path: EXISTING, content: `export const metadata = { title: "10월 휴진 안내" };\n\n# 10월 휴진 안내\n` },
+    { path: "content/3.강좌/2.콩팥질환 정보/우울해요/page.mdx", content: "# 우울해요\n" },
   ]);
   return { repo, client: createGitHubClient("ghu_token", repo.fetch) };
 };
@@ -51,6 +52,30 @@ describe("createResultState", () => {
       status: "error",
       message: "입력한 값을 확인해 주세요. 표시된 항목을 고친 뒤 다시 만들어 주세요.",
       fields: { title: "같은 이름의 글 폴더가 이미 있어요. 제목을 바꿔 주세요." },
+    });
+  });
+
+  test("새 하위 메뉴 이름이 기존 메뉴와 같으면 하위 메뉴 옆에 기존 메뉴를 고르라는 오류를 보인다", async () => {
+    const { client } = setup();
+
+    const result = await createPost(
+      client,
+      REPO,
+      config,
+      { ...draft("새 글", "강좌"), submenu: { kind: "new", name: " 2.콩팥질환 정보 " } },
+      NOW,
+    );
+
+    expect(createResultState(result, href)).toMatchObject({
+      status: "error",
+      fields: { submenu: "‘2.콩팥질환 정보’ 하위 메뉴가 이미 있어요. 새로 만들지 말고 목록에서 골라 주세요." },
+    });
+  });
+
+  test("설정에 초안·게시 상태가 없으면 설정을 확인하라는 안내를 돌려준다", () => {
+    expect(createResultState({ ok: false, reason: "status-options" }, href)).toMatchObject({
+      status: "error",
+      message: expect.stringContaining("편집 설정을 확인"),
     });
   });
 

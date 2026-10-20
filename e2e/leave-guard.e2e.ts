@@ -23,7 +23,11 @@ const CONFIG = {
     {
       name: "공지",
       path: "content/공지/{slug}/page.mdx",
-      metadata: { title: { type: "string", label: "제목", required: true } },
+      // 새 글은 초안으로 저장하므로 게시 상태를 다루는 설정이어야 만들 수 있다.
+      metadata: {
+        title: { type: "string", label: "제목", required: true },
+        "other.status": { type: "select", label: "상태", options: ["ready", "draft"] },
+      },
       editor: "wysiwyg",
     },
     {
@@ -446,7 +450,8 @@ describe("새 글", () => {
 
     await page.getByRole("button", { name: "만들기" }).click();
     await page.waitForURL(/\/post\?/);
-    await page.locator(".body-editor-content").waitFor();
+    // 새 글은 본문이 비어 있어 편집기가 같은 클래스의 자리 표시 문구를 함께 그린다.
+    await page.locator(".body-editor-content[contenteditable='true']").waitFor();
 
     expect(await leaveDialog().isVisible()).toBe(false);
     expect(browserDialogs).toEqual([]);
