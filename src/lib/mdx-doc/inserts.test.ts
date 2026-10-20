@@ -563,18 +563,17 @@ describe("moveImage", () => {
     expect(after.ok && after.source).toBe(SHARED);
   });
 
-  test("뒤로 옮기면 바로 뒤 블록과 자리를 바꾸고 두 블록 사이의 원문은 그대로다", () => {
+  test("뒤로 옮기면 바로 뒤 블록과 자리를 바꾸고 두 블록 사이의 원문은 그대로이며 커서는 옮긴 이미지 뒤다", () => {
     const source = SHARED.replace('<Image src={image2} alt="셋째" />\n\n', '<Image src={image2} alt="셋째" />\n\n\n');
     const result = moveImage(source, image(source, "셋째"), "after");
-    expect(result.ok && result.source).toBe(
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.source).toBe(
       source.replace(
         '<Image src={image2} alt="셋째" />\n\n\n끝 문단',
         '끝 문단\n\n\n<Image src={image2} alt="셋째" />',
       ),
     );
-    expect(result.ok && image(result.source, "셋째").from).toBe(
-      result.ok && result.cursor - '<Image src={image2} alt="셋째" />'.length,
-    );
+    expect(result.cursor).toBe(image(result.source, "셋째").to);
   });
 
   test("옮기면 나뉘어 있던 목록이 하나로 합쳐지는 것처럼 글 구조가 바뀌면 옮기지 않는다", () => {
