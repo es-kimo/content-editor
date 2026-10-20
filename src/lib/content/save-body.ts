@@ -1,9 +1,15 @@
 import type { EditorConfig } from "@/lib/editor-config";
 import type { GitHubClient } from "@/lib/github";
-import { addImageAs, findUnusedImageImports, setBody, type MdxDoc } from "@/lib/mdx-doc";
 
-import { commitEdit, currentTitle, openForEdit, type CommitEditResult, type OpenForEditResult } from "./edit-post";
-import { checkUploads, IMAGE_COMPONENT, type UploadCheck, type UploadImage } from "./upload";
+import {
+  commitEdit,
+  currentTitle,
+  editBody,
+  openForEdit,
+  type CommitEditResult,
+  type OpenForEditResult,
+} from "./edit-post";
+import { checkUploads, type UploadCheck, type UploadImage } from "./upload";
 
 export type SaveBodyInput = {
   path: string;
@@ -35,16 +41,8 @@ export async function saveBody(
   if (!opened.ok) return opened;
   const { post } = opened;
 
-  let doc: MdxDoc = post.doc;
-  const files = post.images.map((image) => image.name);
-  for (const { file } of images) {
-    const added = addImageAs(doc, file, { component: IMAGE_COMPONENT, files });
-    if (!added) return { ok: false, reason: "image", file, problem: "name" };
-    doc = added.doc;
-  }
-  const edited = setBody(doc, input.body);
-  const unused = findUnusedImageImports(edited).find((image) => images.some(({ file }) => image.path === `./${file}`));
-  if (unused) return { ok: false, reason: "image", file: unused.path.slice(2), problem: "unused" };
+  const edited = editBody(post, post.doc, input.body, images);
+  if (!edited.ok) return edited;
 
-  return commitEdit(client, repo, config, post, edited, currentTitle(post), images);
+  return commitEdit(client, repo, config, post, edited.doc, currentTitle(post), images);
 }

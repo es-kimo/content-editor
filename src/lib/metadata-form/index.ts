@@ -10,6 +10,7 @@ export {
   type ApplyResult,
   type FormField,
   type FormValues,
+  type MetadataObject,
 } from "./form";
 export { fieldLabel, optionLabel, STATUS_FIELD } from "./labels";
 export { newMetadata } from "./new-metadata";
