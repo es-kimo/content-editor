@@ -98,12 +98,16 @@ export type SaveFlowState = {
   results: { [target in SaveTarget]?: SaveState };
   /** 열려 있는 폼. 화면에 하나만 연다. */
   form: OpenForm | null;
+  /** 이미지를 준비하는 편집 영역. 준비가 끝나면 그 영역에 폼이 열리므로 그동안 모드 전환을 막는다. */
+  preparing: { [area in FormArea]?: boolean };
 };
 
 export type SaveFlow = {
   getState(): SaveFlowState;
   subscribe(listener: () => void): () => void;
   report(area: EditArea, changed: boolean): void;
+  /** 편집 영역이 이미지를 준비하는 중인지 알린다. */
+  prepare(area: FormArea, preparing: boolean): void;
   /**
    * 저장을 시작한다. 다른 저장이 진행 중이거나 확인 중이면 하지 않고 false.
    * 다른 영역 입력이 사라지면 먼저 `confirming`으로 두고, `confirm`해야 `submit`을 부른다.
@@ -135,7 +139,7 @@ const FAILED: SaveState = { status: "error", message: "저장하지 못했어요
 
 /** 한 화면의 저장들을 하나씩만 진행하게 묶는다. @param navigate 저장에 성공하면 저장한 글 화면으로 간다. */
 export function createSaveFlow({ navigate }: { navigate: (href: string) => void }): SaveFlow {
-  let state: SaveFlowState = { phase: { kind: "idle" }, changed: {}, results: {}, form: null };
+  let state: SaveFlowState = { phase: { kind: "idle" }, changed: {}, results: {}, form: null, preparing: {} };
   let waiting: Job | null = null;
   const listeners = new Set<() => void>();
 
@@ -178,6 +182,10 @@ export function createSaveFlow({ navigate }: { navigate: (href: string) => void 
     report(area, changed) {
       if (Boolean(state.changed[area]) === changed) return;
       update({ changed: { ...state.changed, [area]: changed } });
+    },
+    prepare(area, preparing) {
+      if (Boolean(state.preparing[area]) === preparing) return;
+      update({ preparing: { ...state.preparing, [area]: preparing } });
     },
     request(request, submit, onUnchanged) {
       if (state.phase.kind !== "idle" || blockedByForm(request.target)) return false;

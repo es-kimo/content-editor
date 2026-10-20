@@ -54,6 +54,7 @@ const POSTS = {
   body: "content/게시판/일반/page.mdx",
   bodyPaste: "content/게시판/붙여넣기/page.mdx",
   both: "content/게시판/두-영역/page.mdx",
+  preparingMode: "content/게시판/준비-중-전환/page.mdx",
   limited: "content/게시판/제한/page.mdx",
   source: "content/원문/원문/page.mdx",
   sourceDrop: "content/원문/끌어놓기/page.mdx",
@@ -140,6 +141,23 @@ async function giveFiles(target: Locator, kind: "paste" | "drop", count = 1) {
     },
     { kind, bytes: [...PNG], count },
   );
+}
+
+/** 준비가 끝나는 시점을 테스트가 정하도록 이미지 읽기를 붙잡아 둔다. 글을 열기 전에 부른다. */
+async function holdImagePreparing() {
+  await page.addInitScript(() => {
+    const original = window.createImageBitmap.bind(window);
+    const held = window as unknown as { finishImage?: () => void };
+    window.createImageBitmap = ((...args: Parameters<typeof createImageBitmap>) =>
+      new Promise((resolve) => {
+        held.finishImage = () => resolve(original(...args));
+      })) as typeof createImageBitmap;
+  });
+}
+
+/** `holdImagePreparing`으로 붙잡은 이미지 읽기를 끝낸다. */
+async function finishImagePreparing() {
+  await page.evaluate(() => (window as unknown as { finishImage: () => void }).finishImage());
 }
 
 async function applyAlt(alt: string) {
@@ -308,15 +326,7 @@ describe("원문 편집 이미지", () => {
   });
 
   test("이미지를 준비하는 동안 원문을 저장할 수 없고, 떠나려 하면 원문 편집 첨부를 잃는다고 묻는다", async () => {
-    // 준비가 끝나는 시점을 테스트가 정하도록 이미지 읽기를 붙잡아 둔다.
-    await page.addInitScript(() => {
-      const original = window.createImageBitmap.bind(window);
-      const held = window as unknown as { finishImage?: () => void };
-      window.createImageBitmap = ((...args: Parameters<typeof createImageBitmap>) =>
-        new Promise((resolve) => {
-          held.finishImage = () => resolve(original(...args));
-        })) as typeof createImageBitmap;
-    });
+    await holdImagePreparing();
     await openSource(POSTS.preparing);
 
     await chooseSourceImage();
@@ -329,7 +339,7 @@ describe("원문 편집 이미지", () => {
     await leave.getByText("바뀐 곳: 원문 편집 첨부 이미지").waitFor();
     await leave.getByRole("button", { name: "계속 편집" }).click();
 
-    await page.evaluate(() => (window as unknown as { finishImage: () => void }).finishImage());
+    await finishImagePreparing();
     await imageForm().waitFor();
     expect(await page.getByRole("button", { name: "원문 저장" }).isDisabled()).toBe(false);
     await page.getByRole("button", { name: "원문 저장" }).click();
@@ -389,5 +399,28 @@ describe("두 편집 영역의 첨부", () => {
 
     expect(newCommits()).toBe(0);
     await unsaved("본문, 첨부 이미지, 원문 편집, 원문 편집 첨부 이미지").waitFor();
+  });
+
+  test("이미지를 준비하는 동안 모드를 바꿀 수 없어, 준비가 끝나면 보이는 편집기에 폼이 열리고 적용한 뒤 다시 바꿀 수 있다", async () => {
+    await holdImagePreparing();
+    await openBody(POSTS.preparingMode);
+    await page.getByRole("button", { name: "원문 편집", exact: true }).click();
+    const modeButtons = page.getByRole("group", { name: "본문 편집 모드" }).getByRole("button");
+
+    await chooseSourceImage();
+    await page.getByText("이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 모드를 바꿔 주세요.").waitFor();
+    expect(await modeButtons.evaluateAll((buttons) => buttons.map((b) => (b as HTMLButtonElement).disabled))).toEqual([
+      true,
+      true,
+    ]);
+
+    await finishImagePreparing();
+    await imageForm().waitFor({ state: "visible" });
+    await applyAlt("준비 중 사진");
+    expect(await sourceText()).toContain('<Image src={image2} alt="준비 중 사진" />');
+
+    await page.getByRole("button", { name: "일반 편집", exact: true }).click();
+    await bodyEditor().waitFor({ state: "visible" });
+    expect(await page.getByText("이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 모드를 바꿔 주세요.").count()).toBe(0);
   });
 });

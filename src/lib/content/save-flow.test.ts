@@ -346,6 +346,16 @@ describe("적용하지 않은 폼", () => {
     expect(flow.getState().form?.blocked).toBe("mode");
   });
 
+  test("영역마다 이미지를 준비하는 중인지 따로 두어, 한쪽 준비가 끝나도 다른 쪽 준비는 남는다", () => {
+    const { flow } = setupFlow();
+    flow.prepare("body", true);
+    flow.prepare("source", true);
+
+    flow.prepare("body", false);
+
+    expect(flow.getState().preparing).toEqual({ body: false, source: true });
+  });
+
   test("폼이 열려 있으면 이미지 받기를 막고, 폼을 닫으면 막은 기록도 함께 사라진다", () => {
     const { flow } = setupFlow();
     flow.openForm("body");

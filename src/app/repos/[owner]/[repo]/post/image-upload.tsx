@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 
-import { FormBlockedNotice, useFormFlow } from "@/app/_lib/unsaved";
+import { FormBlockedNotice, useFormFlow, useReportPreparing } from "@/app/_lib/unsaved";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 업로드 정책과 세션만 가져온다.
 import { UPLOAD_IMAGE_TYPES, uploadImports, type UploadImage, type UploadPlan } from "@/lib/content/upload";
 import type { FormArea } from "@/lib/content/save-flow";
@@ -78,6 +78,7 @@ export function useImageUpload({
   const [session] = useState(() =>
     createUploadSession<File>({ doc, files, prepare: prepareImage, onPreparing: setPreparing, used }),
   );
+  useReportPreparing(area, preparing);
   const [problem, setProblem] = useState<ImageProblem | null>(null);
   const [attached, setAttached] = useState<{ file: string; size: number }[]>([]);
   const [attachedDoc, setAttachedDoc] = useState(doc);
