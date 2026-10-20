@@ -6,18 +6,21 @@ import type { SaveState } from "./actions";
 export function SaveRow({
   label,
   pending,
+  disabled = false,
   state,
   unchanged,
 }: {
   label: string;
   pending: boolean;
+  /** 저장 중이 아니어도 지금은 저장할 수 없을 때. 이유는 호출자가 옆에 보인다. */
+  disabled?: boolean;
   state: SaveState;
   /** 바뀐 것이 없어 커밋하지 않았을 때의 안내. 새 글처럼 그런 결과가 없으면 비워 둔다. */
   unchanged?: string;
 }) {
   return (
     <div className="flex items-center gap-3">
-      <button type="submit" disabled={pending} className={PRIMARY_BUTTON_CLASS}>
+      <button type="submit" disabled={pending || disabled} className={PRIMARY_BUTTON_CLASS}>
         {pending ? "저장 중…" : label}
       </button>
       {state.status === "error" && <p className="text-sm text-red-600">{state.message}</p>}

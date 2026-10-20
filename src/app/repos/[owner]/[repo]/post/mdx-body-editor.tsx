@@ -36,8 +36,11 @@ export type MdxBodyEditorProps = {
   components: string[];
   onChange: (markdown: string, initialMarkdownNormalize: boolean) => void;
   onError: (message: string) => void;
-  /** 끌어 놓기·붙여넣기·파일 선택으로 받은 이미지를 처리하고 커서 자리에 넣을 태그를 돌려준다. 없으면 이미지를 받지 않는다. */
-  onImages?: (files: File[]) => Promise<string[]>;
+  /**
+   * 끌어 놓기·붙여넣기·파일 선택으로 받은 이미지를 처리하고 `insert`로 커서 자리에 태그를 넣는다.
+   * 본문에 넣기까지를 한 작업으로 보호하도록 넣는 시점을 호출자가 정한다. 없으면 이미지를 받지 않는다.
+   */
+  onImages?: (files: File[], insert: (tags: string[]) => void) => Promise<void>;
 };
 
 /** next/dynamic으로 브라우저에서만 불러온다. MDXEditor는 서버에서 렌더링할 수 없다. */
@@ -48,8 +51,9 @@ export default function MdxBodyEditor({ markdown, components, onChange, onError,
 
   const insertImages = async (files: File[]) => {
     if (!onImages || files.length === 0) return;
-    const tags = await onImages(files);
-    if (tags.length > 0) editor.current?.insertMarkdown(tags.join("\n\n"));
+    await onImages(files, (tags) => {
+      if (tags.length > 0) editor.current?.insertMarkdown(tags.join("\n\n"));
+    });
   };
 
   // 파일을 놓거나 붙여넣으면 에디터가 처리하기 전에 가로챈다. 그대로 두면 브라우저가 파일을 열거나 에디터가 무시한다.

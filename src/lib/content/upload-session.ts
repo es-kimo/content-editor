@@ -94,7 +94,8 @@ export function createUploadSession<F extends { name: string }>({
       }
     },
     unsaved(body) {
-      return running > 0 || usedUploads(plan, body).length > 0;
+      // 화면이 입력할 때마다 부르므로 넣은 이미지가 없으면 본문을 읽지 않는다.
+      return running > 0 || (plan.images.length > 0 && usedUploads(plan, body).length > 0);
     },
     submission(body) {
       if (running > 0) return { ok: false, reason: "preparing" };
