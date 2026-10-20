@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { renderConversation, renderState, type RepoState } from "./context.mts";
+import { renderConversation, renderReleaseNotes, renderState, type RepoState } from "./context.mts";
 import type { ApiIssue } from "./github.mts";
 
 const people = { owner: "es-kimo", bot: "kimo-planner" };
@@ -53,5 +53,34 @@ describe("renderState", () => {
     const text = renderState(state);
     expect(text).toContain("- #59 mdx-doc: 컴포넌트 삽입 템플릿 [mdx-doc, agent-ready] (v0.2)");
     expect(text).toContain("## 최근 닫힌 이슈\n- 없음");
+  });
+});
+
+describe("renderReleaseNotes", () => {
+  test("PRD 링크 아래에 PR이 있는 이슈는 변경, 없는 이슈는 사람이 한 작업으로 이슈 번호순으로 적는다", () => {
+    const notes = renderReleaseNotes("v0.2", "es-kimo/content-editor", [
+      { number: 82, title: "[v0.2] 모바일 이탈 경고를 확인한다", pulls: [] },
+      { number: 79, title: "[v0.2] 이미지 첨부를 미저장 상태에 연결한다", pulls: [86, 88] },
+      { number: 78, title: "[v0.2] 미저장 변경을 표시한다", pulls: [84] },
+    ]);
+    expect(notes).toBe(
+      [
+        "[v0.2 PRD](https://github.com/es-kimo/content-editor/wiki/v0.2-PRD)",
+        "",
+        "## 변경",
+        "- 미저장 변경을 표시한다 (#84)",
+        "- 이미지 첨부를 미저장 상태에 연결한다 (#86, #88)",
+        "",
+        "## 사람이 한 작업",
+        "- 모바일 이탈 경고를 확인한다 (#82)",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("해당하는 이슈가 없는 절은 뺀다", () => {
+    const notes = renderReleaseNotes("v0.3", "es-kimo/content-editor", [{ number: 90, title: "검색", pulls: [91] }]);
+    expect(notes).not.toContain("사람이 한 작업");
+    expect(notes).toContain("- 검색 (#91)");
   });
 });

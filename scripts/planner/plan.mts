@@ -131,6 +131,16 @@ export function blockedReason(out: unknown): string | null {
   return typeof o.blocked_reason === "string" && o.blocked_reason.trim() ? o.blocked_reason.trim() : "이유 없음";
 }
 
+/** 모델 출력 파일의 내용. 모델이 중간에 끝나면 파일이 없거나 비어 있어서, 실패를 알릴 때 읽다가 다시 실패하지 않게 null로 둔다. */
+export function parseOutput(text: string | null): unknown {
+  if (!text?.trim()) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 /** 마일스톤 설명에 남긴 기획 이슈 번호. */
 export function planningIssueOf(description: string | null): number | null {
   const match = description?.match(/기획 이슈 #(\d+)/);
