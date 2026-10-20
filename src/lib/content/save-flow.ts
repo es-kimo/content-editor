@@ -6,12 +6,15 @@ import type { EditArea } from "./unsaved";
 /** 따로 저장하는 단위. 새 글 만들기도 저장 하나로 본다. */
 export type SaveTarget = "metadata" | "body" | "source" | "new";
 
-/** 저장 결과를 화면에 보일 상태. `saved`면 `href`(저장한 글 화면)로 간다. */
+/**
+ * 저장 결과를 화면에 보일 상태. `saved`면 `href`(저장한 글 화면)로 간다.
+ * 실패의 `message`는 기본 화면에 보일 이유와 다음 행동이고, `detail`은 기술 상세에 덧붙일 오류 원문이다.
+ */
 export type SaveState =
   | { status: "idle" }
   | { status: "saved"; href: string }
   | { status: "unchanged" }
-  | { status: "error"; message: string; fields?: { [key: string]: string } };
+  | { status: "error"; message: string; detail?: string; fields?: { [key: string]: string } };
 
 /** 저장하면 커밋되는 편집 영역. */
 const SAVED_AREAS: { [target in SaveTarget]: EditArea[] } = {
@@ -100,7 +103,7 @@ export type SaveFlow = {
 
 type Job = { target: SaveTarget; reopened: EditArea[]; submit: () => Promise<SaveState>; onUnchanged?: () => void };
 
-const FAILED: SaveState = { status: "error", message: "저장하지 못했다. 연결을 확인한 뒤 다시 저장한다." };
+const FAILED: SaveState = { status: "error", message: "저장하지 못했어요. 연결을 확인한 뒤 다시 저장해 주세요." };
 
 /** 한 화면의 저장들을 하나씩만 진행하게 묶는다. @param navigate 저장에 성공하면 저장한 글 화면으로 간다. */
 export function createSaveFlow({ navigate }: { navigate: (href: string) => void }): SaveFlow {

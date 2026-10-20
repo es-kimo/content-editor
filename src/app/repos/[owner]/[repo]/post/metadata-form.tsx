@@ -193,7 +193,7 @@ export function MetadataSettings() {
         </details>
       )}
       {settings.length === 0 && changed && <p className="text-sm text-amber-600">저장하지 않은 변경이 있어요</p>}
-      <SaveRow label="글 설정 저장" save={save} unchanged="바뀐 값이 없어 커밋하지 않았다." />
+      <SaveRow label="글 설정 저장" save={save} />
     </form>
   );
 }

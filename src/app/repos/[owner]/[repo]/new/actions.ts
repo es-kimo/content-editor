@@ -10,7 +10,7 @@ import { createError, createResultState, type CreateState } from "./create-resul
 export async function createPostAction(repo: string, collection: string, data: FormData): Promise<CreateState> {
   const title = data.get("title");
   const submenu = data.get("submenu");
-  if (typeof title !== "string") return createError("제목을 읽을 수 없다. 새로고침한 뒤 다시 만든다.");
+  if (typeof title !== "string") return createError("제목을 읽지 못했어요. 새로고침한 뒤 다시 만들어 주세요.");
 
   const outcome = await runRepoAction(repo, ({ client, config }) =>
     createPost(
@@ -21,7 +21,7 @@ export async function createPostAction(repo: string, collection: string, data: F
       new Date(),
     ),
   );
-  if (!outcome.ok) return createError(outcome.message);
+  if (!outcome.ok) return createError(outcome.message, { detail: outcome.detail });
   return createResultState(
     outcome.value,
     (path, commit) => `${postHref(repo, path)}&${new URLSearchParams({ saved: commit })}`,

@@ -163,7 +163,7 @@ export function BodyEditor({
         }
       />
       {preparing && <p className="text-sm text-zinc-500">이미지를 준비하는 중이다. 본문에 들어간 뒤 저장한다.</p>}
-      <SaveRow label="본문 저장" save={save} disabled={preparing} unchanged="바뀐 내용이 없어 커밋하지 않았다." />
+      <SaveRow label="본문 저장" save={save} disabled={preparing} />
     </form>
   );
 }

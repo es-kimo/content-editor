@@ -63,18 +63,18 @@ export async function createPost(
   });
 
   const collection = config.collections.find((c) => c.name === input.collection);
-  if (!collection) return invalid("collection", "config에 없는 컬렉션이다");
+  if (!collection) return invalid("collection", "편집 설정에 없는 글 분류예요.");
   const title = input.title.replace(/\s+/g, " ").trim();
-  if (title === "") return invalid("title", "필수 항목이다");
+  if (title === "") return invalid("title", "제목을 입력해 주세요.");
   const slug = postSlug(title);
-  if (slug === null) return invalid("title", "폴더 이름으로 쓸 수 있는 글자가 없다");
+  if (slug === null) return invalid("title", "폴더 이름으로 쓸 수 있는 글자가 없어요. 글자나 숫자를 넣어 주세요.");
 
   let submenu: string | undefined;
   if (needsSubmenu(collection)) {
     submenu = input.submenu;
-    if (!submenu) return invalid("submenu", "필수 항목이다");
+    if (!submenu) return invalid("submenu", "하위 메뉴를 골라 주세요.");
     if (!(await listSubmenus(client, repo, config, collection)).includes(submenu)) {
-      return invalid("submenu", `컬렉션에 없는 하위 메뉴다: ${submenu}`);
+      return invalid("submenu", "목록에 없는 하위 메뉴예요. 목록에서 골라 주세요.");
     }
   }
 

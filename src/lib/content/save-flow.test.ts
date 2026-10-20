@@ -212,9 +212,9 @@ describe("createSaveFlow", () => {
   });
 
   test.each<[string, SaveState]>([
-    ["입력 오류", { status: "error", message: "입력을 확인한다.", fields: { title: "필수다" } }],
-    ["컴파일 오류", { status: "error", message: "저장하면 사이트 빌드가 깨진다 (3행): x" }],
-    ["충돌", { status: "error", message: "글을 연 뒤 다른 곳에서 바뀌었다." }],
+    ["입력 오류", { status: "error", message: "입력한 값을 확인해 주세요.", fields: { title: "값을 입력해 주세요." } }],
+    ["컴파일 오류", { status: "error", message: "원문 편집에서 고쳐 주세요.", detail: "3행: Unexpected token" }],
+    ["충돌", { status: "error", message: "글을 연 뒤 다른 곳에서 글이 바뀌었어요." }],
   ])("%s로 실패하면 결과를 보이고 미저장 표시를 둔 채 다시 저장할 수 있다", async (_, result) => {
     const { flow, navigate } = setupFlow({ source: true });
 
@@ -275,7 +275,7 @@ describe("createSaveFlow", () => {
 
     flow.request({ target: "metadata" }, async () => ({
       status: "error",
-      message: "글을 연 뒤 다른 곳에서 바뀌었다.",
+      message: "글을 연 뒤 다른 곳에서 글이 바뀌었어요.",
     }));
     flow.confirm();
     await flush();

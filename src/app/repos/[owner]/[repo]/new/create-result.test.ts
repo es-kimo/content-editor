@@ -38,16 +38,26 @@ describe("createResultState", () => {
 
     const result = await createPost(client, REPO, config, { collection: "게시판", title: "10월 휴진 안내" }, NOW);
 
-    expect(createResultState(result, href)).toMatchObject({ status: "error", fields: { title: expect.any(String) } });
+    expect(createResultState(result, href)).toMatchObject({
+      status: "error",
+      message: "입력한 값을 확인해 주세요. 표시된 항목을 고친 뒤 다시 만들어 주세요.",
+      fields: { title: "같은 이름의 글 폴더가 이미 있어요. 제목을 바꿔 주세요." },
+    });
   });
 
-  test("제목이 비면 필드 오류를, config에 없는 컬렉션이면 필드 없는 안내를 돌려준다", async () => {
+  test("제목이 비면 제목 옆 오류를, 설정에 없는 글 분류면 필드 없이 글 분류를 다시 고르라는 안내를 돌려준다", async () => {
     const { client } = setup();
 
     const empty = await createPost(client, REPO, config, { collection: "게시판", title: "" }, NOW);
     const missing = await createPost(client, REPO, config, { collection: "없는 컬렉션", title: "글" }, NOW);
 
-    expect(createResultState(empty, href)).toMatchObject({ status: "error", fields: { title: expect.any(String) } });
-    expect(createResultState(missing, href)).toMatchObject({ status: "error", fields: undefined });
+    expect(createResultState(empty, href)).toMatchObject({
+      status: "error",
+      fields: { title: "제목을 입력해 주세요." },
+    });
+    expect(createResultState(missing, href)).toEqual({
+      status: "error",
+      message: "고른 글 분류가 레포의 편집 설정에 없어요. 글 목록에서 글 분류를 다시 골라 주세요.",
+    });
   });
 });

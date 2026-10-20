@@ -70,7 +70,7 @@ export function SourceEditor({
         syntax={syntax}
         site={preview ? { url: preview, message: () => previewMessage(edited.current, []) } : undefined}
       />
-      <SaveRow label="원문 저장" save={save} unchanged="바뀐 내용이 없어 커밋하지 않았다." />
+      <SaveRow label="원문 저장" save={save} />
     </form>
   );
 }
