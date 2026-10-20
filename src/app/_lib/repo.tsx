@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { LeaveLink } from "@/app/_lib/leave";
 import { prepareRepoPage, type RepoContext } from "@/app/_lib/repo-page";
 import { readSession, type SearchParams } from "@/app/_lib/session";
 import { assertRepoAllowed } from "@/app/_lib/site";
@@ -24,7 +25,7 @@ export const postHref = (repo: string, path: string) => `/repos/${repo}/post?${n
 export const newPostHref = (repo: string, collection?: string) =>
   `/repos/${repo}/new` + (collection === undefined ? "" : `?${new URLSearchParams({ collection })}`);
 
-/** 컬렉션 탭. 고른 컬렉션은 `aria-current`로 반전한다. */
+/** 컬렉션 탭. 고른 컬렉션은 `aria-current`로 반전한다. 편집 화면에서는 미저장 입력을 잃기 전에 묻는다. */
 export function CollectionTabs({
   config,
   current,
@@ -37,14 +38,14 @@ export function CollectionTabs({
   return (
     <nav className="flex flex-wrap gap-2">
       {config.collections.map((c) => (
-        <Link
+        <LeaveLink
           key={c.name}
           href={href(c.name)}
           aria-current={c === current ? "page" : undefined}
           className="rounded border px-3 py-1 text-sm aria-[current=page]:bg-black aria-[current=page]:text-white dark:aria-[current=page]:bg-white dark:aria-[current=page]:text-black"
         >
           {c.name}
-        </Link>
+        </LeaveLink>
       ))}
     </nav>
   );

@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { LeaveLink } from "@/app/_lib/leave";
 import { CollectionTabs, newPostHref, openRepoPage, repoHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell } from "@/app/_lib/ui";
@@ -41,9 +40,9 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
   return (
     <UnsavedProvider>
       <header className="flex flex-col gap-1">
-        <Link href={repoHref(repo, collection.name)} className="text-sm text-zinc-500 underline">
+        <LeaveLink href={repoHref(repo, collection.name)} className="text-sm text-zinc-500 underline">
           {repo} · {collection.name}
-        </Link>
+        </LeaveLink>
         <h1 className="text-2xl font-semibold">새 글</h1>
         <p className="text-sm text-zinc-500">
           만들면 브랜치 {config.branch}에 바로 커밋하고 편집 화면으로 간다. 제목이 폴더 이름이 된다.
