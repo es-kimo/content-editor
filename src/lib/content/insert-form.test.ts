@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { parseMdx, printJsxTag, readInserts, type InsertItem, type JsxElement } from "@/lib/mdx-doc";
+import { parseMdx, printJsxTag, readInserts, tocHeadings, type InsertItem, type JsxElement } from "@/lib/mdx-doc";
 import { yjshdConfig } from "@/test/config";
 import { editorElementsAt } from "@/test/editor-elements";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
@@ -17,6 +17,7 @@ import {
   bodyImageReplace,
   bodyInsert,
   bodyInserts,
+  bodyTocs,
   formDirty,
   formInitialValue,
   imageActionMessage,
@@ -1150,6 +1151,101 @@ describe("픽스처 전체의 본문 각주·출처", () => {
             const expected = "reason" in entry ? { limit: entry.reason } : { item: entry };
             const actual = view && ("item" in view ? { item: view.item } : view);
             if (JSON.stringify(actual) !== JSON.stringify(expected)) wrong.push(`${fixture.path}@${entry.from}`);
+            else found += 1;
+          }
+        }
+      }
+      expect(wrong).toEqual([]);
+      expect(found).toBeGreaterThan(0);
+    },
+  );
+});
+
+describe("본문 목차 표현", () => {
+  const tocDoc = parseMdx("export const metadata = { title: '진료 안내' };\n\n본문\n", syntax);
+  const viewsOf = (body: string) => {
+    const tocOf = bodyTocs(tocDoc, body, syntax);
+    return editorElementsAt(body, syntax).map(({ element }) => tocOf(element));
+  };
+
+  test("자동 목차는 지금 본문의 소제목을 원문 순서와 깊이대로 보이고 글 제목(#)은 넣지 않는다", () => {
+    const body = "# 진료 안내\n\n<TOC items={toc} />\n\n## 진료 시간\n\n### 토요일\n\n## 오시는 길\n";
+
+    expect(viewsOf(body)).toEqual([
+      {
+        headings: [
+          { depth: 2, text: "진료 시간" },
+          { depth: 3, text: "토요일" },
+          { depth: 2, text: "오시는 길" },
+        ],
+      },
+    ]);
+  });
+
+  test("본문의 제목을 고치거나 지우면 그 본문으로 만든 목차가 따라 바뀐다", () => {
+    const body = "<TOC items={toc} />\n\n## 진료 시간\n\n### 토요일\n";
+
+    expect(viewsOf(body.replace("진료 시간", "진료 일정"))).toEqual([
+      {
+        headings: [
+          { depth: 2, text: "진료 일정" },
+          { depth: 3, text: "토요일" },
+        ],
+      },
+    ]);
+    expect(viewsOf(body.replace("\n### 토요일\n", ""))).toEqual([{ headings: [{ depth: 2, text: "진료 시간" }] }]);
+  });
+
+  test("소제목이 없으면 자동 목차의 제목 목록이 비어 있다", () => {
+    expect(viewsOf("<TOC items={toc} />\n\n본문만 있어요.\n")).toEqual([{ headings: [] }]);
+  });
+
+  test("사용자 정의 목차는 제목 목록 없이 폼으로 고칠 수 없는 이유만 있다", () => {
+    expect(viewsOf('<TOC items={[{ title: "진료 시간" }]} />\n\n## 진료 시간\n')).toEqual([{ limit: "custom-toc" }]);
+  });
+
+  test("찾은 자동 목차를 지우면 원문에서 그 목차 줄만 빠진다", () => {
+    const body = "앞 문단\n\n<TOC items={toc} />\n\n## 진료 시간\n";
+    const [toc] = editorElementsAt(body, syntax);
+    const item = toc && bodyEntryAt(tocDoc, body, toc.element, toc.nth, syntax);
+    if (!item || !isTocInsert(item)) throw new Error("목차 없음");
+
+    expect(removeBodyInsert(tocDoc, body, item, syntax)).toEqual({
+      ok: true,
+      body: "앞 문단\n\n## 진료 시간\n",
+      changed: true,
+    });
+  });
+
+  test("목차가 아닌 요소와 읽을 수 없는 본문은 null이다", () => {
+    expect(viewsOf('가<Footnote id="1">하나</Footnote>.\n\n<Image src={image1} alt="사진" />\n')).toEqual([null, null]);
+    const [element] = editorElementsAt("<TOC items={toc} />\n", syntax);
+    expect(bodyTocs(tocDoc, "<TOC items={toc \n", syntax)(element!.element)).toBeNull();
+  });
+});
+
+describe("픽스처 전체의 본문 목차", () => {
+  const sources = fixtureSources.map((source) => ({ syntax: source.syntax, fixtures: loadFixtures(source.name) }));
+
+  test.skipIf(sources.some(({ fixtures }) => !fixtures))(
+    "편집기가 그린 목차를 태그로 찾으면 자동 목차는 그 글의 소제목을, 사용자 정의 목차는 이유를 보인다",
+    { timeout: 60_000 },
+    () => {
+      const wrong: string[] = [];
+      let found = 0;
+      for (const { syntax: fixtureSyntax, fixtures } of sources) {
+        for (const fixture of fixtures ?? []) {
+          const doc = parseMdx(fixture.source, fixtureSyntax);
+          if (!doc.ok) continue;
+          const tocOf = bodyTocs(doc, doc.body, fixtureSyntax);
+          const headings = tocHeadings(doc.body, fixtureSyntax);
+          for (const { element, nth } of editorElementsAt(doc.body, fixtureSyntax)) {
+            const entry = bodyEntryAt(doc, doc.body, element, nth, fixtureSyntax);
+            if (entry?.kind !== "toc") continue;
+            const expected =
+              "reason" in entry ? { limit: entry.reason } : { headings: headings.ok && headings.headings };
+            if (JSON.stringify(tocOf(element)) !== JSON.stringify(expected))
+              wrong.push(`${fixture.path}@${entry.from}`);
             else found += 1;
           }
         }
