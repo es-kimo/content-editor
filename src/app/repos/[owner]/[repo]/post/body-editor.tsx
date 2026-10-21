@@ -11,6 +11,7 @@ import {
   applyBodyInsertForm,
   bodyEntryAt,
   bodyEntryElementAt,
+  bodyFootnotes,
   bodyImageMoves,
   bodyImageReplace,
   bodyInsert,
@@ -35,7 +36,7 @@ import {
   type Syntax,
 } from "@/lib/mdx-doc";
 
-import { BodyPhotosContext, useBodyPhotos } from "./body-photo";
+import { BodyItemsContext, useBodyItems } from "./body-items";
 import { BodyPreview } from "./body-preview";
 import { useDraftInput, useDraftTouch } from "./drafts";
 import { AttachedImagesNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
@@ -173,6 +174,7 @@ function OpenedBodyEditor({
     (element: JsxElement) => bodyImagePhoto(attachedDoc, element, { inserted: previewImages, post }, syntax),
     [attachedDoc, previewImages, post, syntax],
   );
+  const footnote = useMemo(() => bodyFootnotes(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
   const imageMoves = useCallback(
     (item: ImageInsertItem) => bodyImageMoves(attachedDoc, current, item, syntax),
     [attachedDoc, current, syntax],
@@ -192,7 +194,7 @@ function OpenedBodyEditor({
     return result;
   };
   const editorBox = useRef<HTMLDivElement>(null);
-  const photos = useBodyPhotos(editorBox, {
+  const items = useBodyItems(editorBox, {
     image: (element, nth) => {
       const entry = bodyEntryAt(attachedDoc, current, element, nth, syntax);
       return entry && isImageInsert(entry) ? entry : null;
@@ -269,7 +271,7 @@ function OpenedBodyEditor({
       />
       {forms.panel}
       <div ref={editorBox} {...(upload ? images.dropProps : {})}>
-        <BodyPhotosContext value={photos}>
+        <BodyItemsContext value={items}>
           <MdxBodyEditor
             markdown={body}
             components={components}
@@ -278,7 +280,7 @@ function OpenedBodyEditor({
             onChange={(markdown, initialMarkdownNormalize) => {
               if (!initialMarkdownNormalize) {
                 // 고른 사진의 차례가 바뀌었을 수 있어 다른 이미지를 고치지 않게 선택을 푼다.
-                photos.select(null);
+                items.select(null);
                 return edit(markdown);
               }
               setCurrent(markdown);
@@ -301,8 +303,9 @@ function OpenedBodyEditor({
             }
             onPickImage={upload ? images.pick : undefined}
             photo={photo}
+            footnote={footnote}
           />
-        </BodyPhotosContext>
+        </BodyItemsContext>
       </div>
       {upload && images.picker}
       {upload && (

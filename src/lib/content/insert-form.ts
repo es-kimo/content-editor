@@ -46,6 +46,8 @@ export type TocInsertItem = Extract<InsertItem, { kind: "toc" }>;
 
 export type ImageInsertItem = Extract<InsertItem, { kind: "image" }>;
 
+export type FootnoteInsertItem = Extract<InsertItem, { kind: "footnote" | "footnote-ref" }>;
+
 /** 삽입 항목 목록에서 지울 수 있는 항목. 자동 목차와, 선택한 본문 참조 한 곳만 지우는 이미지다. */
 export type RemovableInsertItem = TocInsertItem | ImageInsertItem;
 
@@ -403,6 +405,47 @@ export function bodyEntryElementAt(
   const found = entry && tags?.find(({ from, to }) => from === entry.from && to === entry.to);
   if (!found || !tags) return null;
   return { tag: found.tag, nth: tags.filter((jsx) => jsx.tag === found.tag).indexOf(found) };
+}
+
+/**
+ * 일반 편집 본문에 보일 각주·출처. `numbers`는 각주의 번호, 출처는 연결한 각주 번호이고 원문 순서로 다시 매기지 않는다.
+ * 폼으로 고칠 수 없으면 그 이유(`limit`)만 있다. 번호가 겹친 각주는 어느 자리인지 정할 수 없어 위치를 두지 않는다.
+ */
+export type BodyFootnote = { item: FootnoteInsertItem; numbers: string[] } | { limit: InsertLimit };
+
+/**
+ * 일반 편집기가 그린 요소가 어느 각주·출처인지 찾는 함수를 만든다. 각주·출처가 아닌 요소는 null이다.
+ * 편집기는 요소의 원문 위치를 주지 않아 태그(`printJsxTag`)로 찾는다. 태그가 같은 각주·출처는 번호나 연결이 겹쳐
+ * 모두 같은 이유로 폼으로 고칠 수 없으므로, 차례를 몰라도 태그만으로 어느 항목인지 또는 왜 고칠 수 없는지가 정해진다.
+ * 본문의 각주마다 원문을 다시 읽지 않도록 본문 하나에 한 번만, 처음 찾을 때 읽는다.
+ */
+export function bodyFootnotes(
+  doc: MdxDoc,
+  body: string,
+  syntax: Syntax = {},
+): (element: JsxElement) => BodyFootnote | null {
+  let byTag: Map<string, BodyFootnote> | undefined;
+  return (element) => {
+    byTag ??= footnotesByTag(doc, body, syntax);
+    return byTag.get(printJsxTag(element)) ?? null;
+  };
+}
+
+function footnotesByTag(doc: MdxDoc, body: string, syntax: Syntax): Map<string, BodyFootnote> {
+  const byTag = new Map<string, BodyFootnote>();
+  if (!doc.ok) return byTag;
+  const source = bodySource(doc, body);
+  const list = readInserts(source, syntax);
+  const tags = readJsxTags(source, syntax);
+  if (!list.ok || !tags) return byTag;
+  const at = new Map(insertEntries(list).map((entry) => [`${entry.from}-${entry.to}`, entry]));
+  for (const { from, to, tag } of tags) {
+    const entry = at.get(`${from}-${to}`);
+    if (byTag.has(tag) || (entry?.kind !== "footnote" && entry?.kind !== "footnote-ref")) continue;
+    if ("reason" in entry) byTag.set(tag, { limit: entry.reason });
+    else byTag.set(tag, { item: entry, numbers: (entry.kind === "footnote" ? [entry.id] : entry.ids).map(String) });
+  }
+  return byTag;
 }
 
 /** 일반 편집에서 파일을 바꿀 이미지. `bodyInserts`로 읽은 그 원문을 함께 둔다. */

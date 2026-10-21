@@ -12,6 +12,7 @@ import {
   applyInsertForm,
   bodyEntryAt,
   bodyEntryElementAt,
+  bodyFootnotes,
   bodyImageMoves,
   bodyImageReplace,
   bodyInsert,
@@ -1044,6 +1045,60 @@ describe("본문 표현의 삽입 항목", () => {
   });
 });
 
+describe("본문 각주·출처 표현", () => {
+  const notesDoc = parseMdx("export const metadata = { title: '각주' };\n\n본문\n", syntax);
+  const viewsOf = (body: string) => {
+    const footnoteOf = bodyFootnotes(notesDoc, body, syntax);
+    return editorElementsAt(body, syntax).map(({ element }) => footnoteOf(element));
+  };
+
+  test("각주는 원문 번호를, 출처는 연결한 각주 번호와 내용을 원문 순서로 다시 매기지 않고 보인다", () => {
+    const body = [
+      '문장<Footnote id="3">셋째</Footnote> 다음<Footnote id="1">첫째</Footnote>.',
+      "",
+      '<FootnoteRef ids={["3", "1"]}>',
+      "  병원 공지",
+      "</FootnoteRef>",
+      "",
+    ].join("\n");
+
+    expect(viewsOf(body)).toMatchObject([
+      { item: { kind: "footnote", id: 3, text: "셋째" }, numbers: ["3"] },
+      { item: { kind: "footnote", id: 1, text: "첫째" }, numbers: ["1"] },
+      { item: { kind: "footnote-ref", ids: [3, 1], text: "병원 공지" }, numbers: ["3", "1"] },
+    ]);
+  });
+
+  test("찾은 각주로 연 수정 폼을 적용하면 그 각주의 내용만 바뀐다", () => {
+    const body = '가<Footnote id="1">하나</Footnote> 나<Footnote id="3">셋</Footnote>.\n';
+    const third = viewsOf(body)[1];
+    if (!third || !("item" in third)) throw new Error("각주 없음");
+
+    expect(applyBodyInsertForm(notesDoc, body, { kind: "edit", item: third.item }, text("셋째"), syntax)).toEqual({
+      ok: true,
+      body: body.replace(">셋<", ">셋째<"),
+      changed: true,
+    });
+  });
+
+  test("번호가 겹친 각주와 그 각주를 가리키는 출처는 폼으로 고칠 수 없는 이유만 있다", () => {
+    const body = [
+      '가<Footnote id="1">하나</Footnote> 나<Footnote id="1">또 하나</Footnote>.',
+      "",
+      '<FootnoteRef ids={["1"]}>출처</FootnoteRef>',
+      "",
+    ].join("\n");
+
+    expect(viewsOf(body)).toEqual([{ limit: "duplicate-id" }, { limit: "duplicate-id" }, { limit: "ambiguous-link" }]);
+  });
+
+  test("각주·출처가 아닌 요소와 읽을 수 없는 본문은 null이다", () => {
+    expect(viewsOf('<TOC items={toc} />\n\n<Image src={image1} alt="사진" />\n')).toEqual([null, null]);
+    const [element] = editorElementsAt('<Footnote id="1">하나</Footnote>\n', syntax);
+    expect(bodyFootnotes(notesDoc, "<Footnote id={1 \n", syntax)(element!.element)).toBeNull();
+  });
+});
+
 describe.each(fixtureSources.map((source) => [source.name, source.syntax, loadFixtures(source.name)] as const))(
   "%s 픽스처 전체의 본문 표현",
   (_, fixtureSyntax, fixtures) => {
@@ -1072,6 +1127,38 @@ describe.each(fixtureSources.map((source) => [source.name, source.syntax, loadFi
     );
   },
 );
+
+describe("픽스처 전체의 본문 각주·출처", () => {
+  // 각주가 있는 글은 한쪽 픽스처에만 있어 픽스처를 합쳐 센다.
+  const sources = fixtureSources.map((source) => ({ syntax: source.syntax, fixtures: loadFixtures(source.name) }));
+
+  test.skipIf(sources.some(({ fixtures }) => !fixtures))(
+    "편집기가 그린 각주·출처를 태그로만 찾아도 그 자리의 삽입 항목과 같다",
+    { timeout: 60_000 },
+    () => {
+      const wrong: string[] = [];
+      let found = 0;
+      for (const { syntax: fixtureSyntax, fixtures } of sources) {
+        for (const fixture of fixtures ?? []) {
+          const doc = parseMdx(fixture.source, fixtureSyntax);
+          if (!doc.ok) continue;
+          const footnoteOf = bodyFootnotes(doc, doc.body, fixtureSyntax);
+          for (const { element, nth } of editorElementsAt(doc.body, fixtureSyntax)) {
+            const entry = bodyEntryAt(doc, doc.body, element, nth, fixtureSyntax);
+            if (entry?.kind !== "footnote" && entry?.kind !== "footnote-ref") continue;
+            const view = footnoteOf(element);
+            const expected = "reason" in entry ? { limit: entry.reason } : { item: entry };
+            const actual = view && ("item" in view ? { item: view.item } : view);
+            if (JSON.stringify(actual) !== JSON.stringify(expected)) wrong.push(`${fixture.path}@${entry.from}`);
+            else found += 1;
+          }
+        }
+      }
+      expect(wrong).toEqual([]);
+      expect(found).toBeGreaterThan(0);
+    },
+  );
+});
 
 describe.each(fixtureSources.map((source) => [source.name, source.syntax, loadFixtures(source.name)] as const))(
   "%s 픽스처 전체의 일반 편집 이미지",

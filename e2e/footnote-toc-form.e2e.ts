@@ -429,11 +429,10 @@ describe("메뉴와 제한", () => {
     await openBody(POSTS.bodyLimited);
     await insertList(2).click();
 
-    expect(
-      await page
-        .getByText("폼으로 고칠 수 없어요. 같은 번호의 각주가 여러 개예요. 원문 편집에서 직접 고쳐 주세요.")
-        .count(),
-    ).toBe(2);
+    const reason = "폼으로 고칠 수 없어요. 같은 번호의 각주가 여러 개예요. 원문 편집에서 직접 고쳐 주세요.";
+    // 삽입 항목 목록과 본문의 각주 자리에 각각 보인다.
+    expect(await page.locator("details").filter({ hasText: "삽입 항목" }).getByText(reason).count()).toBe(2);
+    expect(await bodyEditor().getByText(reason).count()).toBe(2);
     expect(await page.getByRole("button", { name: "원문 편집", exact: true }).isEnabled()).toBe(true);
   });
 
