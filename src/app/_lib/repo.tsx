@@ -25,6 +25,9 @@ export const postHref = (repo: string, path: string) => `/repos/${repo}/post?${n
 export const newPostHref = (repo: string, collection?: string) =>
   `/repos/${repo}/new` + (collection === undefined ? "" : `?${new URLSearchParams({ collection })}`);
 
+export const trashHref = (repo: string, collection?: string) =>
+  `/repos/${repo}/trash` + (collection === undefined ? "" : `?${new URLSearchParams({ collection })}`);
+
 /** 글 분류 탭. 고른 글 분류는 `aria-current`로 반전한다. 편집 화면에서는 미저장 입력을 잃기 전에 묻는다. */
 export function CollectionTabs({
   config,

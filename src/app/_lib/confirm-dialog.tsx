@@ -7,12 +7,14 @@ import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/app/_lib/ui";
 /**
  * 입력을 잃을 수 있는 조작 전에 묻는다. `계속 편집`이 기본 선택이고, Esc로 닫아도 계속 편집과 같다.
  * 닫히면 열릴 때 초점이 있던 곳(누른 버튼·링크, 입력하던 칸)으로 초점을 돌린다.
+ * `alternate`는 계속 편집과 실행 사이의 다른 선택(예: 먼저 저장)이다.
  */
 export function ConfirmDialog({
   open,
   title,
   children,
   confirmLabel,
+  alternate,
   onKeep,
   onConfirm,
 }: {
@@ -20,6 +22,7 @@ export function ConfirmDialog({
   title: string;
   children: ReactNode;
   confirmLabel: string;
+  alternate?: { label: string; onClick: () => void };
   onKeep: () => void;
   onConfirm: () => void;
 }) {
@@ -58,10 +61,15 @@ export function ConfirmDialog({
             {title}
           </h2>
           {children}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button ref={keep} type="button" onClick={onKeep} className={PRIMARY_BUTTON_CLASS}>
               계속 편집
             </button>
+            {alternate && (
+              <button type="button" onClick={alternate.onClick} className={SECONDARY_BUTTON_CLASS}>
+                {alternate.label}
+              </button>
+            )}
             <button type="button" onClick={onConfirm} className={SECONDARY_BUTTON_CLASS}>
               {confirmLabel}
             </button>

@@ -100,6 +100,13 @@ export function LeaveGuardProvider({
   );
 }
 
+/** 확인받아 입력을 버리고 `href`로 가는 함수. 이탈 확인을 다시 띄우지 않는다 (`LeaveGuard.abandon`). */
+export function useAbandon(): (href: string) => void {
+  const guard = useContext(LeaveGuardContext);
+  const router = useRouter();
+  return (href) => (guard ? guard.abandon({ kind: "push", href }) : router.push(href));
+}
+
 /**
  * 입력을 잃을 수 있는 같은 탭 이동 링크. `LeaveGuardProvider` 밖에서는 보통 링크다.
  * 새 탭 열기(Ctrl/Cmd+클릭 등)는 Next.js가 `onNavigate`를 부르지 않아 묻지 않는다.

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { CollectionTabs, newPostHref, openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
+import { CollectionTabs, newPostHref, openRepoPage, postHref, repoHref, trashHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell, TechDetails } from "@/app/_lib/ui";
 import { listPosts, listTitle, timed } from "@/lib/content";
@@ -50,9 +50,14 @@ async function PostList({ params, searchParams }: { params: Params; searchParams
           <p className="text-sm text-zinc-500">
             {collection.name} {posts.length}편
           </p>
-          <Link href={newPostHref(repo, collection.name)} className="text-sm underline">
-            새 글
-          </Link>
+          <div className="flex gap-3">
+            <Link href={newPostHref(repo, collection.name)} className="text-sm underline">
+              새 글
+            </Link>
+            <Link href={trashHref(repo, collection.name)} className="text-sm underline">
+              휴지통
+            </Link>
+          </div>
         </div>
         {posts.length === 0 ? (
           <p className="text-zinc-500">

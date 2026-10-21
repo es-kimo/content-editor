@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { LeaveLink } from "@/app/_lib/leave";
-import { openRepoPage, postHref, repoHref } from "@/app/_lib/repo";
+import { openRepoPage, postHref, repoHref, trashHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell, TechDetails } from "@/app/_lib/ui";
 import { UnsavedNotice, UnsavedProvider } from "@/app/_lib/unsaved";
@@ -20,11 +20,12 @@ import {
 import type { Syntax } from "@/lib/mdx-doc";
 import { buildForm, optionLabel, STATUS_FIELD, type FormField } from "@/lib/metadata-form";
 
-import { savePostAction } from "./actions";
+import { restorePostAction, savePostAction, trashPostAction } from "./actions";
 import { BodyModes } from "./body-modes";
 import { MetadataForm, MetadataSettings, MetadataTitleInput } from "./metadata-form";
 import { PostActionBar } from "./post-actions";
 import { PostEditorProvider } from "./post-editor";
+import { RestoreButton } from "./restore-button";
 import { savedMessage } from "./save-result";
 import { SourceEditor } from "./source-editor";
 
@@ -56,17 +57,51 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
   const modes = editorModes(post);
   const actions = postActions(post.collection, post.metadata?.editable ? post.metadata.value : null);
   const title = postTitle(post.metadata);
+  const heading = (
+    <>
+      <LeaveLink href={repoHref(repo, post.collection.name)} className="text-sm text-zinc-500 underline">
+        {repo} · {post.collection.name}
+      </LeaveLink>
+      <h1 className="text-2xl font-semibold break-words">{title}</h1>
+      {actions.status && <p className="text-sm">상태: {POST_STATE_LABELS[actions.status]}</p>}
+      {commit && (
+        <p className="text-sm text-green-700">{savedMessage(typeof action === "string" ? action : undefined)}</p>
+      )}
+    </>
+  );
+  const techDetails = (
+    <TechDetails
+      items={[
+        ["파일 경로", post.path],
+        ["blob SHA", post.sha],
+        ...(commit ? [["저장한 커밋", commit] satisfies [string, string]] : []),
+        // 글 설정을 폼으로 읽을 수 없는 글도 원문 전용이라, 그 이유도 여기에 담긴다.
+        ...(modes.sourceOnly ? [["일반 편집 제한 원문", modes.sourceOnly.message] satisfies [string, string]] : []),
+      ]}
+    />
+  );
+
+  // 휴지통 글은 복구한 뒤에 고치므로 편집기 대신 안내와 ‘복구’만 둔다.
+  if (actions.status === "trashed") {
+    return (
+      <>
+        <header className="flex flex-col gap-1">{heading}</header>
+        <section className="flex flex-col gap-2">
+          <p className="text-sm text-amber-600">{actions.notice}</p>
+          <RestoreButton primary restore={restorePostAction.bind(null, repo, post.path, post.sha)} />
+          <LeaveLink href={trashHref(repo, post.collection.name)} className="w-fit text-sm underline">
+            휴지통 목록
+          </LeaveLink>
+        </section>
+        {techDetails}
+      </>
+    );
+  }
+
   const content = (
     <>
       <header className="flex flex-col gap-1">
-        <LeaveLink href={repoHref(repo, post.collection.name)} className="text-sm text-zinc-500 underline">
-          {repo} · {post.collection.name}
-        </LeaveLink>
-        <h1 className="text-2xl font-semibold break-words">{title}</h1>
-        {actions.status && <p className="text-sm">상태: {POST_STATE_LABELS[actions.status]}</p>}
-        {commit && (
-          <p className="text-sm text-green-700">{savedMessage(typeof action === "string" ? action : undefined)}</p>
-        )}
+        {heading}
         <UnsavedNotice />
       </header>
 
@@ -88,7 +123,12 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
         )}
       </section>
 
-      <PostActionBar actions={actions} title={title} save={savePostAction.bind(null, repo, post.path, post.sha)} />
+      <PostActionBar
+        actions={actions}
+        title={title}
+        save={savePostAction.bind(null, repo, post.path, post.sha)}
+        trash={trashPostAction.bind(null, repo, post.path, post.sha)}
+      />
 
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">이미지 {post.images.length}개</h2>
@@ -103,15 +143,7 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
         )}
       </section>
 
-      <TechDetails
-        items={[
-          ["파일 경로", post.path],
-          ["blob SHA", post.sha],
-          ...(commit ? [["저장한 커밋", commit] satisfies [string, string]] : []),
-          // 글 설정을 폼으로 읽을 수 없는 글도 원문 전용이라, 그 이유도 여기에 담긴다.
-          ...(modes.sourceOnly ? [["일반 편집 제한 원문", modes.sourceOnly.message] satisfies [string, string]] : []),
-        ]}
-      />
+      {techDetails}
     </>
   );
 

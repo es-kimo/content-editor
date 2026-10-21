@@ -63,6 +63,7 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
             submenus={submenus}
             actions={newPostActions(collection)}
             save={createPostAction.bind(null, repo, collection.name)}
+            cancelHref={repoHref(repo, collection.name)}
           >
             <BodyModes
               collection={collection}

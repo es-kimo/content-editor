@@ -29,6 +29,7 @@ export function NewPostForm({
   submenus,
   actions,
   save,
+  cancelHref,
   children,
 }: {
   collection: Collection;
@@ -36,6 +37,8 @@ export function NewPostForm({
   submenus: string[] | null;
   actions: PostActions;
   save: (input: NewPostSaveInput, data: FormData) => Promise<CreateState>;
+  /** ‘작성 취소’를 확인하면 입력을 버리고 갈 글 목록. */
+  cancelHref: string;
   children: ReactNode;
 }) {
   const { mode } = usePostEditor();
@@ -70,6 +73,7 @@ export function NewPostForm({
         actions={actions}
         title={title}
         save={(input, data) => save({ ...input, submenu: submenus ? submenu : undefined }, data)}
+        cancelHref={cancelHref}
       />
     </>
   );

@@ -89,6 +89,11 @@ export function useUnsavedChanged(): { [area in EditArea]?: boolean } {
   return useFlowState(useFlow()).changed;
 }
 
+/** 지금 화면을 떠나거나 글을 없애면 잃을 미저장 영역. 적용하지 않은 폼의 작성 중 입력도 든다. */
+export function useLeavingAreas(): EditArea[] {
+  return leavingAreas(useFlowState(useFlow()));
+}
+
 /** 편집 영역이 이미지를 준비하는 중인지 알린다. 영역이 사라지면 함께 거둔다. */
 export function useReportPreparing(area: FormArea, preparing: boolean) {
   const flow = useFlow();
