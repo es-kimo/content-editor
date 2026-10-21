@@ -62,6 +62,16 @@ describe("readRepoImage", () => {
   ])("%s은 파일 없음으로 실패한다", async (_, importPath) => {
     expect(await read(POST, importPath).result).toEqual({ ok: false, reason: "missing" });
   });
+
+  test("폴더 목록을 읽은 뒤 그 사이에 파일이 지워졌으면 파일 없음으로 실패한다", async () => {
+    const fake = fakeGitHub(REPO, "release", files);
+    const client = createGitHubClient("token", async (input, init) =>
+      String(input).includes("/git/blobs/")
+        ? Response.json({ message: "Not Found" }, { status: 404 })
+        : fake(input, init),
+    );
+    expect(await readRepoImage(client, REPO, config, POST, "./1.png")).toEqual({ ok: false, reason: "missing" });
+  });
 });
 
 describe("repoImageHref", () => {

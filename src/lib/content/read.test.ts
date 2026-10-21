@@ -129,6 +129,16 @@ describe("readPost", () => {
     expect(await readPost(onlyImage, REPO, config, POST)).toBeNull();
   });
 
+  test("폴더 목록을 읽은 뒤 그 사이에 파일이 지워져 blob이 없으면 null", async () => {
+    const fake = fakeGitHub(REPO, "main", files);
+    const client = createGitHubClient("t", async (input, init) =>
+      String(input).includes("/git/blobs/")
+        ? Response.json({ message: "Not Found" }, { status: 404 })
+        : fake(input, init),
+    );
+    expect(await readPost(client, REPO, config, POST)).toBeNull();
+  });
+
   test("404가 아닌 실패는 던진다", async () => {
     const client = createGitHubClient("t", async () => Response.json({ message: "Server Error" }, { status: 502 }));
     await expect(readPost(client, REPO, config, POST)).rejects.toMatchObject({ status: 502 });

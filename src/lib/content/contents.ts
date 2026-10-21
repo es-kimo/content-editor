@@ -25,3 +25,29 @@ export async function listDir(
     throw error;
   }
 }
+
+/**
+ * `ref` 시점의 파일 하나를 그 폴더 목록과 함께 읽는다. 목록의 sha로 blob을 받아 내용과 sha가 같은 시점의 것이 되게 한다.
+ * 폴더나 파일이 없거나, 목록을 읽은 뒤 그 사이에 지워졌으면 null.
+ */
+export async function readDirFile(
+  client: GitHubClient,
+  repo: string,
+  filePath: string,
+  ref: string,
+): Promise<{ entries: ContentsEntry[]; file: ContentsEntry; blob: Response } | null> {
+  const slash = filePath.lastIndexOf("/");
+  const entries = await listDir(client, repo, filePath.slice(0, Math.max(slash, 0)), ref);
+  const file = entries?.find((e) => e.type === "file" && e.name === filePath.slice(slash + 1));
+  if (!entries || !file) return null;
+
+  try {
+    const blob = await client.rest(`${repoPath(repo)}/git/blobs/${file.sha}`, {
+      accept: "application/vnd.github.raw+json",
+    });
+    return { entries, file, blob };
+  } catch (error) {
+    if (error instanceof GitHubApiError && error.status === 404) return null;
+    throw error;
+  }
+}

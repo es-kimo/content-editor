@@ -1,8 +1,8 @@
 import type { EditorConfig } from "@/lib/editor-config";
-import { GitHubApiError, repoPath, type GitHubClient } from "@/lib/github";
+import type { GitHubClient } from "@/lib/github";
 import { imageContentType } from "@/lib/mdx-doc";
 
-import { listDir } from "./contents";
+import { readDirFile } from "./contents";
 import { findCollection } from "./read";
 
 /** 레포 이미지를 읽지 못한 이유. `outside-repo`는 import 경로가 레포 루트를 넘거나 글 폴더 기준 상대 경로가 아닌 것이다. */
@@ -28,21 +28,9 @@ export async function readRepoImage(
   const contentType = imageContentType(filePath);
   if (contentType === null) return { ok: false, reason: "not-image" };
 
-  const slash = filePath.lastIndexOf("/");
-  const entries = await listDir(client, repo, filePath.slice(0, Math.max(slash, 0)), config.branch);
-  const file = entries?.find((e) => e.type === "file" && e.name === filePath.slice(slash + 1));
-  if (!file) return { ok: false, reason: "missing" };
-
-  try {
-    const blob = await client.rest(`${repoPath(repo)}/git/blobs/${file.sha}`, {
-      accept: "application/vnd.github.raw+json",
-    });
-    return { ok: true, bytes: new Uint8Array(await blob.arrayBuffer()), contentType };
-  } catch (error) {
-    // 폴더 목록을 읽은 뒤 그 사이에 지워졌을 수 있다.
-    if (error instanceof GitHubApiError && error.status === 404) return { ok: false, reason: "missing" };
-    throw error;
-  }
+  const read = await readDirFile(client, repo, filePath, config.branch);
+  if (!read) return { ok: false, reason: "missing" };
+  return { ok: true, bytes: new Uint8Array(await read.blob.arrayBuffer()), contentType };
 }
 
 /** 글 폴더를 기준으로 import 경로를 레포 경로로 푼다. `./`·`../`로 시작하지 않거나 레포 루트를 넘으면 null. */

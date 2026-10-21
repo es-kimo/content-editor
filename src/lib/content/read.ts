@@ -1,8 +1,8 @@
 import { compilePathPattern, type Collection, type EditorConfig, type PathParams } from "@/lib/editor-config";
-import { repoPath, type GitHubClient } from "@/lib/github";
+import type { GitHubClient } from "@/lib/github";
 import { isImageFile, parseMdx, readMetadata, type MdxDoc, type MetadataResult } from "@/lib/mdx-doc";
 
-import { listDir } from "./contents";
+import { readDirFile } from "./contents";
 import { docEditorKeys, type EditorKeys } from "./save-flow";
 import { IMAGE_COMPONENT } from "./upload";
 
@@ -47,19 +47,9 @@ export async function readPost(
   const found = findCollection(config, filePath);
   if (!found) return null;
 
-  const slash = filePath.lastIndexOf("/");
-  const dir = filePath.slice(0, slash);
-  const fileName = filePath.slice(slash + 1);
-
-  const entries = await listDir(client, repo, dir, config.branch);
-  if (!entries) return null;
-
-  const file = entries.find((e) => e.type === "file" && e.name === fileName);
-  if (!file) return null;
-
-  const blob = await client.rest(`${repoPath(repo)}/git/blobs/${file.sha}`, {
-    accept: "application/vnd.github.raw+json",
-  });
+  const read = await readDirFile(client, repo, filePath, config.branch);
+  if (!read) return null;
+  const { entries, file, blob } = read;
   const source = await blob.text();
 
   const doc = parseMdx(source, config.syntax);
