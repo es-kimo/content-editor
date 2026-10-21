@@ -11,7 +11,8 @@ import { PNG } from "@/test/upload-images";
 
 import { applyInsertForm } from "./insert-form";
 import { formToSource, sourceToForm, type SwitchPost } from "./mode-switch";
-import { editorModes, findCollection } from "./read";
+import { editorModes } from "./editor-modes";
+import { findCollection } from "./read";
 import { saveEdit } from "./save-edit";
 import { sourceUploads } from "./upload";
 import { createUploadSession } from "./upload-session";
@@ -122,6 +123,23 @@ describe("sourceToForm", () => {
     ];
     for (const { source, reason } of cases) {
       expect(sourceToForm(post, { source, images: [] }), source).toMatchObject({ ok: false, reason });
+    }
+  });
+
+  test("원문 모드로만 여는 원문은 처음 열 때 editorModes가 보인 이유와 같은 이유로 전환 실패다", () => {
+    for (const source of [
+      sourceWith("export const metadata = {", "export const metadata = {{"),
+      sourceWith('title: "11월 휴진 안내"', "title: someTitle"),
+    ]) {
+      const doc = parseMdx(source, config.syntax);
+      const { sourceOnly } = editorModes({ collection: post.collection, doc, metadata: readMetadata(doc) });
+
+      expect(sourceOnly).not.toBeNull();
+      expect(sourceToForm(post, { source, images: [] })).toEqual({ ok: false, ...sourceOnly });
+      expect(formToSource({ ...post, source }, { values: FORM, body: "", images: [] })).toEqual({
+        ok: false,
+        ...sourceOnly,
+      });
     }
   });
 

@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { DraftAttachment } from "@/lib/content/draft";
+import type { EditorMode } from "@/lib/content/editor-modes";
 import {
   formToSource,
   sourceToForm,
@@ -11,7 +12,6 @@ import {
   type SourceModeInput,
   type SwitchPost,
 } from "@/lib/content/mode-switch";
-import type { EditorMode } from "@/lib/content/read";
 import { collectPostInput, type PostInput, type PostInputCollectors } from "@/lib/content/save-flow";
 import type { MdxDoc } from "@/lib/mdx-doc";
 import { readFormData } from "@/lib/metadata-form";

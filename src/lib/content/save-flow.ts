@@ -11,7 +11,7 @@ import {
   type StatusProblem,
 } from "@/lib/metadata-form";
 
-import type { EditorMode } from "./read";
+import type { EditorMode } from "./editor-modes";
 import type { EditArea } from "./unsaved";
 
 /** 저장하는 단위. 글 화면은 글 하나를 한 번에 저장하고, 새 글 만들기도 저장 하나로 본다. */

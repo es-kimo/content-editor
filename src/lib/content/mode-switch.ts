@@ -10,7 +10,10 @@ import {
   type MetadataObject,
 } from "@/lib/metadata-form";
 
+import { editorModes, type EditorModes } from "./editor-modes";
 import { applyUploads, sourceUploads, type UploadImage, type UploadProblem } from "./upload";
+
+type SourceOnly = NonNullable<EditorModes["sourceOnly"]>;
 
 /**
  * 모드를 바꾸는 글. 글을 연 시점의 원문과 글 폴더 파일 이름이다.
@@ -26,10 +29,8 @@ export type SourceModeInput<I extends UploadImage = UploadImage> = { source: str
 
 /** 지금 입력을 다른 모드로 이어받지 못한 이유. */
 export type ModeSwitchProblem =
-  /** 원문을 글 설정과 본문으로 나눌 수 없다 (`editorModes`의 `doc`). `message`는 기술 원문이다. */
-  | { ok: false; reason: "doc"; message: string }
-  /** 원문의 글 설정을 폼으로 읽을 수 없다 (`editorModes`의 `metadata`). */
-  | { ok: false; reason: "metadata"; message: string }
+  /** 원문을 원문 모드로만 열 수 있다 (`editorModes`의 `sourceOnly`). `message`는 기술 원문이다. */
+  | ({ ok: false } & SourceOnly)
   /** 원문에서 고친 것 중 일반 편집이 담지 못하는 것이 있다 (가져오기, 폼에 없거나 잠긴 설정, 설정의 표기 등). */
   | { ok: false; reason: "lossy" }
   /**
@@ -63,15 +64,13 @@ export function formToSource<I extends UploadImage>(
   post: SwitchPost,
   input: FormModeInput<I>,
 ): { ok: true; input: SourceModeInput<I> } | ModeSwitchProblem {
-  const doc = parseMdx(post.source, post.syntax);
-  if (!doc.ok) return { ok: false, reason: "doc", message: doc.message };
-  const metadata = readMetadata(doc);
-  let next: MdxDoc = doc;
-  if (metadata) {
-    if (!metadata.editable) return { ok: false, reason: "metadata", message: metadata.reason };
-    const applied = applyForm(post.collection, metadata.value, input.values);
+  const opened = openForm(post, post.source);
+  if (!opened.ok) return opened;
+  let next: MdxDoc = opened.doc;
+  if (opened.metadata) {
+    const applied = applyForm(post.collection, opened.metadata, input.values);
     if (!applied.ok) return { ok: false, reason: "invalid", errors: applied.errors };
-    next = setMetadata(doc, applied.value);
+    next = setMetadata(opened.doc, applied.value);
   }
   const edited = applyUploads(next, input.body, input.images, post.files);
   if (!edited.ok) return edited;
@@ -88,20 +87,38 @@ export function sourceToForm<I extends UploadImage>(
   post: SwitchPost,
   input: SourceModeInput<I>,
 ): { ok: true; input: FormModeInput<I>; doc: MdxDoc } | ModeSwitchProblem {
-  const doc = parseMdx(input.source, post.syntax);
-  if (!doc.ok) return { ok: false, reason: "doc", message: doc.message };
-  const metadata = readMetadata(doc);
-  if (metadata && !metadata.editable) return { ok: false, reason: "metadata", message: metadata.reason };
+  const current = openForm(post, input.source);
+  if (!current.ok) return current;
 
-  const opened = readMetadata(parseMdx(post.source, post.syntax));
+  const opened = openForm(post, post.source);
   const values =
-    metadata && opened?.editable ? formValues(post.collection, opened.value, metadata.value) : ({} as FormValues);
-  const carried: FormModeInput<I> = { values, body: doc.body, images: sourceUploads(input, input.source) };
+    current.metadata && opened.ok && opened.metadata
+      ? formValues(post.collection, opened.metadata, current.metadata)
+      : ({} as FormValues);
+  const carried: FormModeInput<I> = { values, body: current.doc.body, images: sourceUploads(input, input.source) };
   const back = formToSource(post, carried);
   if (!back.ok) return { ok: false, reason: "lossy" };
   const restored = parseMdx(back.input.source, post.syntax);
-  if (!sameDoc(restored, doc)) return { ok: false, reason: "lossy" };
+  if (!sameDoc(restored, current.doc)) return { ok: false, reason: "lossy" };
   return { ok: true, input: carried, doc: restored };
+}
+
+/**
+ * 원문을 일반 편집으로 열 수 있으면 나눈 원문과 글 설정 값을. 열 수 있는지는 글을 처음 열 때와 같이 `editorModes`가 정한다.
+ * 글 설정 export가 없으면 `metadata`는 null이다.
+ */
+function openForm(
+  post: SwitchPost,
+  source: string,
+): { ok: true; doc: Extract<MdxDoc, { ok: true }>; metadata: MetadataObject | null } | ModeSwitchProblem {
+  const doc = parseMdx(source, post.syntax);
+  const metadata = readMetadata(doc);
+  const { sourceOnly } = editorModes({ collection: post.collection, doc, metadata });
+  if (sourceOnly) return { ok: false, ...sourceOnly };
+  // sourceOnly가 없으면 둘 다 성립한다. 타입을 좁히려고만 확인한다.
+  if (!doc.ok || (metadata && !metadata.editable))
+    throw new Error("editorModes가 일반 편집을 허용한 원문을 열 수 없다");
+  return { ok: true, doc, metadata: metadata && metadata.value };
 }
 
 /**
