@@ -9,6 +9,7 @@ import {
   bodyImagePhoto,
   missingBodyImage,
   missingImagesInBody,
+  missingImageReserved,
   missingImagesSaveMessage,
   missingInsertImage,
   type BodyImageSources,
@@ -168,7 +169,8 @@ function OpenedBodyEditor({
   const images = useImageUpload({
     area: "body",
     doc,
-    files: upload?.files ?? [],
+    // 복구한 본문에 남은 빠진 첨부 자리를 새 이미지가 이어받지 않게 그 번호를 비워 둔다.
+    files: [...(upload?.files ?? []), ...missingImageReserved(missing)],
     attachments: carried?.input.images,
     onAdded: (image, opener) => forms.open({ kind: "image", image, place: null }, opener),
   });

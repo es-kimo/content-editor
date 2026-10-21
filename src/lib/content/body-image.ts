@@ -1,5 +1,6 @@
 // 편집 화면이 브라우저에서 쓴다. GitHub 클라이언트를 import하지 않는다.
 import {
+  addedImageFile,
   addImageAs,
   printJsxTag,
   setBody,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/mdx-doc";
 
 import { bodyInserts, bodySource, type ImageInsertItem } from "./insert-form";
-import { IMAGE_COMPONENT } from "./upload";
+import { IMAGE_COMPONENT, UPLOAD_IMAGE_TYPES } from "./upload";
 
 /** 일반 편집 본문의 이미지 사진을 받아 올 곳. */
 export type BodyImageSources = {
@@ -92,6 +93,20 @@ function missingImage(doc: MdxDoc, tag: string, missing: string[], syntax: Synta
   const image = imageItem(head.doc, tag, syntax);
   const file = image && missingFile(image, head.added);
   return file ? { missing: file, alt: image.alt } : null;
+}
+
+/**
+ * 새로 넣는 이미지가 받지 않을 파일 이름. 업로드 세션의 글 폴더 파일(`files`)에 더한다.
+ * 복구한 본문은 빠진 첨부의 변수명(`imageN`)을 그대로 쓰지만 doc에는 그 import가 없다. 보관한 첨부를 잇지 못해
+ * 연 doc(본문이 비어 있다)으로 복구하면 새 이미지가 같은 번호를 받아, 안내 자리가 조용히 새 사진으로 바뀌고 같은 사진을
+ * 가리키는 이미지가 둘 커밋된다. 다른 확장자로 넣어도 변수명은 같은 번호라 올릴 수 있는 확장자마다 막는다.
+ * @param missing 복구한 보관본에서 빠진 첨부 이름(`N.ext`).
+ */
+export function missingImageReserved(missing: string[]): string[] {
+  return missing.flatMap((file) => {
+    const parsed = addedImageFile(file);
+    return parsed ? Object.values(UPLOAD_IMAGE_TYPES).map((extension) => `${parsed.n}.${extension}`) : [file];
+  });
 }
 
 /**

@@ -521,6 +521,28 @@ describe("자동 보관 복구", () => {
     expect(saved).not.toContain("빠진 사진");
     expect(await shownBody()).toEqual(["첫 문단이에요.", "[사진: 다시 고른 사진]"]);
   });
+
+  test("보관하지 못한 이미지 자리를 지우기 전에 이미지를 다시 넣어도 그 자리는 새 사진으로 바뀌지 않고 안내가 남는다", async () => {
+    await failAttachmentArchive();
+    await writeNewPost("먼저 넣은 사진 글", "빠진 사진");
+    await page.getByText(/^이 브라우저에 글자만 보관했어요 · /).waitFor({ timeout: 5000 });
+    await page.close();
+    page = await reopenAndRestore();
+    await bodyEditor().getByText(MISSING_DRAFT_IMAGE).waitFor();
+
+    await cursorAfter("첫 문단이에요.");
+    await insertPhoto("다시 고른 사진");
+    expect(await shownBody()).toEqual([
+      "첫 문단이에요.",
+      "[사진: 다시 고른 사진]",
+      `${MISSING_DRAFT_IMAGE} 대체 텍스트: 빠진 사진`,
+    ]);
+    expect(await bodyEditor().locator("img").count()).toBe(1);
+
+    await saveButton().click();
+    await page.getByText(missingImagesSaveMessage(["1.png"])).waitFor();
+    expect(newCommits()).toBe(0);
+  });
 });
 
 describe("일반 편집 제한", () => {

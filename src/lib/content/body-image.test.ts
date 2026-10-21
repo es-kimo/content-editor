@@ -3,16 +3,19 @@ import { describe, expect, test } from "vitest";
 import { parseMdx } from "@/lib/mdx-doc";
 import { editorElements } from "@/test/editor-elements";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
+import { JPEG, PNG } from "@/test/upload-images";
 
 import {
   bodyImagePhoto,
   missingBodyImage,
+  missingImageReserved,
   missingImagesInBody,
   missingInsertImage,
   repoImageHref,
   type BodyImageSources,
 } from "./body-image";
 import { bodyInserts, insertEntries, isImageInsert } from "./insert-form";
+import { addUpload } from "./upload";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/게시판/일반/page.mdx";
@@ -164,6 +167,35 @@ describe("missingImagesInBody", () => {
 
   test("다시 고른 이미지가 빠진 첨부와 같은 이름을 받아 import가 있으면 빠진 첨부로 세지 않는다", () => {
     expect(missingImagesInBody(doc, body("<Image src={image2} />"), ["2.png"])).toEqual([]);
+  });
+});
+
+describe("missingImageReserved", () => {
+  // 보관한 첨부를 잇지 못해 연 doc으로 복구한 새 글. 본문은 빠진 첨부 `1.png`의 변수명을 쓰지만 doc에는 import도 본문도 없다.
+  const opened = parseMdx(`export const metadata = { title: "글" };\n\n# 글\n`);
+  const restored = '# 글\n\n<Image src={image1} alt="빠진 사진" />\n';
+
+  test.each([
+    ["같은 확장자", { extension: "png", content: PNG }],
+    ["다른 확장자", { extension: "jpg", content: JPEG }],
+  ])(
+    "복구한 본문에 빠진 첨부가 남은 채 이미지를 다시 넣어도(%s) 새 이미지는 그 번호를 받지 않고 안내 자리가 남는다",
+    (_, image) => {
+      const added = addUpload({ doc: opened, images: [] }, image, missingImageReserved(["1.png"]));
+      if (!added.ok) throw new Error("이미지를 넣지 못했다");
+      expect(added.file).not.toMatch(/^1\./);
+      const body = `${restored}\n${added.tag}\n`;
+      expect(missingImagesInBody(added.plan.doc, body, ["1.png"])).toEqual(["1.png"]);
+      expect(missingBodyImage(added.plan.doc, element('<Image src={image1} alt="빠진 사진" />'), ["1.png"])).toEqual({
+        missing: "1.png",
+        alt: "빠진 사진",
+      });
+    },
+  );
+
+  test("addImage가 고르는 꼴이 아닌 이름은 그대로 둔다", () => {
+    expect(missingImageReserved(["사진.png"])).toEqual(["사진.png"]);
+    expect(missingImageReserved([])).toEqual([]);
   });
 });
 
