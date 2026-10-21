@@ -417,27 +417,35 @@ export type BodyFootnote = { item: FootnoteInsertItem; numbers: string[] } | { l
  * 일반 편집기가 그린 요소가 어느 각주·출처인지 찾는 함수를 만든다. 각주·출처가 아닌 요소는 null이다.
  * 편집기는 요소의 원문 위치를 주지 않아 태그(`printJsxTag`)로 찾는다. 태그가 같은 각주·출처는 번호나 연결이 겹쳐
  * 모두 같은 이유로 폼으로 고칠 수 없으므로, 차례를 몰라도 태그만으로 어느 항목인지 또는 왜 고칠 수 없는지가 정해진다.
- * 본문의 각주마다 원문을 다시 읽지 않도록 본문 하나에 한 번만 읽는다.
+ * 본문의 각주마다 원문을 다시 읽지 않도록 본문 하나에 한 번만, 처음 찾을 때 읽는다.
  */
 export function bodyFootnotes(
   doc: MdxDoc,
   body: string,
   syntax: Syntax = {},
 ): (element: JsxElement) => BodyFootnote | null {
-  if (!doc.ok) return () => null;
+  let byTag: Map<string, BodyFootnote> | undefined;
+  return (element) => {
+    byTag ??= footnotesByTag(doc, body, syntax);
+    return byTag.get(printJsxTag(element)) ?? null;
+  };
+}
+
+function footnotesByTag(doc: MdxDoc, body: string, syntax: Syntax): Map<string, BodyFootnote> {
+  const byTag = new Map<string, BodyFootnote>();
+  if (!doc.ok) return byTag;
   const source = bodySource(doc, body);
   const list = readInserts(source, syntax);
   const tags = readJsxTags(source, syntax);
-  if (!list.ok || !tags) return () => null;
+  if (!list.ok || !tags) return byTag;
   const at = new Map(insertEntries(list).map((entry) => [`${entry.from}-${entry.to}`, entry]));
-  const byTag = new Map<string, BodyFootnote>();
   for (const { from, to, tag } of tags) {
     const entry = at.get(`${from}-${to}`);
     if (byTag.has(tag) || (entry?.kind !== "footnote" && entry?.kind !== "footnote-ref")) continue;
     if ("reason" in entry) byTag.set(tag, { limit: entry.reason });
     else byTag.set(tag, { item: entry, numbers: (entry.kind === "footnote" ? [entry.id] : entry.ids).map(String) });
   }
-  return (element) => byTag.get(printJsxTag(element)) ?? null;
+  return byTag;
 }
 
 /** 일반 편집에서 파일을 바꿀 이미지. `bodyInserts`로 읽은 그 원문을 함께 둔다. */
