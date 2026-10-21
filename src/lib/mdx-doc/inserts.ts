@@ -253,21 +253,38 @@ function removeSpan(source: string, span: InsertSpan): { source: string; cursor:
   return { source: head + gap + rest, cursor: head.length + gap.length };
 }
 
+/** 자동 목차에 드는 소제목. `depth`는 `#`의 개수(2부터)이고 `text`는 서식을 뺀 보이는 글자다. */
+export type TocHeading = { depth: number; text: string };
+
+export type TocHeadings = { ok: true; headings: TocHeading[] } | { ok: false; reason: "parse-error" };
+
 /**
- * 자동 목차를 채울 소제목(`##`부터)이 있는지. `#`은 글 제목으로 쓰여 목차에 들지 않는다고 본다.
- * 코드 블록 안의 `##` 줄은 제목이 아니다. 읽을 수 없는 원문은 false다.
+ * 자동 목차를 채울 소제목(`##`부터)을 원문 순서로 읽는다. `#`은 글 제목으로 쓰여 목차에 들지 않는다고 본다.
+ * 코드 블록 안의 `##` 줄은 제목이 아니다. 컴포넌트 안의 제목은 목차에 든다.
  */
-export function hasTocHeading(source: string, syntax: Syntax = {}): boolean {
+export function tocHeadings(source: string, syntax: Syntax = {}): TocHeadings {
   let root;
   try {
     root = parseMarkdown(source, syntax);
   } catch {
-    return false;
+    return { ok: false, reason: "parse-error" };
   }
-  const visit = (node: { type: string; depth?: number; children?: unknown[] }): boolean =>
-    (node.type === "heading" && (node.depth ?? 1) >= 2) ||
-    (node.children ?? []).some((child) => visit(child as typeof node));
-  return visit(root);
+  const headings: TocHeading[] = [];
+  const visit = (node: { type: string; depth?: number; children?: unknown[] }) => {
+    if (node.type === "heading" && (node.depth ?? 1) >= 2) {
+      headings.push({ depth: node.depth!, text: visibleText(node) });
+      return;
+    }
+    for (const child of node.children ?? []) visit(child as typeof node);
+  };
+  visit(root);
+  return { ok: true, headings };
+}
+
+/** 자동 목차를 채울 소제목이 있는지. 목차 표시와 같은 기준을 쓰도록 `tocHeadings`로 판정한다. 읽을 수 없는 원문은 false다. */
+export function hasTocHeading(source: string, syntax: Syntax = {}): boolean {
+  const read = tocHeadings(source, syntax);
+  return read.ok && read.headings.length > 0;
 }
 
 /** `file`을 주면 그 파일 이름(`N.ext`)으로 넣는다. 없으면 `addImage`가 고른다. */
@@ -481,7 +498,7 @@ function scan(source: string, syntax: Syntax): Scan | null {
   return { entries, footnotes, links, numbered };
 }
 
-/** 서식이 있는 내용도 고를 때 알아볼 수 있게 글자만 이어 붙인다. 코드로 된 값은 뺀다. */
+/** 서식이 있는 내용에서 보이는 글자만 이어 붙인다. `{식}`처럼 코드로 된 값은 뺀다. */
 function visibleText(node: { type: string; value?: unknown; children?: unknown[] }): string {
   if (node.type === "text" || node.type === "inlineCode") return typeof node.value === "string" ? node.value : "";
   return (node.children ?? []).map((child) => visibleText(child as typeof node)).join("");

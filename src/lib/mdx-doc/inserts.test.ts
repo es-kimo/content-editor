@@ -17,6 +17,7 @@ import {
   removeToc,
   replaceImage,
   setInsertText,
+  tocHeadings,
   type InsertItem,
   type InsertKind,
 } from "./inserts";
@@ -409,6 +410,37 @@ describe("hasTocHeading", () => {
   });
 });
 
+describe("tocHeadings", () => {
+  test("글 제목(#)을 빼고 소제목을 원문 순서로 깊이와 보이는 글자로 읽는다", () => {
+    expect(tocHeadings("# 글 제목\n\n## 진료 안내\n\n문단\n\n### **토요일** 진료\n")).toEqual({
+      ok: true,
+      headings: [
+        { depth: 2, text: "진료 안내" },
+        { depth: 3, text: "토요일 진료" },
+      ],
+    });
+  });
+
+  test("강조·코드·링크는 보이는 글자만 남기고 컴포넌트 안의 소제목도 읽는다", () => {
+    const source = "## _기울임_ `코드` [링크](https://example.com)\n\n<Note>\n\n#### 안쪽\n\n</Note>\n";
+    expect(tocHeadings(source)).toEqual({
+      ok: true,
+      headings: [
+        { depth: 2, text: "기울임 코드 링크" },
+        { depth: 4, text: "안쪽" },
+      ],
+    });
+  });
+
+  test("코드 블록 안의 ## 줄은 제목이 아니고, 제목이 없으면 빈 목록이다", () => {
+    expect(tocHeadings("# 제목\n\n```md\n## 코드\n```\n\n문단\n")).toEqual({ ok: true, headings: [] });
+  });
+
+  test("읽을 수 없는 원문은 parse-error다", () => {
+    expect(tocHeadings("<TOC items={toc +} />\n\n## 소제목\n")).toEqual({ ok: false, reason: "parse-error" });
+  });
+});
+
 describe("addImageAt", () => {
   test("이미지 import와 대체 텍스트가 있는 태그만 더하고 나머지 원문은 그대로다", async () => {
     const at = SOURCE.indexOf("<TOC");
@@ -744,6 +776,20 @@ describe.each(fixtureSources)("픽스처 삽입 항목: $name", (source) => {
       return list.ok && list.items.some((item) => item.kind === "toc");
     });
     expect(tocPosts.filter((f) => !hasTocHeading(f.source, source.syntax)).map((f) => f.path)).toEqual([]);
+  });
+
+  test.skipIf(!fixtures)("모든 글에서 소제목 목록이 비어 있지 않은지가 hasTocHeading과 같다", () => {
+    const differ: string[] = [];
+    let withHeadings = 0;
+    for (const f of fixtures!) {
+      const read = tocHeadings(f.source, source.syntax);
+      const listed = read.ok && read.headings.length > 0;
+      if (listed) withHeadings += 1;
+      if (listed !== hasTocHeading(f.source, source.syntax)) differ.push(f.path);
+      if (read.ok && read.headings.some((h) => h.depth < 2 || h.text.trim() === "")) differ.push(`${f.path}: 빈 제목`);
+    }
+    expect(differ).toEqual([]);
+    expect(withHeadings).toBeGreaterThan(0);
   });
 });
 
