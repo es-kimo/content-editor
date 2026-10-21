@@ -297,7 +297,7 @@ export function newBodyInsertTarget<K extends NewInsertKind>(
 }
 
 /** 일반 편집의 import·metadata를 붙인 원문. 삽입 항목의 위치는 이 원문에서 센다. */
-function bodySource(doc: Extract<MdxDoc, { ok: true }>, body: string): string {
+export function bodySource(doc: Extract<MdxDoc, { ok: true }>, body: string): string {
   return printMdx(setBody(doc, body));
 }
 

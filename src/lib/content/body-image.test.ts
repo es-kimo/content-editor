@@ -8,6 +8,7 @@ import {
   bodyImagePhoto,
   missingBodyImage,
   missingImagesInBody,
+  missingInsertImage,
   repoImageHref,
   type BodyImageSources,
 } from "./body-image";
@@ -106,6 +107,45 @@ describe("missingBodyImage", () => {
   test("src={식}으로 쓰거나 이미지가 아닌 컴포넌트는 빠진 첨부로 보지 않는다", () => {
     expect(missingBodyImage(doc, element('<Image src={image3.src} alt="a" />'), ["3.png"])).toBeNull();
     expect(missingBodyImage(doc, element('<Footnote id="3">image3</Footnote>'), ["3.png"])).toBeNull();
+  });
+});
+
+describe("missingInsertImage", () => {
+  const body = [
+    "# 글",
+    "",
+    '<Image src={image3} alt="빠진 사진" />',
+    "",
+    '<Image src={image4} alt="경로 없음" />',
+  ].join("\n");
+  const limited = () => {
+    const list = bodyInserts(doc, body);
+    if (!list.ok) throw new Error(list.reason);
+    return list.limited;
+  };
+
+  test("삽입 항목 목록이 import 없는 이미지로 읽은 항목 중 빠진 첨부를 가리키는 것만 그 첨부 이름을 돌려준다", () => {
+    const [missing, other] = limited();
+
+    expect(missingInsertImage(doc, body, missing!, ["3.png"])).toBe("3.png");
+    expect(missingInsertImage(doc, body, other!, ["3.png"])).toBeNull();
+  });
+
+  test("본문 안 표시와 같은 항목을 빠진 첨부로 본다", () => {
+    const [missing] = limited();
+
+    expect(missingInsertImage(doc, body, missing!, ["3.png"])).toBe(
+      missingBodyImage(doc, element('<Image src={image3} alt="빠진 사진" />'), ["3.png"])?.missing,
+    );
+  });
+
+  test("빠진 첨부가 없거나 폼으로 고칠 수 있는 항목은 빠진 첨부로 보지 않는다", () => {
+    const [missing] = limited();
+    const list = bodyInserts(doc, '<Image src={image1} alt="a" />');
+    const item = list.ok ? list.items[0]! : null;
+
+    expect(missingInsertImage(doc, body, missing!, [])).toBeNull();
+    expect(item && missingInsertImage(doc, '<Image src={image1} alt="a" />', item, ["1.png"])).toBeNull();
   });
 });
 

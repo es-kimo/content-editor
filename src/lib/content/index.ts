@@ -160,6 +160,7 @@ export {
   missingBodyImage,
   missingImagesInBody,
   missingImagesSaveMessage,
+  missingInsertImage,
   MISSING_DRAFT_IMAGE,
   repoImageHref,
   type BodyImagePhoto,

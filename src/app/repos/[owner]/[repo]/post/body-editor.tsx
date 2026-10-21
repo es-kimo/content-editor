@@ -10,6 +10,7 @@ import {
   missingBodyImage,
   missingImagesInBody,
   missingImagesSaveMessage,
+  missingInsertImage,
   type BodyImageSources,
 } from "@/lib/content/body-image";
 import { draftAttachments } from "@/lib/content/draft";
@@ -293,6 +294,7 @@ function OpenedBodyEditor({
           replace: replaceImage && ((item, opener) => replaceImage(item, opener, opener)),
           move: moveImage,
         }}
+        missingImage={(entry) => missingInsertImage(attachedDoc, current, entry, missing, syntax) !== null}
       />
       {forms.panel}
       <div ref={editorBox} {...(upload ? images.dropProps : {})}>

@@ -3,13 +3,15 @@ import {
   addImageAs,
   printJsxTag,
   setBody,
+  type InsertItem,
   type JsxElement,
+  type LimitedInsert,
   type MdxDoc,
   type PreviewImages,
   type Syntax,
 } from "@/lib/mdx-doc";
 
-import { bodyInserts, type ImageInsertItem } from "./insert-form";
+import { bodyInserts, bodySource, type ImageInsertItem } from "./insert-form";
 import { IMAGE_COMPONENT } from "./upload";
 
 /** 일반 편집 본문의 이미지 사진을 받아 올 곳. */
@@ -64,9 +66,30 @@ export function missingBodyImage(
   missing: string[],
   syntax: Syntax = {},
 ): MissingBodyImage | null {
+  return missingImage(doc, printJsxTag(element), missing, syntax);
+}
+
+/**
+ * 삽입 항목 목록의 항목이 복구한 보관본에서 파일이 빠진 첨부를 가리키면 그 첨부 이름. 본문 안 표시(`missingBodyImage`)와
+ * 같은 판정이다. 목록은 import가 없는 그 이미지를 `not-image-import`로 읽으므로, 목록도 본문과 같은 안내를 보이는 데 쓴다.
+ * @param body `bodyInserts`로 목록을 읽은 본문. 항목 위치가 이 본문 기준이다.
+ */
+export function missingInsertImage(
+  doc: MdxDoc,
+  body: string,
+  entry: InsertItem | LimitedInsert,
+  missing: string[],
+  syntax: Syntax = {},
+): string | null {
+  if (!doc.ok || !("reason" in entry) || entry.reason !== "not-image-import") return null;
+  const tag = bodySource(doc, body).slice(entry.from, entry.to);
+  return missingImage(doc, tag, missing, syntax)?.missing ?? null;
+}
+
+function missingImage(doc: MdxDoc, tag: string, missing: string[], syntax: Syntax): MissingBodyImage | null {
   const head = withMissingImports(doc, missing);
   if (head.added.length === 0) return null;
-  const image = imageItem(head.doc, printJsxTag(element), syntax);
+  const image = imageItem(head.doc, tag, syntax);
   const file = image && missingFile(image, head.added);
   return file ? { missing: file, alt: image.alt } : null;
 }

@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { PRIMARY_BUTTON_CLASS } from "@/app/_lib/ui";
 import { useFormFlow } from "@/app/_lib/unsaved";
+import { MISSING_DRAFT_IMAGE } from "@/lib/content/body-image";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 폼 적용만 가져온다.
 import {
   formDirty,
@@ -33,7 +34,7 @@ import {
   type TextInsertItem,
 } from "@/lib/content/insert-form";
 import type { FormArea } from "@/lib/content/save-flow";
-import type { InsertList, MoveDirection } from "@/lib/mdx-doc";
+import type { InsertList, LimitedInsert, MoveDirection } from "@/lib/mdx-doc";
 
 import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
 
@@ -241,6 +242,7 @@ const MOVE_LABELS: { [direction in MoveDirection]: string } = { before: "앞으�
  * 폼으로 고칠 수 없는 항목도 숨기지 않고 구체적인 이유와 원문에서 고치는 방법을 알린다.
  * @param tocHeading 목차를 채울 제목이 글에 있는지. 없으면 목차 옆에 제목을 추가하라고 안내한다.
  * @param onRemove 자동 목차나 이미지 한 곳을 지운다. 지우지 못하면 이유를 돌려준다.
+ * @param missingImage 항목이 복구한 보관본에서 파일이 빠진 첨부를 가리키는지. 그 항목에는 본문 안 표시와 같은 안내를 보인다.
  */
 export function InsertEntryList({
   area,
@@ -250,6 +252,7 @@ export function InsertEntryList({
   onEdit,
   onRemove,
   images,
+  missingImage,
 }: {
   area: FormArea;
   list: InsertList;
@@ -258,6 +261,7 @@ export function InsertEntryList({
   onEdit: (item: TextInsertItem, opener: HTMLElement) => void;
   onRemove: (item: RemovableInsertItem) => InsertFormProblem | null;
   images: ImageEntryActions;
+  missingImage?: (entry: LimitedInsert) => boolean;
 }) {
   const details = useRef<HTMLDetailsElement>(null);
   const summary = useRef<HTMLElement>(null);
@@ -373,7 +377,11 @@ export function InsertEntryList({
                   {!tocHeading && <span className="text-amber-600">{TOC_NEEDS_HEADING}</span>}
                 </>
               ) : (
-                "reason" in entry && <span className="text-amber-600">{insertLimitMessage(entry.reason, area)}</span>
+                "reason" in entry && (
+                  <span className="text-amber-600">
+                    {missingImage?.(entry) ? MISSING_DRAFT_IMAGE : insertLimitMessage(entry.reason, area)}
+                  </span>
+                )
               )}
             </li>
           ))}

@@ -2,6 +2,7 @@ import type { BrowserContext, Page } from "playwright-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 
 import { MISSING_DRAFT_IMAGE, missingImagesSaveMessage } from "@/lib/content/body-image";
+import { MODE_SWITCH_MESSAGES } from "@/lib/content/mode-switch";
 import { FIELD_PREFIX } from "@/lib/metadata-form";
 
 import { startApp, type App } from "./app";
@@ -135,6 +136,8 @@ const form = (name: string) => page.getByRole("form", { name });
 const saveButton = () => page.getByRole("button", { name: "임시저장" });
 const unsaved = (areas: string) => page.getByText(`저장하지 않은 변경이 있어요. 바뀐 곳: ${areas}`);
 const anyUnsaved = () => page.getByText(/저장하지 않은 변경이 있어요/);
+/** 보이는 편집 모드의 삽입 항목 목록. 두 편집 모드가 같은 이름의 목록을 둔다. */
+const insertList = (count: number) => page.getByText(`삽입 항목 ${count}개`).filter({ visible: true });
 
 /** 본문의 각주 1을 골라 바로 아래에 보이는 ‘수정’으로 폼을 연다. */
 async function editFootnote() {
@@ -473,9 +476,17 @@ describe("자동 보관 복구", () => {
     await unsaved("제목, 본문").waitFor();
     await page.getByText(/^이 브라우저에 글자만 보관했어요 · .*1\.png/).waitFor({ timeout: 5000 });
 
-    // 원문 편집을 오가도 사진으로 바뀌지 않고 같은 안내가 그 자리에 남는다.
-    const { shown } = await roundTrip();
-    expect(shown).toEqual(["첫 문단이에요.", `${MISSING_DRAFT_IMAGE} 대체 텍스트: 빠진 사진`]);
+    // 삽입 항목 목록도 같은 이미지를 원문에서 고치라고 하지 않고 본문과 같이 다시 고르라고 안내한다.
+    await insertList(1).click();
+    const entry = page.getByRole("listitem").filter({ visible: true }).filter({ hasText: "이미지" });
+    expect(await entry.innerText()).toContain(MISSING_DRAFT_IMAGE);
+    expect(await entry.getByText("원문 편집에서 직접 고쳐 주세요").count()).toBe(0);
+
+    // 원문 편집에는 그 이미지의 import가 없어 그대로 저장하면 사이트가 만들 수 없는 글이 되므로 바꾸지 않는다.
+    await modeButton("원문 편집").click();
+    await page.getByText(MODE_SWITCH_MESSAGES["missing-image"]).waitFor();
+    expect(await pressed("일반 편집")).toBe("true");
+    expect(await shownBody()).toEqual(["첫 문단이에요.", `${MISSING_DRAFT_IMAGE} 대체 텍스트: 빠진 사진`]);
     expect(newCommits()).toBe(0);
   });
 
@@ -499,6 +510,9 @@ describe("자동 보관 복구", () => {
     await blocked.waitFor({ state: "detached" });
     await insertPhoto("다시 고른 사진");
     expect(await shownBody()).toEqual(["첫 문단이에요.", "[사진: 다시 고른 사진]"]);
+    // 빠진 이미지가 없어지면 원문 편집으로도 바꿀 수 있다.
+    const { shown } = await roundTrip();
+    expect(shown).toEqual(["첫 문단이에요.", "[사진: 다시 고른 사진]"]);
 
     await saveAndReopen();
     expect(newCommits()).toBe(1);

@@ -127,7 +127,7 @@ export function PostEditorProvider({
       const editor = modeInputs.current.wysiwyg?.();
       if (!editor) return null;
       const { doc, ...form } = { values: settings ? readFormData(post.collection, settings) : {}, ...editor };
-      const result = formToSource(post, form);
+      const result = formToSource(post, form, switched.missing);
       if (!result.ok) return result;
       update({ source: { key: nextKey(), input: result.input }, previous: { input: form, doc } });
       return null;
