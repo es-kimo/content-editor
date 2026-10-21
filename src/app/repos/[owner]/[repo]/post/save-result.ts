@@ -8,26 +8,31 @@ export const saveError = (
   { detail, fields }: { detail?: string; fields?: { [key: string]: string } } = {},
 ): SaveState => ({ status: "error", message, detail, fields });
 
+/** 커밋을 만들고 글 화면을 다시 여는 행동. 저장 행동에 휴지통 이동·복구를 더한다. */
+export type SavedAction = PostAction | "trash" | "restore";
+
 /** 행동별 저장 성공 문구. 저장 성공은 사이트 반영이 아니므로 게시·게시 내리기는 반영이 늦을 수 있다고 알린다. */
-const SAVED_MESSAGES: { [action in PostAction]: string } = {
+const SAVED_MESSAGES: { [action in SavedAction]: string } = {
   "save-draft": "임시저장했어요. 게시하기 전에는 사이트에 보이지 않아요.",
   publish: "게시 대상으로 저장했어요. 사이트에 반영되기까지 시간이 걸릴 수 있어요.",
   update: "게시 대상으로 저장했어요. 사이트에 반영되기까지 시간이 걸릴 수 있어요.",
   unpublish: "초안으로 바꿨어요. 사이트에서 사라지기까지 시간이 걸릴 수 있어요.",
+  trash: "휴지통으로 옮겼어요. 휴지통에서 초안으로 복구할 수 있어요.",
+  restore: "초안으로 복구했어요. 게시하려면 ‘게시’를 눌러 주세요.",
 };
 
 /**
  * 저장한 글 화면 주소. 새 커밋과 한 행동을 담는다.
  * 저장 결과 문구는 다시 열린 화면이 보이므로, 화면이 이 주소에서 행동을 읽어 `savedMessage`로 보인다.
  */
-export function savedPostHref(postHref: string, commit: string, action: PostAction): string {
+export function savedPostHref(postHref: string, commit: string, action: SavedAction): string {
   return `${postHref}&${new URLSearchParams({ saved: commit, action })}`;
 }
 
 /** 저장한 글 화면이 보일 성공 문구. 주소의 행동을 알 수 없으면 행동을 말하지 않는다. */
 export function savedMessage(action: string | undefined): string {
   return action !== undefined && Object.hasOwn(SAVED_MESSAGES, action)
-    ? SAVED_MESSAGES[action as PostAction]
+    ? SAVED_MESSAGES[action as SavedAction]
     : "저장했어요.";
 }
 

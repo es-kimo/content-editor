@@ -4,7 +4,9 @@ import { runRepoAction } from "@/app/_lib/action";
 import { postHref } from "@/app/_lib/repo";
 import {
   findCollection,
+  restorePost,
   saveEdit,
+  trashPost,
   type EditContent,
   type EditorMode,
   type SaveEditInput,
@@ -15,6 +17,7 @@ import { readFormData, type PostAction } from "@/lib/metadata-form";
 
 import { readImages } from "./form-images";
 import { saveError, savedPostHref, saveResultState } from "./save-result";
+import { trashResultState, type TrashCommand } from "./trash-result";
 
 /**
  * 글 저장에서 FormData 밖으로 받는 값. `text`는 일반 편집이면 본문, 원문 편집이면 파일 전체다.
@@ -71,4 +74,31 @@ export async function savePostAction(
     return saveError("편집할 수 있는 글 분류에 없는 글이라 저장할 수 없어요. 글 목록에서 글을 다시 열어 주세요.");
   }
   return saveResultState(outcome.value, (commit) => savedPostHref(postHref(repo, path), commit, input.action));
+}
+
+/**
+ * 글을 휴지통으로 옮긴다. 화면의 입력은 담지 않고 서버에서 다시 읽은 글에 휴지통 표시만 더한다.
+ * 경로·sha는 서버 컴포넌트에서 bind한 값이지만, 직접 보낸 요청일 수 있어 다시 검사한다.
+ */
+export async function trashPostAction(repo: string, path: string, baseSha: string): Promise<SaveState> {
+  return changeTrash(repo, path, baseSha, "trash");
+}
+
+/** 휴지통 글을 초안으로 복구한다. 옮기기 전에 게시 대상이었어도 다시 게시하지 않는다. */
+export async function restorePostAction(repo: string, path: string, baseSha: string): Promise<SaveState> {
+  return changeTrash(repo, path, baseSha, "restore");
+}
+
+async function changeTrash(repo: string, path: string, baseSha: string, command: TrashCommand): Promise<SaveState> {
+  if (typeof path !== "string" || typeof baseSha !== "string") {
+    return saveError("요청을 읽지 못했어요. 글을 다시 열어 주세요.");
+  }
+  const target = { path, baseSha };
+  const outcome = await runRepoAction(repo, ({ client, config }) =>
+    command === "trash"
+      ? trashPost(client, repo, config, target, new Date())
+      : restorePost(client, repo, config, target),
+  );
+  if (!outcome.ok) return saveError(outcome.message, { detail: outcome.detail });
+  return trashResultState(outcome.value, command, postHref(repo, path));
 }
