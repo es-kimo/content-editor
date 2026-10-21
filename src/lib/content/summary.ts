@@ -76,3 +76,19 @@ export function postTitle(metadata: MetadataResult | null): string {
 export function listTitle(summary: Pick<PostSummary, "title" | "titleFromMetadata">): string {
   return summary.titleFromMetadata ? summary.title : UNTITLED_POST;
 }
+
+// 에디터 사용자와 두 사이트가 한국에 있어, 서버 시간대와 상관없이 한국 시각으로 보인다.
+const KOREA_TIME = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** 휴지통 목록에 보일 삭제 시각(`YYYY-MM-DD HH:mm`, 한국 시각). 시각이 없거나 읽을 수 없으면 `-`. */
+export function trashedAtText(trashedAt: string | null): string {
+  const time = trashedAt === null ? NaN : Date.parse(trashedAt);
+  return Number.isNaN(time) ? "-" : KOREA_TIME.format(time);
+}

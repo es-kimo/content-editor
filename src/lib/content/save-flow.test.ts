@@ -58,8 +58,9 @@ describe("savedAreas", () => {
     expect(savedAreas(postSave("update", "source"))).toEqual(["source", "sourceImages"]);
   });
 
-  test("게시 내리기는 상태만 바꾸므로 입력을 담지 않는다", () => {
+  test("게시 내리기와 휴지통 이동은 상태만 바꾸므로 입력을 담지 않는다", () => {
     expect(savedAreas(postSave("unpublish"))).toEqual([]);
+    expect(savedAreas({ target: "post", action: "trash" })).toEqual([]);
   });
 
   test("일반 편집 저장 한 번이 제목·설정·본문·첨부를 커밋 하나로 남기고, 다시 연 글은 그 값으로 열린다", async () => {
@@ -168,28 +169,31 @@ describe("collectPostInput", () => {
 describe("postActions", () => {
   const metadata = (other: MetadataObject["other"]): MetadataObject => ({ title: "제목", other });
 
-  test("초안은 ‘게시’가 주 행동이고 ‘임시저장’이 보조 행동이다", () => {
+  test("초안은 ‘게시’가 주 행동이고 ‘임시저장’이 보조 행동이며 휴지통으로 옮길 수 있다", () => {
     expect(postActions(board, metadata({ status: "draft" }))).toEqual({
       ok: true,
       status: "draft",
       primary: "publish",
       secondary: ["save-draft"],
+      remove: "trash",
     });
   });
 
-  test("게시 대상은 ‘수정 반영’이 주 행동이고 ‘게시 내리기’가 보조 행동이다", () => {
+  test("게시 대상은 ‘수정 반영’이 주 행동이고 ‘게시 내리기’가 보조 행동이며 휴지통으로 옮길 수 있다", () => {
     expect(postActions(board, metadata({ status: "ready" }))).toEqual({
       ok: true,
       status: "ready",
       primary: "update",
       secondary: ["unpublish"],
+      remove: "trash",
     });
   });
 
-  test("휴지통 글은 게시 상태 값과 상관없이 휴지통이고 복구하라는 안내만 있다", () => {
+  test("휴지통 글은 게시 상태 값과 상관없이 휴지통이고 편집·저장 행동 없이 ‘복구’만 있다", () => {
     expect(postActions(board, metadata({ status: "ready", trashedAt: "2026-10-20T00:00:00Z" }))).toEqual({
       ok: false,
       status: "trashed",
+      primary: "restore",
       notice: TRASHED_MESSAGE,
     });
   });

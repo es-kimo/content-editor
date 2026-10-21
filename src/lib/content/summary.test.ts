@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { parseMdx, readMetadata } from "@/lib/mdx-doc";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { listTitle, postTitle, summarizePost } from "./summary";
+import { listTitle, postTitle, summarizePost, trashedAtText } from "./summary";
 
 describe("summarizePost", () => {
   test("title·status·createdAt을 읽는다", () => {
@@ -81,6 +81,18 @@ describe("listTitle", () => {
     expect(listTitle(summarizePost(`export const metadata = { title: "공지" };\n`, {}, "slug"))).toBe("공지");
     expect(listTitle(summarizePost(`export const metadata = { title: "" };\n`, {}, "slug"))).toBe("제목 없는 글");
     expect(listTitle(summarizePost("# 본문\n", {}, "slug"))).toBe("제목 없는 글");
+  });
+});
+
+describe("trashedAtText", () => {
+  test("삭제 시각을 분까지 한국 시각으로 보인다", () => {
+    expect(trashedAtText("2026-10-20T09:30:15Z")).toBe("2026-10-20 18:30");
+    expect(trashedAtText("2026-10-20T20:05:00Z")).toBe("2026-10-21 05:05");
+  });
+
+  test("삭제 시각이 없거나 시각으로 읽을 수 없으면 ‘-’다", () => {
+    expect(trashedAtText(null)).toBe("-");
+    expect(trashedAtText("어제")).toBe("-");
   });
 });
 

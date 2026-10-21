@@ -73,6 +73,21 @@ describe("앱 안 이동 확인", () => {
     expect(guard.discarding()).toBe(false);
   });
 
+  test("작성 취소처럼 화면이 이미 확인받은 이동은 이탈 확인 없이 한 번만 가고 입력을 버리는 중으로 둔다", () => {
+    const { flow, guard, go } = setup();
+    flow.report("title", true);
+    flow.report("body", true);
+
+    guard.abandon(LIST);
+    guard.abandon(LIST);
+
+    expect(go).toHaveBeenCalledTimes(1);
+    expect(go).toHaveBeenCalledWith(LIST);
+    expect(guard.getState().pending).toBeNull();
+    expect(guard.discarding()).toBe(true);
+    expect(guard.warnsUnload()).toBe(false);
+  });
+
   test("나간 뒤 화면 주소가 바뀌면 남은 미저장 입력을 다시 지킨다", () => {
     const { flow, guard } = setup();
     flow.report("title", true);
@@ -223,6 +238,21 @@ describe("저장 뒤 이동", () => {
     flow.report("source", true);
 
     flow.request({ target: "post", action: "unpublish" }, async () => ({
+      status: "saved",
+      href: "/repos/es-kimo/yjshd/post?saved=c",
+    }));
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    expect(guard.warnsUnload()).toBe(false);
+    expect(guard.request(LIST)).toBe(true);
+  });
+
+  test("휴지통 이동은 확인에서 버리기로 한 입력이라 옮긴 글 화면으로 가는 동안 경고하지 않는다", async () => {
+    const { flow, guard, navigate } = setup();
+    flow.report("metadata", true);
+    flow.report("source", true);
+
+    flow.request({ target: "post", action: "trash" }, async () => ({
       status: "saved",
       href: "/repos/es-kimo/yjshd/post?saved=c",
     }));

@@ -109,6 +109,7 @@ export {
 } from "./preview";
 export { editorModes, type EditorMode, type EditorModes } from "./editor-modes";
 export { editorKeys, findCollection, readPost, sourceComponents, type Post, type PostImage } from "./read";
+export { removeConfirm, type RemoveConfirm } from "./remove-confirm";
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
 export { saveEdit, type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
 export {
@@ -131,6 +132,7 @@ export {
   type PostActions,
   type PostInput,
   type PostInputCollectors,
+  type RemoveAction,
   type SaveFlow,
   type SaveFlowState,
   type SavePhase,
@@ -148,7 +150,7 @@ export {
   type SubmenuNameCheck,
   type SubmenuNameProblem,
 } from "./slug";
-export { listTitle, postTitle, summarizePost, UNTITLED_POST, type PostSummary } from "./summary";
+export { listTitle, postTitle, summarizePost, trashedAtText, UNTITLED_POST, type PostSummary } from "./summary";
 export { timed } from "./timed";
 export { restorePost, trashPost, type TrashInput, type TrashResult } from "./trash";
 export { areaNames, newPostChanges, sourceChanged, unsavedAreas, type EditArea, type NewPostInput } from "./unsaved";
