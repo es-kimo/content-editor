@@ -1,6 +1,8 @@
 import type { Expression, Program, SpreadElement } from "estree";
 import type { MdxJsxFlowElement, MdxJsxTextElement } from "mdast-util-mdx";
 
+import { escapeJsxAttribute } from "./images";
+
 export type JsxElement = MdxJsxFlowElement | MdxJsxTextElement;
 
 /** 이름이 `name`인 속성의 값. 문자열(`a="1"`), 식(`a={x}`), 값 없음(`a`) 중 하나다. 속성이 없으면 `undefined`. */
@@ -39,4 +41,20 @@ export function jsxElements(node: object): JsxElement[] {
   };
   visit(node);
   return found;
+}
+
+/**
+ * 요소를 내용 없는 태그 원문(`<Image src={image1} alt="사진" />`)으로 쓴다. 다시 읽으면 속성 이름과 값이 같다.
+ * 다만 여러 줄 식은 MDX가 태그 안 줄 앞 공백을 버려서 다시 읽으면 둘째 줄부터 들여쓰기가 빠질 수 있다.
+ * 일반 편집기가 넘기는 요소는 원문 위치가 없어 원문을 잘라 올 수 없으므로 속성으로 다시 쓴다.
+ */
+export function printJsxTag(node: JsxElement): string {
+  const attributes = node.attributes.map((attribute) => {
+    if (attribute.type === "mdxJsxExpressionAttribute") return `{${attribute.value}}`;
+    const { name, value } = attribute;
+    if (value === null || value === undefined) return name;
+    if (typeof value === "string") return `${name}="${escapeJsxAttribute(value)}"`;
+    return `${name}={${value.value}}`;
+  });
+  return `<${[node.name ?? "", ...attributes].join(" ")} />`;
 }

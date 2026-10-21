@@ -1,0 +1,124 @@
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { mdxFromMarkdown } from "mdast-util-mdx";
+import { mdxjs } from "micromark-extension-mdxjs";
+import { describe, expect, test } from "vitest";
+
+import { parseMdx, type JsxElement } from "@/lib/mdx-doc";
+import { fixtureSources, loadFixtures } from "@/test/fixtures";
+
+import { bodyImagePhoto, repoImageHref, type BodyImageSources } from "./body-image";
+import { bodyInserts, insertEntries, isImageInsert } from "./insert-form";
+
+const REPO = "es-kimo/yjshd";
+const POST = "content/게시판/일반/page.mdx";
+const BLOB = "blob:https://editor.test/1";
+
+const doc = parseMdx(`import image1 from "./1.png";
+import image2 from "./2.png";
+
+export const metadata = { title: "글" };
+
+# 글
+`);
+const saved: BodyImageSources = { inserted: {}, post: { repo: REPO, path: POST } };
+
+/** 편집기가 넘기는 요소처럼 원문 위치와 식의 구문 트리 없이 읽는다. */
+function element(tag: string): JsxElement {
+  const [block] = fromMarkdown(tag, { extensions: [mdxjs()], mdastExtensions: [mdxFromMarkdown()] }).children;
+  // 한 줄에 쓴 내용 있는 요소는 문단 안의 요소로 읽힌다.
+  const found = block!.type === "paragraph" ? block.children[0] : block;
+  const { type, name, attributes, children } = found as JsxElement;
+  return {
+    type,
+    name,
+    children,
+    attributes: attributes.map((attribute) => {
+      if (attribute.type === "mdxJsxExpressionAttribute" || typeof attribute.value !== "object") return attribute;
+      return { ...attribute, value: { type: attribute.value!.type, value: attribute.value!.value } };
+    }),
+  } as JsxElement;
+}
+
+describe("bodyImagePhoto", () => {
+  test("넣은 이미지는 import 변수명에 맞는 브라우저 안 주소와 대체 텍스트로 그린다", () => {
+    const sources = { ...saved, inserted: { image2: BLOB } };
+    expect(bodyImagePhoto(doc, element('<Image src={image2} alt="새 사진" />'), sources)).toEqual({
+      src: BLOB,
+      alt: "새 사진",
+    });
+  });
+
+  test("저장된 이미지는 글 경로와 import 경로로 레포 이미지 라우트 주소를 쓴다", () => {
+    const photo = bodyImagePhoto(doc, element('<Image src={image1} alt="병원 입구" />'), saved);
+    expect(photo).toEqual({ src: repoImageHref(REPO, POST, "./1.png"), alt: "병원 입구" });
+    const href = new URL(photo!.src, "https://editor.test");
+    expect(href.pathname).toBe(`/repos/${REPO}/image`);
+    expect(href.searchParams.get("post")).toBe(POST);
+    expect(href.searchParams.get("src")).toBe("./1.png");
+  });
+
+  test("대체 텍스트가 없거나 따옴표가 든 이미지도 사진으로 그리고 대체 텍스트는 원문 값 그대로다", () => {
+    expect(bodyImagePhoto(doc, element("<Image src={image1} />"), saved)?.alt).toBe("");
+    expect(bodyImagePhoto(doc, element('<Image src={image1} alt="&quot;입구&quot; & 계단" />'), saved)?.alt).toBe(
+      '"입구" & 계단',
+    );
+  });
+
+  test("새 글은 레포에 저장된 이미지가 없어 넣은 이미지만 주소가 있다", () => {
+    const sources = { inserted: { image2: BLOB }, post: null };
+    expect(bodyImagePhoto(doc, element('<Image src={image1} alt="a" />'), sources)).toBeNull();
+    expect(bodyImagePhoto(doc, element('<Image src={image2} alt="b" />'), sources)?.src).toBe(BLOB);
+  });
+
+  test("src={식}이면 주소가 없다", () => {
+    expect(bodyImagePhoto(doc, element('<Image src={images[0]} alt="a" />'), saved)).toBeNull();
+    expect(bodyImagePhoto(doc, element('<Image src={image1} alt={"a"} />'), saved)).toBeNull();
+    expect(bodyImagePhoto(doc, element("<Image src={image1} {...rest} />"), saved)).toBeNull();
+  });
+
+  test("import가 없는 변수나 문자열 경로면 주소가 없다", () => {
+    expect(bodyImagePhoto(doc, element('<Image src={image9} alt="a" />'), saved)).toBeNull();
+    expect(bodyImagePhoto(doc, element('<Image src="/banner.png" alt="a" />'), saved)).toBeNull();
+    expect(
+      bodyImagePhoto(doc, element('<Image src={image9} alt="a" />'), { ...saved, inserted: { image2: BLOB } }),
+    ).toBeNull();
+  });
+
+  test("이미지가 아닌 컴포넌트와 읽을 수 없는 글은 주소가 없다", () => {
+    expect(bodyImagePhoto(doc, element('<Footnote id="1">각주</Footnote>'), saved)).toBeNull();
+    expect(
+      bodyImagePhoto(parseMdx("# 글\n\nexport const a = 1;\n"), element("<Image src={image1} />"), saved),
+    ).toBeNull();
+  });
+});
+
+describe.each(fixtureSources.map((source) => [source.name, source.syntax, loadFixtures(source.name)] as const))(
+  "픽스처 본문 이미지 사진: %s",
+  (_, syntax, fixtures) => {
+    test.skipIf(!fixtures)(
+      "폼이 고칠 수 있는 이미지만 그 import 경로의 사진이 되고 나머지 이미지는 주소가 없다",
+      () => {
+        const wrong: string[] = [];
+        let photos = 0;
+        for (const fixture of fixtures!) {
+          const opened = parseMdx(fixture.source, syntax);
+          if (!opened.ok) continue;
+          const list = bodyInserts(opened, opened.body, syntax);
+          if (!list.ok) continue;
+          const source = { inserted: {}, post: { repo: REPO, path: fixture.path } };
+          // 고치지 않은 본문의 삽입 항목 위치는 글 원문의 위치와 같다.
+          for (const entry of insertEntries(list).filter((found) => found.kind === "image")) {
+            const photo = bodyImagePhoto(opened, element(fixture.source.slice(entry.from, entry.to)), source, syntax);
+            const expected = isImageInsert(entry)
+              ? { src: repoImageHref(REPO, fixture.path, entry.path), alt: entry.alt }
+              : null;
+            if (JSON.stringify(photo) !== JSON.stringify(expected)) wrong.push(`${fixture.path}@${entry.from}`);
+            if (photo) photos += 1;
+          }
+        }
+        expect(wrong).toEqual([]);
+        expect(photos).toBeGreaterThan(0);
+      },
+    );
+  },
+);

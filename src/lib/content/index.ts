@@ -146,7 +146,8 @@ export {
 } from "./preview";
 export { editorModes, type EditorMode, type EditorModes } from "./editor-modes";
 export { editorKeys, findCollection, readPost, sourceComponents, type Post, type PostImage } from "./read";
-export { readRepoImage, repoImageHref, type RepoImage, type RepoImageProblem } from "./repo-image";
+export { readRepoImage, type RepoImage, type RepoImageProblem } from "./repo-image";
+export { bodyImagePhoto, repoImageHref, type BodyImagePhoto, type BodyImageSources } from "./body-image";
 export { removeConfirm, TRASH_RETENTION, type RemoveConfirm } from "./remove-confirm";
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
 export { saveEdit, type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
