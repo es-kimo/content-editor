@@ -10,8 +10,10 @@ import {
   imageTag,
   moveImage,
   parseMdx,
+  printJsxTag,
   printMdx,
   readInserts,
+  readJsxTags,
   removeImage,
   removeToc,
   removeUnusedImageImport,
@@ -25,6 +27,7 @@ import {
   type InsertLimit,
   type InsertList,
   type InsertSpan,
+  type JsxElement,
   type LimitedInsert,
   type MdxDoc,
   type MoveDirection,
@@ -356,6 +359,39 @@ export function moveBodyInsert(
 export function bodyImageMoves(doc: MdxDoc, body: string, item: ImageInsertItem, syntax: Syntax = {}): ImageMoves {
   if (!doc.ok) return { before: "parse-error", after: "parse-error" };
   return imageMoves(bodySource(doc, body), item, syntax);
+}
+
+/**
+ * 일반 편집기가 그린 본문 요소 하나가 삽입 항목 목록(`insertEntries(bodyInserts(...))`)의 어느 항목인지.
+ * 편집기는 요소의 원문 위치를 주지 않으므로 본문의 몇 번째 JSX 요소인지(`index`, 바깥 요소가 안쪽보다 먼저)로 찾는다.
+ * 같은 이미지를 여러 곳에서 써도 자리가 다르므로 각각 다른 항목이다.
+ * 그 자리의 요소가 넘긴 요소와 이름·속성이 다르면 편집기와 원문이 어긋난 것이므로 다른 항목을 고르지 않고 null이다.
+ * 삽입 항목이 아닌 요소도 null이다.
+ */
+export function bodyEntryAt(
+  doc: MdxDoc,
+  body: string,
+  element: JsxElement,
+  index: number,
+  syntax: Syntax = {},
+): InsertItem | LimitedInsert | null {
+  if (!doc.ok) return null;
+  const source = bodySource(doc, body);
+  const found = readJsxTags(source, syntax)?.[index];
+  if (!found || found.tag !== printJsxTag(element)) return null;
+  const list = readInserts(source, syntax);
+  if (!list.ok) return null;
+  return insertEntries(list).find((entry) => entry.from === found.from && entry.to === found.to) ?? null;
+}
+
+/** 삽입 항목 목록의 `entryIndex`번째 항목이 본문의 몇 번째 JSX 요소인지. `bodyEntryAt`의 반대이고, 없으면 -1이다. */
+export function bodyEntryElementIndex(doc: MdxDoc, body: string, entryIndex: number, syntax: Syntax = {}): number {
+  if (!doc.ok) return -1;
+  const source = bodySource(doc, body);
+  const list = readInserts(source, syntax);
+  const entry = list.ok ? insertEntries(list)[entryIndex] : undefined;
+  if (!entry) return -1;
+  return readJsxTags(source, syntax)?.findIndex(({ from, to }) => from === entry.from && to === entry.to) ?? -1;
 }
 
 /** 일반 편집에서 파일을 바꿀 이미지. `bodyInserts`로 읽은 그 원문을 함께 둔다. */

@@ -70,6 +70,8 @@ export {
   advancedComponents,
   applyBodyInsertForm,
   applyInsertForm,
+  bodyEntryAt,
+  bodyEntryElementIndex,
   bodyImageMoves,
   bodyImageReplace,
   bodyInsert,

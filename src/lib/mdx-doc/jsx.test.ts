@@ -2,7 +2,8 @@ import { describe, expect, test } from "vitest";
 
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { jsxElements, printJsxTag, type JsxElement } from "./jsx";
+import { readInserts } from "./inserts";
+import { jsxElements, printJsxTag, readJsxTags, type JsxElement } from "./jsx";
 import { parseMarkdown, type Syntax } from "./split";
 
 /** 여러 줄 식은 태그 안 줄 앞 공백이 빠지므로(`printJsxTag`) 그 공백을 빼고 비교한다. */
@@ -41,6 +42,58 @@ describe("printJsxTag", () => {
   test("내용이 있는 요소도 내용 없이 여는 태그의 속성만 쓴다", () => {
     const [element] = elementsOf('<Figure src={a} caption="설명">\n  안의 글\n</Figure>');
     expect(printJsxTag(element!)).toBe('<Figure src={a} caption="설명" />');
+  });
+});
+
+describe("readJsxTags", () => {
+  test("본문의 JSX 요소를 문서 순서로 위치·태그와 함께 읽고, 바깥 요소가 안쪽 요소보다 먼저다", () => {
+    const source = [
+      '<Image src={image1} alt="a" />',
+      "",
+      '<Callout>\n  <Image src={image1} alt="b" />\n</Callout>',
+      "",
+      '문장<Footnote id="1">각주</Footnote>',
+      "",
+    ].join("\n");
+    const tags = readJsxTags(source);
+    expect(tags?.map(({ tag }) => tag)).toEqual([
+      '<Image src={image1} alt="a" />',
+      "<Callout />",
+      '<Image src={image1} alt="b" />',
+      '<Footnote id="1" />',
+    ]);
+    expect(tags?.map(({ from, to }) => source.slice(from, to))).toEqual([
+      '<Image src={image1} alt="a" />',
+      '<Callout>\n  <Image src={image1} alt="b" />\n</Callout>',
+      '<Image src={image1} alt="b" />',
+      '<Footnote id="1">각주</Footnote>',
+    ]);
+  });
+
+  test("코드 블록 안의 태그 모양 글자는 요소가 아니고, 읽을 수 없는 원문은 null이다", () => {
+    expect(readJsxTags("```\n<Image src={a} />\n```\n")).toEqual([]);
+    expect(readJsxTags("<Image src={a} \n")).toBeNull();
+  });
+});
+
+describe.each(fixtureSources)("픽스처 JSX 요소 목록: $name", (source) => {
+  const fixtures = loadFixtures(source.name);
+
+  test.skipIf(!fixtures)("모든 삽입 항목은 같은 위치의 JSX 요소로 목록에 있다", () => {
+    const missing: string[] = [];
+    let total = 0;
+    for (const f of fixtures!) {
+      const list = readInserts(f.source, source.syntax);
+      const tags = readJsxTags(f.source, source.syntax);
+      if (!list.ok || !tags) continue;
+      const spans = new Set(tags.map(({ from, to }) => `${from}-${to}`));
+      for (const entry of [...list.items, ...list.limited]) {
+        total += 1;
+        if (!spans.has(`${entry.from}-${entry.to}`)) missing.push(`${f.path}@${entry.from}`);
+      }
+    }
+    expect(missing).toEqual([]);
+    expect(total).toBeGreaterThan(0);
   });
 });
 

@@ -1,9 +1,7 @@
-import { fromMarkdown } from "mdast-util-from-markdown";
-import { mdxFromMarkdown } from "mdast-util-mdx";
-import { mdxjs } from "micromark-extension-mdxjs";
 import { describe, expect, test } from "vitest";
 
-import { parseMdx, type JsxElement } from "@/lib/mdx-doc";
+import { parseMdx } from "@/lib/mdx-doc";
+import { editorElements } from "@/test/editor-elements";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
 import { bodyImagePhoto, repoImageHref, type BodyImageSources } from "./body-image";
@@ -22,22 +20,7 @@ export const metadata = { title: "글" };
 `);
 const saved: BodyImageSources = { inserted: {}, post: { repo: REPO, path: POST } };
 
-/** 편집기가 넘기는 요소처럼 원문 위치와 식의 구문 트리 없이 읽는다. */
-function element(tag: string): JsxElement {
-  const [block] = fromMarkdown(tag, { extensions: [mdxjs()], mdastExtensions: [mdxFromMarkdown()] }).children;
-  // 한 줄에 쓴 내용 있는 요소는 문단 안의 요소로 읽힌다.
-  const found = block!.type === "paragraph" ? block.children[0] : block;
-  const { type, name, attributes, children } = found as JsxElement;
-  return {
-    type,
-    name,
-    children,
-    attributes: attributes.map((attribute) => {
-      if (attribute.type === "mdxJsxExpressionAttribute" || typeof attribute.value !== "object") return attribute;
-      return { ...attribute, value: { type: attribute.value!.type, value: attribute.value!.value } };
-    }),
-  } as JsxElement;
-}
+const element = (tag: string) => editorElements(tag)[0]!;
 
 describe("bodyImagePhoto", () => {
   test("넣은 이미지는 import 변수명에 맞는 브라우저 안 주소와 대체 텍스트로 그린다", () => {

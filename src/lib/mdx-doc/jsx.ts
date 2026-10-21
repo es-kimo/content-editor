@@ -2,8 +2,12 @@ import type { Expression, Program, SpreadElement } from "estree";
 import type { MdxJsxFlowElement, MdxJsxTextElement } from "mdast-util-mdx";
 
 import { escapeJsxAttribute } from "./images";
+import { parseMarkdown, type Syntax } from "./split";
 
 export type JsxElement = MdxJsxFlowElement | MdxJsxTextElement;
+
+/** 원문의 JSX 요소 하나. `from`부터 `to` 앞까지가 요소 전체이고, `tag`는 그 요소를 `printJsxTag`로 쓴 것이다. */
+export type JsxTag = { from: number; to: number; tag: string };
 
 /** 이름이 `name`인 속성의 값. 문자열(`a="1"`), 식(`a={x}`), 값 없음(`a`) 중 하나다. 속성이 없으면 `undefined`. */
 export function attributeValue(node: JsxElement, name: string) {
@@ -41,6 +45,24 @@ export function jsxElements(node: object): JsxElement[] {
   };
   visit(node);
   return found;
+}
+
+/**
+ * 원문의 모든 JSX 요소를 문서 순서로 읽는다. 바깥 요소가 그 안의 요소보다 먼저다. 원문을 읽을 수 없으면 null.
+ * 일반 편집기는 요소의 원문 위치를 주지 않으므로, 편집기가 그린 요소를 순서와 태그로 원문의 요소에 맞춘다.
+ */
+export function readJsxTags(source: string, syntax: Syntax = {}): JsxTag[] | null {
+  let root;
+  try {
+    root = parseMarkdown(source, syntax);
+  } catch {
+    return null;
+  }
+  return jsxElements(root).map((element) => ({
+    from: element.position!.start.offset!,
+    to: element.position!.end.offset!,
+    tag: printJsxTag(element),
+  }));
 }
 
 /**
