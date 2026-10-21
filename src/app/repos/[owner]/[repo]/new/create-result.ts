@@ -1,4 +1,5 @@
 import {
+  missingImagesSaveMessage,
   STATUS_PROBLEM_MESSAGES,
   type CreatePostResult,
   type ModeSwitchProblem,
@@ -70,6 +71,8 @@ export function sourceProblemState(problem: ModeSwitchProblem): CreateState {
       return createError(CHECK_FIELDS, { fields: Object.fromEntries(problem.errors.map((e) => [e.key, e.message])) });
     case "image":
       return createError(uploadMessage(problem.file, problem.problem));
+    case "missing-image":
+      return createError(missingImagesSaveMessage(problem.files));
     case "doc":
     case "metadata":
       return createError(

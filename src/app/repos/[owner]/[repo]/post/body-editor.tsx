@@ -5,7 +5,15 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import { TechDetails } from "@/app/_lib/ui";
 import { useReportUnsaved, useSaveLocked } from "@/app/_lib/unsaved";
-import { bodyImagePhoto, type BodyImageSources } from "@/lib/content/body-image";
+import {
+  bodyImagePhoto,
+  missingBodyImage,
+  missingImagesInBody,
+  missingImageReserved,
+  missingImagesSaveMessage,
+  missingInsertImage,
+  type BodyImageSources,
+} from "@/lib/content/body-image";
 import { draftAttachments } from "@/lib/content/draft";
 import {
   applyBodyInsertForm,
@@ -100,7 +108,7 @@ function OpenedBodyEditor({
   carried: CarriedForm | null;
 }) {
   const locked = useSaveLocked();
-  const { mode, rejectCarried } = usePostEditor();
+  const { mode, rejectCarried, missing } = usePostEditor();
   // 숨은 편집기의 입력은 저장하지 않고 다른 모드로 넘어간 것이라 미저장으로 알리지 않는다.
   const visible = mode === "wysiwyg";
   /** 일반 편집으로 고칠 수 없게 된 이유. `detail`은 기술 상세에 둘 오류 원문이다. */
@@ -161,7 +169,8 @@ function OpenedBodyEditor({
   const images = useImageUpload({
     area: "body",
     doc,
-    files: upload?.files ?? [],
+    // 복구한 본문에 남은 빠진 첨부 자리를 새 이미지가 이어받지 않게 그 번호를 비워 둔다.
+    files: [...(upload?.files ?? []), ...missingImageReserved(missing)],
     attachments: carried?.input.images,
     onAdded: (image, opener) => forms.open({ kind: "image", image, place: null }, opener),
   });
@@ -173,8 +182,10 @@ function OpenedBodyEditor({
   const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
   const { previewImages } = images;
   const photo = useCallback(
-    (element: JsxElement) => bodyImagePhoto(attachedDoc, element, { inserted: previewImages, post }, syntax),
-    [attachedDoc, previewImages, post, syntax],
+    (element: JsxElement) =>
+      bodyImagePhoto(attachedDoc, element, { inserted: previewImages, post }, syntax) ??
+      missingBodyImage(attachedDoc, element, missing, syntax),
+    [attachedDoc, previewImages, post, missing, syntax],
   );
   const footnote = useMemo(() => bodyFootnotes(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
   const toc = useMemo(() => bodyTocs(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
@@ -217,11 +228,21 @@ function OpenedBodyEditor({
       return { ok: true, at: bodyEntryElementAt(attachedDoc, result.body, result.index, syntax) };
     },
   });
+  // 저장하려 했을 때 본문이 가리키던 빠진 첨부. 본문에서 지우면 안내도 사라진다.
+  const [missingBlocked, setMissingBlocked] = useState(false);
+  const missingLeft = useMemo(
+    () => (missingBlocked ? missingImagesInBody(attachedDoc, draft, missing, syntax) : []),
+    [missingBlocked, attachedDoc, draft, missing, syntax],
+  );
   // 본문과 본문에 넣은 이미지를 낸다. 일반 편집으로 고칠 수 없게 된 글도 제목·설정은 일반 편집에서 저장하므로,
   // 본문은 연 그대로 첨부 없이 낸다.
   usePostInput("wysiwyg", () => {
     if (problem) return { text: body, data: new FormData(), unchanged: () => {} };
     const next = editedBody(body, normalized.current, edited.current);
+    if (missingImagesInBody(attachedDoc, next, missing, syntax).length > 0) {
+      setMissingBlocked(true);
+      return null;
+    }
     const data = images.upload(next);
     return data && { text: next, data, unchanged: () => setBaseline(next) };
   });
@@ -275,6 +296,7 @@ function OpenedBodyEditor({
           replace: replaceImage && ((item, opener) => replaceImage(item, opener, opener)),
           move: moveImage,
         }}
+        missingImage={(entry) => missingInsertImage(attachedDoc, current, entry, missing, syntax) !== null}
       />
       {forms.panel}
       <div ref={editorBox} {...(upload ? images.dropProps : {})}>
@@ -326,6 +348,7 @@ function OpenedBodyEditor({
         글을 저장할 때 글 폴더에 함께 저장하고, 본문에서 지웠거나 넣지 않은 이미지는 올리지 않아요.
       </AttachedImagesNotice>
       <ImageProblemNotice upload={images} />
+      {missingLeft.length > 0 && <p className="text-sm text-red-600">{missingImagesSaveMessage(missingLeft)}</p>}
       <BodyPreview
         markdown={current}
         syntax={syntax}

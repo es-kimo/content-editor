@@ -4,35 +4,43 @@ import { parseMdx, readMetadata, type MdxDoc, type Syntax } from "@/lib/mdx-doc"
 import { fieldLabel, TITLE_FIELD } from "@/lib/metadata-form";
 
 import type { NewPostSubmenu } from "./create-post";
-import { checkRestore, DRAFT_TTL_DAYS, type Draft, type DraftAttachment, type DraftContent } from "./draft";
+import { checkRestore, DRAFT_TTL_DAYS, type Draft, type DraftAttachment } from "./draft";
 import type { FormModeInput, SourceModeInput, SwitchPost } from "./mode-switch";
 import { koreaTimeText, postTitle, UNTITLED_POST } from "./summary";
 import { applyUploads } from "./upload";
 
 /**
  * 보관본을 편집기에 다시 열 입력. 편집기를 이 입력으로 열기만 하고 저장하거나 게시하지 않는다.
- * 일반 편집의 `doc`은 연 원문에 보관한 첨부의 import를 더한 것이다.
+ * 일반 편집의 `doc`은 연 원문에 보관한 첨부의 import를 더한 것이고, `missing`은 본문이 가리키지만 파일이 없어
+ * 다시 골라야 하는 첨부 이름이다.
  */
 export type RestoredInput =
-  | { mode: "wysiwyg"; input: FormModeInput<DraftAttachment>; doc: MdxDoc; submenu?: NewPostSubmenu }
+  | {
+      mode: "wysiwyg";
+      input: FormModeInput<DraftAttachment>;
+      doc: MdxDoc;
+      missing: string[];
+      submenu?: NewPostSubmenu;
+    }
   | { mode: "source"; input: SourceModeInput<DraftAttachment>; submenu?: NewPostSubmenu };
 
 /**
  * 보관본을 지금 글 편집기에 열 입력으로 바꾼다. 보관한 모드 그대로 연다.
  * 기준 글이 같을 때(`checkRestore`의 `restorable`)만 부른다. 첨부 이름이 연 글 폴더 파일과 겹치지 않는다고 본다.
  */
-export function restoreDraft(post: SwitchPost, draft: DraftContent): RestoredInput {
-  const { input, attachments } = draft;
+export function restoreDraft(post: SwitchPost, draft: Pick<Draft, "input" | "attachments" | "missing">): RestoredInput {
+  const { input, attachments, missing } = draft;
   const submenu = input.submenu ? { submenu: input.submenu } : {};
   if (input.mode === "source")
     return { mode: "source", input: { source: input.source, images: attachments }, ...submenu };
   const opened = parseMdx(post.source, post.syntax);
-  // 보관한 첨부는 본문이 쓰는 것만 담아 이을 수 있다. 잇지 못하면 첨부 없이 본문만 연다.
+  // 보관한 첨부는 본문이 쓰는 것만 담아 이을 수 있다. 잇지 못하면 첨부 없이 본문만 열고, 그 첨부도 다시 골라야 한다.
   const applied = applyUploads(opened, input.body, attachments, post.files);
   return {
     mode: "wysiwyg",
     input: { values: input.values, body: input.body, images: applied.ok ? attachments : [] },
     doc: applied.ok ? applied.doc : opened,
+    missing: applied.ok ? missing : [...missing, ...attachments.map(({ file }) => file)],
     ...submenu,
   };
 }

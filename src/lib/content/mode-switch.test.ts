@@ -241,6 +241,17 @@ describe("모드 전환과 새 이미지", () => {
 
     expect(result.ok && result.input.images).toEqual([]);
   });
+
+  test("복구한 보관본에서 파일이 빠진 첨부를 본문이 아직 가리키면 원문 편집으로 바꾸지 않고 그 첨부 이름을 돌려준다", () => {
+    const result = formToSource(post, { values: FORM, body, images: [] }, ["2.png"]);
+
+    expect(result).toEqual({ ok: false, reason: "missing-image", files: ["2.png"] });
+  });
+
+  test("빠진 첨부를 다시 넣어 import가 생겼거나 본문에서 지웠으면 원문 편집으로 바꾼다", () => {
+    expect(formToSource(post, { values: FORM, body, images: [image] }, ["2.png"]).ok).toBe(true);
+    expect(formToSource(post, { values: FORM, body: parseBody(SOURCE), images: [] }, ["2.png"]).ok).toBe(true);
+  });
 });
 
 const fixtures = loadFixtures("yjshd");

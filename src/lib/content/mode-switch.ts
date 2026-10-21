@@ -10,6 +10,7 @@ import {
   type MetadataObject,
 } from "@/lib/metadata-form";
 
+import { missingImagesInBody } from "./body-image";
 import { editorModes, type EditorModes } from "./editor-modes";
 import { applyUploads, sourceUploads, type UploadImage, type UploadProblem } from "./upload";
 
@@ -41,7 +42,9 @@ export type ModeSwitchProblem =
   /** 설정 폼 값을 글 설정에 쓸 수 없다. */
   | { ok: false; reason: "invalid"; errors: { key: string; message: string }[] }
   /** 새 이미지를 원문에 이을 수 없다. */
-  | { ok: false; reason: "image"; file: string; problem: UploadProblem };
+  | { ok: false; reason: "image"; file: string; problem: UploadProblem }
+  /** 본문이 복구한 보관본에서 파일이 빠진 첨부를 아직 가리킨다 (`missingImagesInBody`). */
+  | { ok: false; reason: "missing-image"; files: string[] };
 
 /** 전환 버튼 가까이에 보일 이유와 할 일. */
 export const MODE_SWITCH_MESSAGES: { [reason in ModeSwitchProblem["reason"]]: string } = {
@@ -54,16 +57,22 @@ export const MODE_SWITCH_MESSAGES: { [reason in ModeSwitchProblem["reason"]]: st
   invalid: "글 설정에 확인할 항목이 있어 원문 편집으로 바꿀 수 없어요. 글 설정을 고친 뒤 바꿔 주세요.",
   image:
     "넣은 이미지를 원문으로 옮길 수 없어 원문 편집으로 바꿀 수 없어요. 이미지를 다시 넣거나 저장한 뒤 바꿔 주세요.",
+  "missing-image":
+    "보관하지 못한 이미지가 본문에 남아 있어 원문 편집으로 바꿀 수 없어요. 이미지를 다시 넣고, 다시 고르라는 안내가 보이는 자리는 지워 주세요.",
 };
 
 /**
  * 일반 편집 입력을 원문 편집 입력으로 바꾼다. 연 원문에 설정 폼 값·본문을 쓰고 새 이미지의 import를 더한다.
  * 첨부는 원문이 가리키므로 그대로 이어받는다. 게시 상태는 폼에 없어 연 원문의 값이 남는다.
  * 비운 필수 값(아직 제목을 쓰지 않은 새 글 등)도 빈 값 그대로 옮긴다. 전환은 저장이 아니라 검사는 저장할 때 한다.
+ * 다만 본문이 빠진 첨부를 가리키면 바꾸지 않는다. 원문에는 그 import가 없어, 원문 편집에서 그대로 저장하면
+ * 사이트가 만들 수 없는 글이 된다.
+ * @param missing 복구한 보관본에서 파일이 빠진 첨부 이름.
  */
 export function formToSource<I extends UploadImage>(
   post: SwitchPost,
   input: FormModeInput<I>,
+  missing: string[] = [],
 ): { ok: true; input: SourceModeInput<I> } | ModeSwitchProblem {
   const opened = openForm(post, post.source);
   if (!opened.ok) return opened;
@@ -75,6 +84,8 @@ export function formToSource<I extends UploadImage>(
   }
   const edited = applyUploads(next, input.body, input.images, post.files);
   if (!edited.ok) return edited;
+  const left = missingImagesInBody(edited.doc, input.body, missing, post.syntax);
+  if (left.length > 0) return { ok: false, reason: "missing-image", files: left };
   return { ok: true, input: { source: printMdx(edited.doc), images: input.images } };
 }
 

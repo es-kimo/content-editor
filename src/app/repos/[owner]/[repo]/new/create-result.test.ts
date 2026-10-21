@@ -125,4 +125,11 @@ describe("sourceProblemState", () => {
       message: expect.stringContaining("그 부분을 지운 뒤 다시 저장해 주세요"),
     });
   });
+
+  test("보관하지 못한 이미지가 본문에 남아 있으면 그 이미지를 알리고 저장하지 않았다고 안내한다", () => {
+    expect(sourceProblemState({ ok: false, reason: "missing-image", files: ["2.png"] })).toMatchObject({
+      status: "error",
+      message: expect.stringContaining("보관하지 못한 이미지(2.png)가 본문에 남아 있어 저장하지 않았어요"),
+    });
+  });
 });

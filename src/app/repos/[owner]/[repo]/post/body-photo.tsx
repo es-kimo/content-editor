@@ -3,7 +3,7 @@
 import { useContext, useId, useMemo, useRef, useState } from "react";
 
 import { SECONDARY_BUTTON_CLASS } from "@/app/_lib/ui";
-import type { BodyImagePhoto } from "@/lib/content/body-image";
+import { MISSING_DRAFT_IMAGE, type BodyImagePhoto, type MissingBodyImage } from "@/lib/content/body-image";
 import { imageActionMessage, imageMoveNotice, insertItemName, type ImageInsertItem } from "@/lib/content/insert-form";
 import { printJsxTag, type JsxElement } from "@/lib/mdx-doc";
 
@@ -27,7 +27,7 @@ export function BodyPhoto({ photo, element, inline }: { photo: BodyImagePhoto; e
   const [attempt, setAttempt] = useState(0);
   const [problem, setProblem] = useState<string | null>(null);
   const Box = inline ? "span" : "div";
-  const alt = photo.alt === "" ? "대체 텍스트 없음" : `대체 텍스트: ${photo.alt}`;
+  const alt = altText(photo.alt);
   const tag = useMemo(() => printJsxTag(element), [element]);
   const selected = photos?.selected?.id === id ? photos.selected : null;
   const item = selected && photos ? photos.actions.image(element, selected.nth) : null;
@@ -119,6 +119,23 @@ export function BodyPhoto({ photo, element, inline }: { photo: BodyImagePhoto; e
       )}
       {actions}
       {problem && <span className="text-sm text-red-600">{problem}</span>}
+    </Box>
+  );
+}
+
+const altText = (alt: string) => (alt === "" ? "대체 텍스트 없음" : `대체 텍스트: ${alt}`);
+
+/**
+ * 복구한 보관본에 파일이 없는 이미지. 사진을 그리지 않고 다시 고르라는 안내와 대체 텍스트를 보인다.
+ * 사진을 불러오지 못한 것과 달리 다시 불러와도 파일이 없어 ‘다시 불러오기’를 두지 않는다.
+ * @param inline 문장 안의 이미지. 문단 안에 블록 요소를 둘 수 없어 span으로 그린다.
+ */
+export function MissingBodyPhoto({ image, inline }: { image: MissingBodyImage; inline: boolean }) {
+  const Box = inline ? "span" : "div";
+  return (
+    <Box className="inline-flex max-w-full flex-col gap-1 align-top text-sm">
+      <span className="text-amber-600">{MISSING_DRAFT_IMAGE}</span>
+      <span className="text-zinc-500">{altText(image.alt)}</span>
     </Box>
   );
 }

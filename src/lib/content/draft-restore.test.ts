@@ -69,7 +69,23 @@ describe("복구 안내", () => {
       mode: "wysiwyg",
       input: { values: { title: "12월 휴진 안내", description: "연말" }, body: "# 12월 휴진 안내\n", images: [] },
       doc: expect.objectContaining({ ok: true }),
+      missing: [],
     });
+  });
+
+  test("텍스트만 보관된 일반 편집 보관본은 본문을 그대로 열고, 빠진 첨부의 import는 더하지 않고 다시 골라야 할 이름으로 돌려준다", async () => {
+    const attachments = [{ file: "2.png", content: PNG }];
+    const body = '# 12월 휴진 안내\n\n<Image src={image2} alt="빠진 이미지" />\n';
+    const content: DraftContent = { ...FORM_DRAFT, input: { mode: "form", values: {}, body }, attachments };
+    const { drafts } = await stored(content, "sha-1", { quota: 0 });
+
+    const restored = restoreDraft(POST, drafts[0]!);
+
+    expect(restored.mode).toBe("wysiwyg");
+    if (restored.mode !== "wysiwyg") return;
+    expect(restored.input).toMatchObject({ body, images: [] });
+    expect(restored.missing).toEqual(["2.png"]);
+    expect(readImageImports(restored.doc).map((image) => image.path)).toEqual(["./1.png"]);
   });
 
   test("일반 편집 보관본의 첨부는 편집기가 본문 이미지로 읽도록 연 원문에 import를 더해 돌려준다", async () => {

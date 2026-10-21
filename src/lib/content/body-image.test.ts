@@ -3,9 +3,19 @@ import { describe, expect, test } from "vitest";
 import { parseMdx } from "@/lib/mdx-doc";
 import { editorElements } from "@/test/editor-elements";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
+import { JPEG, PNG } from "@/test/upload-images";
 
-import { bodyImagePhoto, repoImageHref, type BodyImageSources } from "./body-image";
+import {
+  bodyImagePhoto,
+  missingBodyImage,
+  missingImageReserved,
+  missingImagesInBody,
+  missingInsertImage,
+  repoImageHref,
+  type BodyImageSources,
+} from "./body-image";
 import { bodyInserts, insertEntries, isImageInsert } from "./insert-form";
+import { addUpload } from "./upload";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/게시판/일반/page.mdx";
@@ -72,6 +82,120 @@ describe("bodyImagePhoto", () => {
     expect(
       bodyImagePhoto(parseMdx("# 글\n\nexport const a = 1;\n"), element("<Image src={image1} />"), saved),
     ).toBeNull();
+  });
+});
+
+describe("missingBodyImage", () => {
+  test("복구한 보관본에서 파일이 빠진 첨부를 가리키는 이미지는 그 첨부 이름과 대체 텍스트를 돌려준다", () => {
+    expect(missingBodyImage(doc, element('<Image src={image3} alt="빠진 사진" />'), ["3.png"])).toEqual({
+      missing: "3.png",
+      alt: "빠진 사진",
+    });
+    expect(missingBodyImage(doc, element("<Image src={image4} />"), ["3.png", "4.webp"])).toEqual({
+      missing: "4.webp",
+      alt: "",
+    });
+  });
+
+  test("이미 import가 있는 이미지와 빠진 첨부가 아닌 변수는 빠진 첨부로 보지 않는다", () => {
+    expect(missingBodyImage(doc, element('<Image src={image1} alt="a" />'), ["3.png"])).toBeNull();
+    expect(missingBodyImage(doc, element('<Image src={image4} alt="a" />'), ["3.png"])).toBeNull();
+    expect(missingBodyImage(doc, element('<Image src={image3} alt="a" />'), [])).toBeNull();
+  });
+
+  test("다시 고른 이미지가 빠진 첨부와 같은 이름을 받아 import가 있으면 빠진 첨부로 보지 않는다", () => {
+    expect(missingBodyImage(doc, element('<Image src={image2} alt="다시 고름" />'), ["2.png"])).toBeNull();
+  });
+
+  test("src={식}으로 쓰거나 이미지가 아닌 컴포넌트는 빠진 첨부로 보지 않는다", () => {
+    expect(missingBodyImage(doc, element('<Image src={image3.src} alt="a" />'), ["3.png"])).toBeNull();
+    expect(missingBodyImage(doc, element('<Footnote id="3">image3</Footnote>'), ["3.png"])).toBeNull();
+  });
+});
+
+describe("missingInsertImage", () => {
+  const body = [
+    "# 글",
+    "",
+    '<Image src={image3} alt="빠진 사진" />',
+    "",
+    '<Image src={image4} alt="경로 없음" />',
+  ].join("\n");
+  const limited = () => {
+    const list = bodyInserts(doc, body);
+    if (!list.ok) throw new Error(list.reason);
+    return list.limited;
+  };
+
+  test("삽입 항목 목록이 import 없는 이미지로 읽은 항목 중 빠진 첨부를 가리키는 것만 그 첨부 이름을 돌려준다", () => {
+    const [missing, other] = limited();
+
+    expect(missingInsertImage(doc, body, missing!, ["3.png"])).toBe("3.png");
+    expect(missingInsertImage(doc, body, other!, ["3.png"])).toBeNull();
+  });
+
+  test("본문 안 표시와 같은 항목을 빠진 첨부로 본다", () => {
+    const [missing] = limited();
+
+    expect(missingInsertImage(doc, body, missing!, ["3.png"])).toBe(
+      missingBodyImage(doc, element('<Image src={image3} alt="빠진 사진" />'), ["3.png"])?.missing,
+    );
+  });
+
+  test("빠진 첨부가 없거나 폼으로 고칠 수 있는 항목은 빠진 첨부로 보지 않는다", () => {
+    const [missing] = limited();
+    const list = bodyInserts(doc, '<Image src={image1} alt="a" />');
+    const item = list.ok ? list.items[0]! : null;
+
+    expect(missingInsertImage(doc, body, missing!, [])).toBeNull();
+    expect(item && missingInsertImage(doc, '<Image src={image1} alt="a" />', item, ["1.png"])).toBeNull();
+  });
+});
+
+describe("missingImagesInBody", () => {
+  const body = (...tags: string[]) => ["# 글", "", ...tags].join("\n\n") + "\n";
+
+  test("본문이 아직 가리키는 빠진 첨부 이름을 한 번씩 돌려준다", () => {
+    const text = body('<Image src={image3} alt="a" />', '<Image src={image1} alt="b" />', "<Image src={image3} />");
+    expect(missingImagesInBody(doc, text, ["3.png", "4.png"])).toEqual(["3.png"]);
+  });
+
+  test("빠진 첨부를 본문에서 지웠거나 빠진 첨부가 없으면 빈 목록이다", () => {
+    expect(missingImagesInBody(doc, body('<Image src={image1} alt="b" />'), ["3.png"])).toEqual([]);
+    expect(missingImagesInBody(doc, body("<Image src={image3} />"), [])).toEqual([]);
+  });
+
+  test("다시 고른 이미지가 빠진 첨부와 같은 이름을 받아 import가 있으면 빠진 첨부로 세지 않는다", () => {
+    expect(missingImagesInBody(doc, body("<Image src={image2} />"), ["2.png"])).toEqual([]);
+  });
+});
+
+describe("missingImageReserved", () => {
+  // 보관한 첨부를 잇지 못해 연 doc으로 복구한 새 글. 본문은 빠진 첨부 `1.png`의 변수명을 쓰지만 doc에는 import도 본문도 없다.
+  const opened = parseMdx(`export const metadata = { title: "글" };\n\n# 글\n`);
+  const restored = '# 글\n\n<Image src={image1} alt="빠진 사진" />\n';
+
+  test.each([
+    ["같은 확장자", { extension: "png", content: PNG }],
+    ["다른 확장자", { extension: "jpg", content: JPEG }],
+  ])(
+    "복구한 본문에 빠진 첨부가 남은 채 이미지를 다시 넣어도(%s) 새 이미지는 그 번호를 받지 않고 안내 자리가 남는다",
+    (_, image) => {
+      const added = addUpload({ doc: opened, images: [] }, image, missingImageReserved(["1.png"]));
+      if (!added.ok) throw new Error("이미지를 넣지 못했다");
+      expect(added.file).not.toMatch(/^1\./);
+      const body = `${restored}\n${added.tag}\n`;
+      expect(missingImagesInBody(added.plan.doc, body, ["1.png"])).toEqual(["1.png"]);
+      expect(missingBodyImage(added.plan.doc, element('<Image src={image1} alt="빠진 사진" />'), ["1.png"])).toEqual({
+        missing: "1.png",
+        alt: "빠진 사진",
+      });
+    },
+  );
+
+  test("addImage가 고르는 꼴이 아닌 이름은 그대로 둔다", () => {
+    expect(missingImageReserved(["사진.png"])).toEqual(["사진.png"]);
+    expect(missingImageReserved([])).toEqual([]);
   });
 });
 
