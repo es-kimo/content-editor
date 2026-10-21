@@ -39,6 +39,9 @@ import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
 
 type OpenedForm = { target: InsertFormTarget; input: InsertFormInput; problem: string | null };
 
+/** 폼을 닫으면 초점을 돌려받을 곳. 연 버튼이나 연 항목이고, 본문을 다시 그려 요소가 바뀌는 곳은 다시 찾아 초점을 둔다. */
+export type FormOpener = Pick<HTMLElement, "focus">;
+
 /**
  * 편집 영역 하나의 넣기·수정 폼. 일반 편집과 원문 편집이 같은 폼을 쓰도록 편집기에 적용하는 방법만 영역이 정한다.
  * 폼은 적용할 때만 원문을 바꾸고, 바꾼 원문의 미저장 판정은 영역의 편집기가 한다.
@@ -53,7 +56,7 @@ export function useInsertForm({
 }) {
   const flow = useFormFlow();
   const [opened, setOpened] = useState<OpenedForm | null>(null);
-  const opener = useRef<HTMLElement | null>(null);
+  const opener = useRef<FormOpener | null>(null);
   const restoreFocus = useRef(false);
 
   useEffect(() => {
@@ -79,7 +82,7 @@ export function useInsertForm({
      * 폼을 연다. 열 수 없으면 false.
      * @param from 폼을 닫으면 초점을 돌려줄 요소(연 버튼이나 연 항목).
      */
-    open(target: InsertFormTarget, from: HTMLElement | null): boolean {
+    open(target: InsertFormTarget, from: FormOpener | null): boolean {
       if (!flow.open(area)) return false;
       flow.edit(formDirty(target, formInitialValue(target)));
       opener.current = from;
@@ -266,16 +269,12 @@ export function InsertEntryList({
   // 이동 가능 여부는 원문을 여러 번 읽으므로 모든 이미지가 아니라 고른 이미지 하나만 따진다.
   const moves = image && images.moves(image);
   // 옮기면 목록을 다시 그려 누른 버튼이 사라질 수 있어, 다시 그린 뒤 같은 쪽 버튼에 초점을 돌려준다.
-  // 그쪽으로 더 못 옮기면 반대쪽, 그것도 막히면 ‘선택’ 버튼으로 간다.
   const refocus = useRef<MoveDirection | null>(null);
   useEffect(() => {
     const direction = refocus.current;
-    if (!direction) return;
+    if (!direction || !details.current) return;
     refocus.current = null;
-    const order = [direction, direction === "before" ? "after" : "before", "select"];
-    const find = (name: string) =>
-      details.current?.querySelector<HTMLButtonElement>(`[data-image-action="${name}"]:enabled`);
-    order.map(find).find(Boolean)?.focus();
+    focusImageAction(details.current, direction);
   });
 
   const remove = (item: RemovableInsertItem) => {
@@ -385,15 +384,28 @@ export function InsertEntryList({
 }
 
 /**
- * 고른 이미지 한 곳의 ‘교체’·‘제거’·‘앞으로’·‘뒤로’. 옮길 수 없는 쪽의 버튼은 막는다.
+ * 이미지를 옮겨 다시 그린 뒤 `container` 안에서 같은 쪽 버튼에 초점을 둔다.
+ * 그쪽으로 더 못 옮기면 반대쪽, 그것도 막히면 이미지를 고른 버튼(`data-image-action="select"`)으로 간다.
+ */
+export function focusImageAction(container: Element, direction: MoveDirection | "select") {
+  const order = [direction, direction === "before" ? "after" : "before", "select"];
+  const find = (name: string) => container.querySelector<HTMLButtonElement>(`[data-image-action="${name}"]:enabled`);
+  order.map(find).find(Boolean)?.focus();
+}
+
+/**
+ * 고른 이미지 한 곳의 ‘수정’·‘교체’·‘제거’·‘앞으로’·‘뒤로’. 옮길 수 없는 쪽의 버튼은 막는다.
+ * 문장 안 이미지 아래에도 놓이므로 블록 요소가 아닌 span으로 감싼다.
  * @param notice 어느 쪽으로도 옮길 수 없는 이유와 원문으로 가는 방법.
+ * @param onEdit 대체 텍스트 수정 폼을 연다. 삽입 항목 목록은 ‘수정’을 따로 두므로 넘기지 않는다.
  * @param onReplace 이미지를 넣을 수 없는 글이면 null이고 ‘교체’를 두지 않는다.
  */
-function ImageActions({
+export function ImageActions({
   name,
   moves,
   notice,
   disabled,
+  onEdit,
   onReplace,
   onRemove,
   onMove,
@@ -402,12 +414,23 @@ function ImageActions({
   moves: ImageMoves;
   notice: string | null;
   disabled: boolean;
+  onEdit?: (opener: HTMLElement) => void;
   onReplace: ((opener: HTMLElement) => void) | null;
   onRemove: () => void;
   onMove: (direction: MoveDirection) => void;
 }) {
   return (
-    <div role="group" aria-label={`${name} 관리`} className="flex w-full flex-wrap items-center gap-2 pl-4">
+    <span role="group" aria-label={`${name} 관리`} className="flex w-full flex-wrap items-center gap-2 pl-4">
+      {onEdit && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={(event) => onEdit(event.currentTarget)}
+          className={TOGGLE_BUTTON_CLASS}
+        >
+          수정
+        </button>
+      )}
       {onReplace && (
         <button
           type="button"
@@ -434,7 +457,7 @@ function ImageActions({
         </button>
       ))}
       {notice && <span className="text-amber-600">{notice}</span>}
-    </div>
+    </span>
   );
 }
 
