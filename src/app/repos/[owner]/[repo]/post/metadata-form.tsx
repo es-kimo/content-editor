@@ -14,12 +14,14 @@ import {
 
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
 import { TechDetails } from "@/app/_lib/ui";
+import type { SaveTarget } from "@/lib/content/save-flow";
 import {
   FIELD_PREFIX,
   metadataFormChanged,
   optionLabel,
   REQUIRED_MESSAGE,
   splitTitleField,
+  TITLE_FIELD,
   withFormValues,
   type FormField,
 } from "@/lib/metadata-form";
@@ -39,7 +41,10 @@ type MetadataFormValue = {
   version: string;
   fields: FormField[];
   save: ReturnType<typeof useSave>;
+  /** 글 설정 영역의 미저장 변경. `ownTitle`이면 제목 칸을 뺀다. */
   changed: boolean;
+  /** 제목 칸의 지금 입력. */
+  title: string;
   /** 저장 결과와 브라우저 검사에서 나온 필드별 오류. */
   errors: FieldErrors;
   /** 입력이 바뀌었을 때 미저장 여부를 다시 판정하고 그 필드의 브라우저 검사 오류를 거둔다. */
@@ -61,29 +66,39 @@ function useMetadataForm(): MetadataFormValue {
  * 둘 사이에 본문 편집기가 있어 한 form으로 감쌀 수 없으므로, 제목 입력은 `form` 속성으로 같은 form에 속하게 한다.
  * 일반 편집으로 글을 저장할 때 이 폼의 값을 본문과 함께 낸다. 원문 편집에서는 원문이 글 설정을 담으므로 숨긴다.
  * 입력은 sha가 아닌 metadata 원본(`version`)이 바뀔 때만 다시 연다.
+ * @param target 이 폼을 함께 저장하는 저장 대상. 저장 중 잠금과 필드 오류를 그 대상의 저장에서 읽는다.
+ * @param ownTitle 제목 칸의 미저장 변경을 화면이 따로 알린다. 글 설정 영역에는 제목을 뺀 칸의 변경만 든다.
  */
 export function MetadataForm({
   version,
   fields,
+  target = "post",
+  ownTitle = false,
   children,
 }: {
   version: string;
   fields: FormField[];
+  target?: SaveTarget;
+  ownTitle?: boolean;
   children: ReactNode;
 }) {
   const formId = useId();
   const form = useRef<HTMLFormElement>(null);
-  const save = useSave("post");
+  const save = useSave(target);
   const { mode, carried } = usePostEditor();
   // 원문 편집에서 이어받은 값이 있으면 그 값으로 입력을 다시 연다. 글의 지금 값과 다르면 처음부터 변경이다.
   const values = carried.wysiwyg?.input.values;
   const opened = carried.wysiwyg ? `${version}:${carried.wysiwyg.key}` : version;
   const openedFields = values ? withFormValues(fields, values) : fields;
+  const judged = ownTitle ? splitTitleField(fields).settings : fields;
+  const titleField = splitTitleField(openedFields).title;
   // 다시 연 입력은 처음 값이라, 판정과 브라우저 검사 오류를 그때의 version과 함께 두고 version이 바뀌면 버린다.
   const [changedAt, setChanged] = useState({ version: opened, changed: false });
+  const [titleAt, setTitle] = useState({ version: opened, title: titleField?.initial ?? "" });
   const [invalidAt, setInvalid] = useState<{ version: string; errors: FieldErrors }>({ version: opened, errors: {} });
   const changed =
-    changedAt.version === opened ? changedAt.changed : values !== undefined && metadataFormChanged(fields, values);
+    changedAt.version === opened ? changedAt.changed : values !== undefined && metadataFormChanged(judged, values);
+  const title = titleAt.version === opened ? titleAt.title : (titleField?.initial ?? "");
   const invalidErrors = invalidAt.version === opened ? invalidAt.errors : {};
   // 숨은 폼의 입력은 저장하지 않고 원문 편집으로 넘어간 것이라 미저장으로 알리지 않는다.
   useReportUnsaved("metadata", changed && mode === "wysiwyg");
@@ -104,10 +119,14 @@ export function MetadataForm({
     fields: openedFields,
     save,
     changed,
+    title,
     errors: { ...invalidErrors, ...(save.state.status === "error" ? save.state.fields : undefined) },
     inputChanged: (input) => {
       if (form.current) {
-        setChanged({ version: opened, changed: metadataFormChanged(fields, new FormData(form.current)) });
+        const data = new FormData(form.current);
+        setChanged({ version: opened, changed: metadataFormChanged(judged, data) });
+        const typed = data.get(FIELD_PREFIX + TITLE_FIELD);
+        setTitle({ version: opened, title: typeof typed === "string" ? typed : "" });
       }
       const key = input instanceof Element ? (input.getAttribute("name") ?? "").slice(FIELD_PREFIX.length) : "";
       if (key in invalidErrors) {
@@ -126,6 +145,11 @@ export function MetadataForm({
     },
   };
   return <MetadataFormContext value={value}>{children}</MetadataFormContext>;
+}
+
+/** 제목 칸의 지금 입력. 새 글 화면이 제목으로 정할 글 경로를 보이고 제목의 미저장 변경을 알린다. */
+export function useMetadataTitle(): string {
+  return useMetadataForm().title;
 }
 
 /** 화면 위의 제목 입력. config에 제목 필드가 없으면 그리지 않는다. 일반 편집에서 글 설정·본문과 함께 저장한다. */

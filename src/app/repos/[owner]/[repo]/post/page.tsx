@@ -21,8 +21,7 @@ import type { Syntax } from "@/lib/mdx-doc";
 import { buildForm, optionLabel, STATUS_FIELD, type FormField } from "@/lib/metadata-form";
 
 import { savePostAction } from "./actions";
-import { BodyEditor } from "./body-editor";
-import { EditorModeSwitch } from "./editor-mode-switch";
+import { BodyModes } from "./body-modes";
 import { MetadataForm, MetadataSettings, MetadataTitleInput } from "./metadata-form";
 import { PostActionBar } from "./post-actions";
 import { PostEditorProvider } from "./post-editor";
@@ -155,50 +154,39 @@ const SOURCE_ONLY = {
 
 function BodyView({ post, syntax, preview }: { post: Post; syntax: Syntax; preview?: string }) {
   const modes = editorModes(post);
-  // 이미지는 글 분류 설정이 허용하고, import를 더할 수 있게 원문을 나눌 수 있는 글에만 넣는다.
-  const upload =
-    post.collection.components.includes(IMAGE_COMPONENT) && post.doc.ok
-      ? { files: post.images.map((image) => image.name) }
-      : null;
-  // 원문은 파일 전체라 저장하면 바뀐다. 저장한 파일로 다시 열도록 key를 sha로 둔다.
-  const source = (
-    <SourceEditor
-      key={post.sha}
-      source={post.source}
-      syntax={syntax}
-      components={sourceComponents(post.collection)}
-      upload={upload}
-      preview={preview}
-    />
-  );
-  if (modes.sourceOnly || !post.doc.ok) {
+  const files = post.images.map((image) => image.name);
+  if (!modes.sourceOnly && post.doc.ok) {
     return (
-      <>
-        {modes.sourceOnly && (
-          <p className="text-sm text-amber-600">
-            이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. {SOURCE_ONLY[modes.sourceOnly.reason]}
-          </p>
-        )}
-        {source}
-      </>
+      <BodyModes
+        collection={post.collection}
+        source={post.source}
+        doc={post.doc}
+        files={files}
+        keys={{ source: post.sha, body: editorKeys(post).body }}
+        syntax={syntax}
+        preview={preview}
+      />
     );
   }
+  // 이미지는 글 분류 설정이 허용하고, import를 더할 수 있게 원문을 나눌 수 있는 글에만 넣는다.
+  const upload = post.collection.components.includes(IMAGE_COMPONENT) && post.doc.ok ? { files } : null;
   return (
-    <EditorModeSwitch
-      source={source}
-      wysiwyg={
-        // 저장해도 본문이 그대로면 편집기를 다시 열지 않도록 key를 sha가 아닌 본문 원본으로 둔다.
-        <BodyEditor
-          key={editorKeys(post).body}
-          doc={post.doc}
-          body={post.doc.body}
-          syntax={syntax}
-          components={post.collection.components}
-          upload={upload}
-          preview={preview}
-        />
-      }
-    />
+    <>
+      {modes.sourceOnly && (
+        <p className="text-sm text-amber-600">
+          이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. {SOURCE_ONLY[modes.sourceOnly.reason]}
+        </p>
+      )}
+      {/* 원문은 파일 전체라 저장하면 바뀐다. 저장한 파일로 다시 열도록 key를 sha로 둔다. */}
+      <SourceEditor
+        key={post.sha}
+        source={post.source}
+        syntax={syntax}
+        components={sourceComponents(post.collection)}
+        upload={upload}
+        preview={preview}
+      />
+    </>
   );
 }
 

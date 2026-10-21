@@ -5,7 +5,16 @@ import { useState } from "react";
 import { ConfirmDialog } from "@/app/_lib/confirm-dialog";
 import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/app/_lib/ui";
 import { FormBlockedNotice, useImagePreparing, useSave, useUnsavedChanged } from "@/app/_lib/unsaved";
-import { BODY_FIELD, type PostActions, type SaveRequest, type SaveState } from "@/lib/content/save-flow";
+import type { EditorMode } from "@/lib/content/editor-modes";
+import {
+  BODY_FIELD,
+  newPostRequest,
+  SUBMENU_FIELD,
+  type PostActions,
+  type SaveRequest,
+  type SaveState,
+  type SaveTarget,
+} from "@/lib/content/save-flow";
 import { unsavedAreas } from "@/lib/content/unsaved";
 import { fieldLabel, type PostAction } from "@/lib/metadata-form";
 
@@ -22,21 +31,30 @@ const LABELS: { [action in PostAction]: string } = {
 
 const isPostAction = (value: string | null): value is PostAction => value !== null && Object.hasOwn(LABELS, value);
 
+/** 누른 행동의 저장 요청. 새 글이 할 수 없는 행동이면 null. */
+function saveRequest(target: SaveTarget, action: PostAction, mode: EditorMode): SaveRequest | null {
+  if (target === "new") return newPostRequest(action, mode);
+  return action === "unpublish" ? { target, action } : { target, action, mode };
+}
+
 /**
  * 글 상태별 저장 버튼 한 줄. 누른 행동으로 지금 모드의 글 전체를 한 번에 저장한다.
  * 게시 내리기는 확인한 뒤에 하고, 저장하지 않은 변경이 있으면 버려진다고 먼저 알린다.
+ * 새 글 화면(`target` "new")은 ‘임시저장’·‘게시’로 처음 저장한다.
  */
 export function PostActionBar({
   actions,
   title,
+  target = "post",
   save,
 }: {
   actions: PostActions;
   /** 확인 대화상자에 적을 글 제목. */
   title: string;
+  target?: SaveTarget;
   save: (input: PostSaveInput, data: FormData) => Promise<SaveState>;
 }) {
-  const flow = useSave("post");
+  const flow = useSave(target);
   const { mode, collect } = usePostEditor();
   const changed = unsavedAreas(useUnsavedChanged());
   const preparing = useImagePreparing();
@@ -52,18 +70,18 @@ export function PostActionBar({
   };
 
   const run = (action: PostAction) => {
-    const request: SaveRequest = action === "unpublish" ? { target: "post", action } : { target: "post", action, mode };
-    if (flow.blocks(request)) return;
+    const request = saveRequest(target, action, mode);
+    if (!request || flow.blocks(request)) return;
     if (action === "unpublish") return setConfirming(true);
     const input = collect();
     if (!input) return;
     flow.request(request, () => save({ action, mode, text: input.text }, input.data), input.unchanged);
   };
 
-  const pending = flow.pending?.target === "post" ? flow.pending.action : null;
-  // 일반 편집의 설정 필드 오류는 그 필드 옆에 보이므로, 여기에는 화면에 자리가 없는 필드의 오류만 둔다.
+  const pending = flow.pending && "action" in flow.pending ? flow.pending.action : null;
+  // 일반 편집의 설정 필드와 새 글의 하위 메뉴 오류는 그 필드 옆에 보이므로, 여기에는 화면에 자리가 없는 필드의 오류만 둔다.
   const fields = flow.state.status === "error" ? Object.entries(flow.state.fields ?? {}) : [];
-  const unplaced = fields.filter(([key]) => mode === "source" || key === BODY_FIELD);
+  const unplaced = fields.filter(([key]) => key !== SUBMENU_FIELD && (mode === "source" || key === BODY_FIELD));
 
   return (
     <div className="flex flex-col gap-2">

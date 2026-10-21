@@ -88,7 +88,7 @@ export {
   type SourceModeInput,
   type SwitchPost,
 } from "./mode-switch";
-export { newPostFromSource, newPostSource, newSwitchPost } from "./new-post";
+export { newPostFromSource, newPostSource, openNewPost, type NewPost } from "./new-post";
 export {
   fetchBlobTexts,
   fetchTree,

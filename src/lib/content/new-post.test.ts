@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import { createGitHubClient } from "@/lib/github";
 import { parseMdx, readMetadata } from "@/lib/mdx-doc";
-import { buildForm, readStatus, type PostAction } from "@/lib/metadata-form";
+import { readStatus, type PostAction } from "@/lib/metadata-form";
 import { testConfig, yjshdConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
 import { PNG } from "@/test/upload-images";
@@ -10,7 +10,7 @@ import { PNG } from "@/test/upload-images";
 import { createPost } from "./create-post";
 import { editorModes } from "./editor-modes";
 import { formToSource, sourceToForm } from "./mode-switch";
-import { newPostFromSource, newPostSource, newSwitchPost } from "./new-post";
+import { newPostFromSource, newPostSource, openNewPost } from "./new-post";
 import { createSaveFlow, newPostActions, newPostRequest, savedAreas, type SaveState } from "./save-flow";
 
 const REPO = "es-kimo/yjshd";
@@ -39,11 +39,20 @@ describe("newPostSource", () => {
       sourceOnly: null,
     });
   });
+});
 
-  test("제목 칸은 비어 있는 필수 칸이다", () => {
-    const title = buildForm(board, metadataOf(newPostSource(board, config.syntax, NOW))).find((f) => f.key === "title");
+describe("openNewPost", () => {
+  test("빈 새 글 원문을 글 폴더 파일 없이 열고, 글 설정 필드의 제목 칸은 비어 있는 필수 칸이다", () => {
+    const opened = openNewPost(board, config.syntax, NOW);
 
-    expect(title).toMatchObject({ initial: "", required: true, locked: null });
+    expect(opened.post).toEqual({
+      collection: board,
+      syntax: config.syntax,
+      source: newPostSource(board, config.syntax, NOW),
+      files: [],
+    });
+    expect(opened.doc.body).toBe("");
+    expect(opened.fields.find((f) => f.key === "title")).toMatchObject({ initial: "", required: true, locked: null });
   });
 });
 
@@ -89,7 +98,7 @@ describe("새 글 화면의 저장 요청", () => {
 
   test("제목·본문·이미지·새 메뉴 입력, 모드 전환, 이미지 준비만으로는 저장 요청이 생기지 않는다", () => {
     const { flow, submit } = setup();
-    const post = newSwitchPost(lecture!, config.syntax, NOW);
+    const { post } = openNewPost(lecture!, config.syntax, NOW);
 
     for (const area of ["title", "submenu", "metadata", "body", "images"] as const) flow.report(area, true);
     flow.prepare("body", true);
@@ -116,7 +125,7 @@ describe("새 글 화면의 저장 요청", () => {
 });
 
 describe("newPostFromSource", () => {
-  const post = newSwitchPost(lecture!, config.syntax, NOW);
+  const { post } = openNewPost(lecture!, config.syntax, NOW);
 
   test("원문 편집으로 쓴 제목·설정·본문·첨부가 일반 편집 입력으로 이어지고, 그대로 새 메뉴의 첫 글이 된다", async () => {
     const written = formToSource(post, {

@@ -1,7 +1,7 @@
 // 새 글 화면(서버)과 새 글 저장 액션이 함께 쓴다. GitHub 클라이언트를 import하지 않는다.
 import type { Collection } from "@/lib/editor-config";
-import { newMdx, parseMdx, printMdx, setBody, type Syntax } from "@/lib/mdx-doc";
-import { newMetadata } from "@/lib/metadata-form";
+import { newMdx, parseMdx, printMdx, setBody, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
+import { buildForm, newMetadata, type FormField } from "@/lib/metadata-form";
 
 import {
   sourceToForm,
@@ -20,9 +20,17 @@ export function newPostSource(collection: Collection, syntax: Syntax, now: Date)
   return printMdx(setBody(parseMdx(newMdx(newMetadata(collection, "", now), ""), syntax), ""));
 }
 
-/** 새 글 화면의 모드 전환이 여는 글. 글 폴더가 아직 없어 파일이 없다. */
-export function newSwitchPost(collection: Collection, syntax: Syntax, now: Date): SwitchPost {
-  return { collection, syntax, source: newPostSource(collection, syntax, now), files: [] };
+/** 새 글 화면이 여는 글. 모드 전환이 여는 글(`post`), 일반 편집기가 여는 doc, 제목을 포함한 글 설정 필드다. */
+export type NewPost = { post: SwitchPost; doc: Extract<MdxDoc, { ok: true }>; fields: FormField[] };
+
+/** `newPostSource`를 글 화면 편집기가 여는 모양으로 연다. 글 폴더가 아직 없어 파일이 없다. */
+export function openNewPost(collection: Collection, syntax: Syntax, now: Date): NewPost {
+  const metadata = newMetadata(collection, "", now);
+  const source = newPostSource(collection, syntax, now);
+  const doc = parseMdx(source, syntax);
+  // 빈 본문의 새 글 틀이라 언제나 나눌 수 있다. 타입을 좁히려고만 확인한다.
+  if (!doc.ok) throw new Error(`새 글 원문을 나눌 수 없다: ${doc.message}`);
+  return { post: { collection, syntax, source, files: [] }, doc, fields: buildForm(collection, metadata) };
 }
 
 /**
@@ -36,6 +44,6 @@ export function newPostFromSource<I extends UploadImage>(
   input: SourceModeInput<I>,
   now: Date,
 ): { ok: true; input: FormModeInput<I> } | ModeSwitchProblem {
-  const result = sourceToForm(newSwitchPost(collection, syntax, now), input);
+  const result = sourceToForm(openNewPost(collection, syntax, now).post, input);
   return result.ok ? { ok: true, input: result.input } : result;
 }
