@@ -713,6 +713,25 @@ describe("이미지 교체 폼", () => {
     expect(leavingAreas(area.flow.getState())).toEqual([]);
   });
 
+  test("폼을 연 뒤 이미지보다 앞에 import가 늘어도 고른 그 이미지를 교체한다", () => {
+    const target: InsertFormTarget = {
+      kind: "replace",
+      item: sourceImage(GALLERY, "입구 다시"),
+      opened: GALLERY,
+      image: { file: "3.png", name: "image3" },
+    };
+    const added = GALLERY.replace('"./2.png";\n', '"./2.png";\nimport image9 from "./9.png";\n');
+
+    const result = applyInsertForm(added, target, text("입구 다시"), syntax);
+
+    expect(result).toMatchObject({
+      ok: true,
+      source: added
+        .replace('"./9.png";\n', '"./9.png";\nimport image3 from "./3.png";\n')
+        .replace('<Image src={image1} alt="입구 다시"', '<Image src={image3} alt="입구 다시"'),
+    });
+  });
+
   test("폼을 연 뒤 이미지가 바뀌었으면 교체하지 않고 다시 선택하라고 안내한다", () => {
     const target: InsertFormTarget = {
       kind: "replace",
