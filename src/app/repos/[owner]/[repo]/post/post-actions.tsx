@@ -22,6 +22,7 @@ import { unsavedAreas } from "@/lib/content/unsaved";
 import { fieldLabel, type PostAction } from "@/lib/metadata-form";
 
 import type { PostSaveInput } from "./actions";
+import { AutosaveNotice, useDrafts } from "./drafts";
 import { usePostEditor } from "./post-editor";
 import { SaveResultNotice } from "./save-row";
 
@@ -74,10 +75,18 @@ export function PostActionBar({
   const lost = useLeavingAreas();
   const preparing = useImagePreparing();
   const abandon = useAbandon();
+  const drafts = useDrafts();
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState<RemoveConfirm | null>(null);
 
-  if (!actions.ok) return <p className="text-sm text-amber-600">{actions.notice}</p>;
+  if (!actions.ok) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-sm text-amber-600">{actions.notice}</p>
+        <AutosaveNotice />
+      </div>
+    );
+  }
 
   const unpublish = () => {
     setConfirming(false);
@@ -92,7 +101,10 @@ export function PostActionBar({
     if (action === "unpublish") return setConfirming(true);
     const input = collect();
     if (!input) return;
-    flow.request(request, () => save({ action, mode, text: input.text }, input.data), input.unchanged);
+    const submit = () => save({ action, mode, text: input.text }, input.data);
+    // 저장하는 동안 입력이 막히므로 보관할 입력도 지금 모은 것이 저장한 내용이다.
+    const saved = drafts?.collect() ?? null;
+    flow.request(request, drafts ? () => drafts.autosave.saving(saved, submit) : submit, input.unchanged);
   };
 
   const removal = (discarded: boolean) =>
@@ -155,6 +167,7 @@ export function PostActionBar({
         </ul>
       )}
       <SaveResultNotice state={flow.state} />
+      <AutosaveNotice />
       <ConfirmDialog
         open={confirming}
         title={`‘${title}’의 게시를 내릴까요?`}

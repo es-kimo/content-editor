@@ -100,6 +100,12 @@ export function LeaveGuardProvider({
   );
 }
 
+/** `변경 버리고 나가기`·작성 취소로 입력을 버리고 떠날 때 `listener`를 부른다 (`LeaveGuard.onDiscard`). */
+export function useLeaveDiscard(listener: () => void) {
+  const guard = useContext(LeaveGuardContext);
+  useEffect(() => guard?.onDiscard(listener), [guard, listener]);
+}
+
 /** 확인받아 입력을 버리고 `href`로 가는 함수. 이탈 확인을 다시 띄우지 않는다 (`LeaveGuard.abandon`). */
 export function useAbandon(): (href: string) => void {
   const guard = useContext(LeaveGuardContext);

@@ -8,7 +8,9 @@ import type { PostActions } from "@/lib/content/save-flow";
 import { newPostPreviewPath } from "@/lib/content/slug";
 import { newPostChanges } from "@/lib/content/unsaved";
 import type { Collection } from "@/lib/editor-config";
+import type { Syntax } from "@/lib/mdx-doc";
 
+import { DraftRestoreNotice, useDraftInput, useDraftTouch } from "../post/drafts";
 import { MetadataSettings, MetadataTitleInput, useMetadataTitle } from "../post/metadata-form";
 import { PostActionBar } from "../post/post-actions";
 import { usePostEditor } from "../post/post-editor";
@@ -26,6 +28,7 @@ const NEW_MENU = "/new";
  */
 export function NewPostForm({
   collection,
+  syntax,
   submenus,
   actions,
   save,
@@ -33,6 +36,7 @@ export function NewPostForm({
   children,
 }: {
   collection: Collection;
+  syntax: Syntax;
   /** 하위 메뉴가 있는 컬렉션이면 고를 수 있는 기존 하위 메뉴. 아직 없으면 빈 배열. 하위 메뉴가 없는 컬렉션이면 null. */
   submenus: string[] | null;
   actions: PostActions;
@@ -41,11 +45,20 @@ export function NewPostForm({
   cancelHref: string;
   children: ReactNode;
 }) {
-  const { mode } = usePostEditor();
+  const { mode, carried } = usePostEditor();
   const title = useMetadataTitle();
   // 기존 메뉴가 없으면 고를 것이 없으니 새 메뉴 이름부터 받는다.
   const [initial] = useState<NewPostSubmenu>({ kind: submenus?.length ? "existing" : "new", name: "" });
-  const [submenu, setSubmenu] = useState(initial);
+  // 보관본을 복구하면 그 하위 메뉴로 다시 연다. 고른 값은 그때의 복구와 함께 두고 다시 복구하면 버린다.
+  const restored = carried.submenu;
+  const [chosen, setChosen] = useState<{ key: string | null; value: NewPostSubmenu }>({ key: null, value: initial });
+  const submenu = restored && chosen.key !== restored.key ? restored.value : chosen.value;
+  const touch = useDraftTouch();
+  const setSubmenu = (value: NewPostSubmenu) => {
+    setChosen({ key: restored?.key ?? null, value });
+    touch();
+  };
+  useDraftInput("submenu", () => (submenus ? submenu : undefined));
   const changes = newPostChanges({ title: "", submenu: initial }, { title, submenu });
   // 원문 편집에서는 제목도 원문이 담아, 제목 칸의 숨은 입력은 원문 편집으로 넘어간 것이다.
   useReportUnsaved("title", changes.title && mode === "wysiwyg");
@@ -61,6 +74,7 @@ export function NewPostForm({
           경로 {path}
         </p>
       </div>
+      <DraftRestoreNotice current={null} remote={null} syntax={syntax} collection={collection} />
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">본문</h2>
         {children}

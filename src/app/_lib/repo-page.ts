@@ -1,5 +1,5 @@
 import { refreshHref } from "@/app/_lib/session";
-import type { PageSession } from "@/lib/auth";
+import { getUser, type PageSession } from "@/lib/auth";
 import { CONFIG_FILE, loadEditorConfig, type EditorConfig, type LoadedConfig } from "@/lib/editor-config";
 import { createGitHubClient, GitHubApiError, isUnauthorized, type GitHubClient } from "@/lib/github";
 
@@ -68,5 +68,18 @@ export async function prepareRepoPage<T>({
   } catch (e) {
     if (isUnauthorized(e)) return { kind: "login" };
     throw e;
+  }
+}
+
+/**
+ * 브라우저 보관본을 나눌 로그인 계정. 세션의 토큰으로 GitHub 사용자를 읽는다.
+ * 401은 다시 로그인하게 던지고, 그 밖의 실패는 null이라 그 화면은 자동 보관만 하지 않는다.
+ */
+export async function sessionLogin(client: GitHubClient): Promise<string | null> {
+  try {
+    return (await getUser(client)).login;
+  } catch (e) {
+    if (isUnauthorized(e)) throw e;
+    return null;
   }
 }

@@ -63,6 +63,11 @@ export type LeaveGuard = {
   discarding(): boolean;
   /** 화면 주소가 바뀌었다. 나가기로 한 이동이 끝났으니 다시 지킨다. */
   arrived(): void;
+  /**
+   * 입력을 버리고 떠나기로 했을 때(`leave`·`abandon`) 부를 함수를 등록하고, 등록을 거두는 함수를 돌려준다.
+   * 브라우저 보관본처럼 화면 밖에 남은 입력을 함께 버려 다음 접속에서 되살리지 않게 한다.
+   */
+  onDiscard(listener: () => void): () => void;
 };
 
 /**
@@ -74,11 +79,13 @@ export function createLeaveGuard({ areas, go }: { areas: () => EditArea[]; go: (
   let state: LeaveGuardState = { pending: null, areas: [] };
   let leaving = false;
   const listeners = new Set<() => void>();
+  const discards = new Set<() => void>();
 
   const update = (next: LeaveGuardState) => {
     state = next;
     listeners.forEach((listener) => listener());
   };
+  const discard = () => discards.forEach((listener) => listener());
 
   return {
     getState: () => state,
@@ -103,18 +110,24 @@ export function createLeaveGuard({ areas, go }: { areas: () => EditArea[]; go: (
       if (!leave) return;
       leaving = true;
       update({ pending: null, areas: [] });
+      discard();
       go(leave);
     },
     abandon(leave) {
       if (leaving) return;
       leaving = true;
       if (state.pending) update({ pending: null, areas: [] });
+      discard();
       go(leave);
     },
     warnsUnload: () => !leaving && areas().length > 0,
     discarding: () => leaving,
     arrived() {
       leaving = false;
+    },
+    onDiscard(listener) {
+      discards.add(listener);
+      return () => discards.delete(listener);
     },
   };
 }

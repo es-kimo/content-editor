@@ -1,43 +1,24 @@
 import { describe, expect, test } from "vitest";
 
 import { parseMdx } from "@/lib/mdx-doc";
+import { FIELD_PREFIX } from "@/lib/metadata-form";
+import { testConfig } from "@/test/config";
+import { memoryStorage } from "@/test/draft-storage";
 import { JPEG, PNG, SOURCE } from "@/test/upload-images";
 
 import {
   checkRestore,
   clearSavedDraft,
+  collectDraft,
   discardDraft,
   draftAttachments,
   listDrafts,
   removeExpiredDrafts,
   saveDraft,
-  type Draft,
   type DraftContent,
   type DraftKey,
-  type DraftStorage,
 } from "./draft";
 import { createUploadSession, type PreparedImage } from "./upload-session";
-
-/** 메모리 저장소. `quota`를 넘는 바이트의 첨부를 담으려 하면 브라우저 용량 부족처럼 던진다. */
-function memoryStorage({ quota = Infinity } = {}) {
-  let blocked = false;
-  const items = new Map<string, Draft>();
-  const storage: DraftStorage = {
-    keys: async () => [...items.keys()],
-    get: async (key) => items.get(key),
-    set: async (key, draft) => {
-      const bytes = draft.attachments.reduce((sum, attachment) => sum + attachment.content.length, 0);
-      if (blocked || bytes > quota) throw new DOMException("용량 부족", "QuotaExceededError");
-      items.set(key, structuredClone(draft));
-    },
-    delete: async (key) => {
-      items.delete(key);
-    },
-  };
-  /** 이후 쓰기를 모두 막는다. 브라우저가 저장을 차단한 상태다. */
-  const block = () => (blocked = true);
-  return { storage, items, block };
-}
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-10-20T00:00:00Z");
@@ -281,6 +262,18 @@ describe("보관 실패", () => {
     expect(await listDrafts(storage, OWNER, POST, NOW)).toHaveLength(1);
   });
 
+  test("이미 빠져 있던 첨부 이름을 넘기면 보관본과 결과에 그 이름을 남기고, 텍스트만 보관하면 새로 빠진 첨부와 합친다", async () => {
+    const { storage } = memoryStorage({ quota: 0 });
+    expect(await saveDraft(storage, key(), content("본문"), "s", NOW, ["2.jpg"])).toMatchObject({ missing: ["2.jpg"] });
+
+    const result = await saveDraft(storage, key(), content("본문", [{ file: "1.png", content: PNG }]), "s", NOW, [
+      "2.jpg",
+    ]);
+    expect(result).toMatchObject({ ok: true, missing: ["2.jpg", "1.png"] });
+    const [draft] = await listDrafts(storage, OWNER, POST, NOW);
+    expect(draft).toMatchObject({ attachments: [], missing: ["2.jpg", "1.png"] });
+  });
+
   test("첨부까지 담으면 빠진 첨부가 없다", async () => {
     const { storage } = memoryStorage();
     const result = await saveDraft(storage, key(), content("본문", [{ file: "1.png", content: PNG }]), "s", NOW);
@@ -297,11 +290,73 @@ describe("보관 실패", () => {
         else pending.push(() => resolve(prepared));
       });
     const session = createUploadSession({ doc, files: [], prepare });
-    await session.add([{ name: "ready.png" }], () => {});
+    let body = "";
+    await session.add([{ name: "ready.png" }], ({ images }) => (body = `<Image src={${images[0]!.name}} alt="" />`));
     void session.add([{ name: "preparing.png" }], () => {});
 
     expect(session.preparing).toBe(true);
     const [ready] = session.plan.images;
-    expect(draftAttachments(session)).toEqual([{ file: ready!.file, content: PNG, width: 10, height: 20 }]);
+    expect(draftAttachments(session, body)).toEqual([{ file: ready!.file, content: PNG, width: 10, height: 20 }]);
+  });
+
+  test("넣은 뒤 본문에서 지운 첨부는 보관 대상에 들어가지 않는다", async () => {
+    const prepare = async () => ({ extension: "png", content: PNG, width: 10, height: 20 });
+    const session = createUploadSession({ doc: parseMdx(SOURCE), files: ["1.png"], prepare });
+    await session.add([{ name: "a.png" }], () => {});
+
+    expect(session.plan.images).toHaveLength(1);
+    expect(draftAttachments(session, "본문에서 이미지를 지웠다")).toEqual([]);
+  });
+});
+
+describe("보관할 입력 모으기", () => {
+  const [collection] = testConfig([
+    {
+      name: "blog",
+      path: "content/{slug}/index.mdx",
+      metadata: { title: { type: "string" }, tags: { type: "string[]" } },
+    },
+  ]).collections;
+  const form = (values: { [key: string]: string }) => {
+    const data = new FormData();
+    for (const [key, value] of Object.entries(values)) data.append(FIELD_PREFIX + key, value);
+    return data;
+  };
+  const image = { file: "1.png", content: PNG, width: 10, height: 20 };
+
+  test("일반 편집은 검사하지 않은 설정 폼 값과 본문·첨부를 담고 적용하지 않은 폼은 담지 않는다", () => {
+    const draft = collectDraft(
+      {
+        settings: () => form({ title: "", tags: "a\nb" }),
+        wysiwyg: () => ({ body: "본문", images: [image] }),
+        source: () => ({ source: "쓰지 않는 원문", images: [] }),
+      },
+      "wysiwyg",
+      collection!,
+    );
+    expect(draft).toEqual({
+      input: { mode: "form", values: { title: "", tags: "a\nb" }, body: "본문" },
+      form: null,
+      attachments: [image],
+    });
+  });
+
+  test("원문 편집은 원문과 첨부를 담고, 새 글의 하위 메뉴는 두 모드 모두 담는다", () => {
+    const submenu = { kind: "new", name: "새 메뉴" } as const;
+    const collectors = {
+      wysiwyg: () => ({ body: "본문", images: [] }),
+      source: () => ({ source: SOURCE, images: [image] }),
+      submenu: () => submenu,
+    };
+    expect(collectDraft(collectors, "source", collection!)).toEqual({
+      input: { mode: "source", source: SOURCE, submenu },
+      form: null,
+      attachments: [image],
+    });
+    expect(collectDraft(collectors, "wysiwyg", collection!)?.input).toMatchObject({ mode: "form", submenu });
+  });
+
+  test("지금 모드의 편집기가 없으면 담지 않는다", () => {
+    expect(collectDraft({ wysiwyg: () => ({ body: "본문", images: [] }) }, "source", collection!)).toBeNull();
   });
 });

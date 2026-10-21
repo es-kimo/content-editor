@@ -26,6 +26,7 @@ import {
   type FormField,
 } from "@/lib/metadata-form";
 
+import { useDraftInput, useDraftTouch } from "./drafts";
 import { usePostEditor, usePostInput } from "./post-editor";
 
 const inputClass = "rounded border px-2 py-1 text-sm disabled:opacity-60";
@@ -111,6 +112,9 @@ export function MetadataForm({
     // 변경 없음은 저장해도 지금 값과 같다는 뜻이라, 지금 입력을 저장한 값으로 본다.
     return { data: new FormData(element), unchanged: () => setChanged({ version: opened, changed: false }) };
   });
+  // 보관은 입력 중인 값을 그대로 담으므로 저장할 때와 달리 검사하지 않는다.
+  useDraftInput("settings", () => (form.current ? new FormData(form.current) : null));
+  const touch = useDraftTouch();
 
   const value: MetadataFormValue = {
     formId,
@@ -122,6 +126,7 @@ export function MetadataForm({
     title,
     errors: { ...invalidErrors, ...(save.state.status === "error" ? save.state.fields : undefined) },
     inputChanged: (input) => {
+      touch();
       if (form.current) {
         const data = new FormData(form.current);
         setChanged({ version: opened, changed: metadataFormChanged(judged, data) });
