@@ -69,15 +69,17 @@ export function fakeGitHub(repo: string, branch: string, files: FakeFile[], opti
         return content === undefined ? undefined : typeof content === "string" ? content : null;
       });
     }
-    const contents = new RegExp(`^${base}/contents/(.+)\\?ref=${branch}$`).exec(href);
+    // 레포 루트 목록은 `contents/`로 온다.
+    const contents = new RegExp(`^${base}/contents/(.*)\\?ref=${branch}$`).exec(href);
     if (contents) {
       const dir = contents[1];
-      if (!dirs.has(dir)) return json({ message: "Not Found" }, 404);
+      if (dir !== "" && !dirs.has(dir)) return json({ message: "Not Found" }, 404);
+      const prefix = dir === "" ? "" : `${dir}/`;
       const children = new Map<string, { type: string; name: string; path: string; sha: string; size: number }>();
       for (const f of files) {
-        if (!f.path.startsWith(`${dir}/`)) continue;
-        const [child, ...rest] = f.path.slice(dir.length + 1).split("/");
-        const path = `${dir}/${child}`;
+        if (!f.path.startsWith(prefix)) continue;
+        const [child, ...rest] = f.path.slice(prefix.length).split("/");
+        const path = `${prefix}${child}`;
         children.set(
           child,
           rest.length === 0

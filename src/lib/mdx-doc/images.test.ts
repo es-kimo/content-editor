@@ -5,7 +5,14 @@ import { describe, expect, test } from "vitest";
 
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 
-import { addImage, addImageAs, findUnusedImageImports, isImageFile, readImageImports } from "./images";
+import {
+  addImage,
+  addImageAs,
+  findUnusedImageImports,
+  imageContentType,
+  isImageFile,
+  readImageImports,
+} from "./images";
 import { parseMdx, printMdx } from "./split";
 
 describe.each(fixtureSources)("픽스처 이미지 import: $name", (source) => {
@@ -84,6 +91,20 @@ describe("isImageFile", () => {
     ["./dir.png/a", false],
   ])("%s → %s", (name, expected) => {
     expect(isImageFile(name)).toBe(expected);
+  });
+});
+
+describe("imageContentType", () => {
+  test.each([
+    ["1.png", "image/png"],
+    ["a.JPG", "image/jpeg"],
+    ["b.jpeg", "image/jpeg"],
+    ["c.svg", "image/svg+xml"],
+    ["d.avif", "image/avif"],
+    ["page.mdx", null],
+    ["png", null],
+  ])("%s → %s", (name, expected) => {
+    expect(imageContentType(name)).toBe(expected);
   });
 });
 
