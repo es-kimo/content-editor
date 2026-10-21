@@ -120,7 +120,7 @@ function OpenedBodyEditor({
         handle.insert(imageFormTag(target, input.text));
         return null;
       }
-      if (target.kind !== "edit") {
+      if (target.kind !== "edit" && target.kind !== "replace") {
         const result = bodyInsert(attachedDoc, current, target, input, syntax);
         if (!result.ok) return result.reason;
         const { insert } = result;

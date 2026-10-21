@@ -1,16 +1,17 @@
 import { describe, expect, test } from "vitest";
 
 import { createGitHubClient } from "@/lib/github";
-import { addImageAt, parseMdx } from "@/lib/mdx-doc";
+import { addImageAt, parseMdx, readInserts } from "@/lib/mdx-doc";
 import { blogConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha, type FakeFile } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 import { JPEG, PNG } from "@/test/upload-images";
 
+import { applyInsertForm, isImageInsert } from "./insert-form";
 import { saveSource } from "./save-source";
 import { IMAGE_COMPONENT, MAX_UPLOAD_BYTES, sourceUploads } from "./upload";
-import { createUploadSession } from "./upload-session";
+import { createUploadSession, type AddedUpload } from "./upload-session";
 
 const REPO = "es-kimo/site";
 const BRANCH = "blog";
@@ -198,6 +199,43 @@ describe("saveSource 이미지", () => {
     expect(repo.file(`${DIR}/2.png`, BRANCH)).toEqual(PNG);
     expect(repo.file(`${DIR}/1.png`, BRANCH)).toEqual(OLD_IMAGE);
     expect(repo.paths(BRANCH).filter((p) => p.startsWith(`${DIR}/`))).toEqual([`${DIR}/1.png`, `${DIR}/2.png`, POST]);
+  });
+
+  test("원문에 넣은 새 이미지를 교체하면 쓰지 않게 된 이전 첨부는 커밋하지 않고 기존 파일은 그대로다", async () => {
+    const { repo, client } = setup([
+      { path: POST, content: SOURCE },
+      { path: `${DIR}/1.png`, content: OLD_IMAGE },
+    ]);
+    const before = repo.head(BRANCH);
+    const { session, source } = await editWithImages(["1.png"]);
+    const list = readInserts(source(), config.syntax);
+    const item = list.ok ? list.items.find(isImageInsert) : undefined;
+    if (!item) throw new Error("이미지 없음");
+    let added: AddedUpload | undefined;
+    await session.add([{ name: "c.png", content: PNG }], ({ images }) => (added = images[0]));
+    const replaced = applyInsertForm(
+      source(),
+      { kind: "replace", item, opened: source(), image: added! },
+      { text: item.alt, ids: [] },
+      config.syntax,
+    );
+    if (!replaced.ok) throw new Error(replaced.reason);
+    const submission = session.submission(replaced.source);
+    if (!submission.ok) throw new Error(submission.reason);
+
+    expect(submission.images.map(({ file }) => file)).toEqual(["3.png"]);
+    const result = await saveSource(client, REPO, config, {
+      path: POST,
+      baseSha: blobSha(SOURCE),
+      source: replaced.source,
+      images: submission.images,
+    });
+
+    expect(result).toEqual({ ok: true, commit: repo.head(BRANCH), parent: before });
+    expect(repo.paths(BRANCH).filter((p) => p.startsWith(`${DIR}/`))).toEqual([`${DIR}/1.png`, `${DIR}/3.png`, POST]);
+    expect(repo.file(`${DIR}/1.png`, BRANCH)).toEqual(OLD_IMAGE);
+    expect(text(repo.file(POST, BRANCH))).toContain('import image3 from "./3.png";');
+    expect(text(repo.file(POST, BRANCH))).not.toContain("./2.png");
   });
 
   test("원문이 가리키지 않는 이미지를 보내면 커밋하지 않는다", async () => {
