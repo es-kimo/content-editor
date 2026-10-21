@@ -18,14 +18,15 @@ export type PlanningIssue = {
 export type People = { owner: string; bot: string };
 
 export type Job =
-  | { mode: "converse"; issue: number; version: string }
+  | { mode: "prd"; issue: number; version: string }
   | { mode: "breakdown"; issue: number; version: string }
-  | { mode: "propose"; version: string }
   | { mode: "release"; milestone: number; version: string };
+
+/** 기획 이슈 하나에서 생기는 할 일. 워크플로 하나가 모드 하나를 맡는다 (prd.yml, breakdown.yml). */
+export type IssueJob = Extract<Job, { issue: number }>;
 
 export const LABEL = {
   planning: "planning",
-  report: "planner-report",
   prdDraft: "prd-draft",
   issued: "issued",
 } as const;
@@ -46,41 +47,47 @@ export function isApproval(body: string): boolean {
   return /^\s*승인/.test(body);
 }
 
-/** 이 이슈에서 기획자가 할 일. 마지막 메시지가 소유자 것일 때만 답한다. */
-export function nextJob(issue: PlanningIssue, people: People, nextVersion: string): Job | null {
+/** 이 이슈에서 기획자가 할 일. 마지막 메시지가 소유자 것일 때만 한다. 이슈를 나눈 뒤(issued)는 개발 진행 중이라 답하지 않는다. */
+export function nextJob(issue: PlanningIssue, people: People, nextVersion: string): IssueJob | null {
+  if (issue.labels.includes(LABEL.issued)) return null;
   const last = conversation(issue, people).at(-1);
   if (!last || last.author !== people.owner) return null;
   const version = versionOf(issue.title) ?? nextVersion;
   if (issue.labels.includes(LABEL.prdDraft) && isApproval(last.body)) {
     return { mode: "breakdown", issue: issue.number, version };
   }
-  return { mode: "converse", issue: issue.number, version };
+  return { mode: "prd", issue: issue.number, version };
 }
 
-/** 기획자가 답했고 소유자의 답을 기다리는 이슈. 이슈를 만든 뒤(issued)는 개발 진행 중이라 기다림으로 세지 않는다. */
-export function waitingOnOwner(issue: PlanningIssue, people: People): boolean {
-  if (issue.labels.includes(LABEL.issued)) return false;
-  return conversation(issue, people).at(-1)?.author === people.bot;
+/**
+ * 이번 실행에서 할 `mode` 일. 제목에 버전이 없는 원문은 다음 버전을 하나씩 차례로 받는다.
+ * 한 실행에서 원문 둘이 같은 버전으로 PRD를 쓰지 않게, 앞에서 준 버전을 쓴 버전으로 센다.
+ */
+export function planJobs(
+  mode: IssueJob["mode"],
+  issues: PlanningIssue[],
+  people: People,
+  usedTitles: string[],
+  packageVersion: string,
+  max: number,
+): IssueJob[] {
+  const used = [...usedTitles, ...issues.map((i) => i.title)];
+  const jobs: IssueJob[] = [];
+  for (const issue of issues) {
+    if (jobs.length >= max) break;
+    const job = nextJob(issue, people, nextVersion(used, packageVersion));
+    if (!job || job.mode !== mode) continue;
+    if (!versionOf(issue.title)) used.push(job.version);
+    jobs.push(job);
+  }
+  return jobs;
 }
 
-export type Snapshot = {
-  agentReady: number;
-  agentPrs: number;
-  /** 소유자의 답을 기다리는 기획 이슈 번호 */
-  waiting: number[];
-};
-
-/** 제안 보고서를 올리면 안 되는 이유. 없으면 null. 답하지 않은 보고서가 쌓이지 않게, 기다리는 이슈가 있으면 올리지 않는다. */
-export function proposalBlocker(s: Snapshot): string | null {
-  if (s.agentReady > 0) return `에이전트가 맡을 이슈 ${s.agentReady}개가 열려 있음`;
-  if (s.agentPrs > 0) return `열린 에이전트 PR ${s.agentPrs}개`;
-  if (s.waiting.length > 0) return `답을 기다리는 기획 이슈: ${s.waiting.map((n) => `#${n}`).join(", ")}`;
-  return null;
-}
+const VERSION_PREFIX = /^\[?v(\d+)\.(\d+)\b\]?\s*/;
 
 /** 제목 앞의 `vX.Y` 또는 `[vX.Y]`. */
 export function versionOf(title: string): string | null {
-  const match = title.match(/^\[?v(\d+)\.(\d+)\b/);
+  const match = title.match(VERSION_PREFIX);
   return match ? `v${match[1]}.${match[2]}` : null;
 }
 
@@ -98,6 +105,12 @@ export function nextVersion(titles: string[], packageVersion: string): string {
     if (a > best[0] || (a === best[0] && b > best[1])) best = [a, b];
   }
   return `v${best[0]}.${best[1] + 1}`;
+}
+
+/** PRD 초안 이슈 제목 `[vX.Y] 요약`. 버전은 이슈에 정한 것을 쓰고, 모델이 요약 앞에 붙인 버전은 뗀다. */
+export function prdTitle(version: string, summary: string, fallback: string): string {
+  const text = summary.replace(VERSION_PREFIX, "").trim() || fallback.replace(VERSION_PREFIX, "").trim();
+  return `[${version}] ${text}`;
 }
 
 /** 같은 묶음에서 앞서 만든 이슈를 가리키는 `#new1`, `#new2`...를 실제 번호로 바꾼다. */

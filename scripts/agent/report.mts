@@ -4,8 +4,8 @@ import { parseDeps, type CommentInfo, type IssueInfo } from "./select.mts";
 /** 사람 차례로 넘겼다는 표시. 슬롯과 아침 보고가 이슈 코멘트에 남긴다. */
 export const HUMAN_TURN = "<!-- agent:human-turn -->";
 
-/** 사람 작업으로 보지 않는 이슈: 기획 대화, 보고, 잠시 빼 둔 것. */
-const NOT_HUMAN_WORK = ["planning", "planner-report", "prd-draft", "agent-report", "blocked"];
+/** 사람 작업으로 보지 않는 이슈: 기획 원문·PRD 초안, 보고, 잠시 빼 둔 것. */
+const NOT_HUMAN_WORK = ["planning", "prd-draft", "agent-report", "blocked"];
 
 /**
  * 이제 사람이 할 차례가 된 사람 작업 이슈. 마일스톤에 있고, 에이전트 몫(준비 라벨)이 아니고,

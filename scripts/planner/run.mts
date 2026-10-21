@@ -1,14 +1,16 @@
 /**
- * 기획자 워크플로의 GitHub 쪽 일. 모델은 GitHub를 직접 건드리지 않고, 이 스크립트가 고르고(jobs) 넘기고(context) 반영한다(apply).
+ * 기획자 워크플로(prd.yml, breakdown.yml, release.yml)의 GitHub 쪽 일.
+ * 모델은 GitHub를 직접 건드리지 않고, 이 스크립트가 고르고(jobs) 넘기고(context) 반영한다(apply).
  *
- *   node scripts/planner/run.mts jobs                 # 이번 이벤트에서 할 일 목록(JSON 배열)
+ *   node scripts/planner/run.mts jobs <prd|breakdown|release>  # 할 일 목록(JSON 배열)
  *   node scripts/planner/run.mts context '<job>'      # $PLANNER_DIR/context.md 작성
  *   node scripts/planner/run.mts apply '<job>' [out.json]  # release는 모델 출력 없이 반영한다
  *   node scripts/planner/run.mts fail '<job>' [out.json]   # 실패를 기획 이슈에 알린다
  *
- * env: GH_TOKEN(기획자 봇), REPO, OWNER, EVENT_NAME, EVENT_ACTION, GITHUB_EVENT_PATH, MODE, PLANNER_DIR, MODEL, EFFORT, RUN_URL
+ * jobs는 이벤트 내용이 아니라 열린 기획 이슈의 상태로 할 일을 고른다. 어느 트리거에서 불러도(코멘트, 수동 실행, 다른 워크플로) 같은 일을 한다.
+ * env: GH_TOKEN(기획자 봇), REPO, OWNER, EVENT_NAME, GITHUB_EVENT_PATH, PLANNER_DIR, MODEL, EFFORT, RUN_URL
  */
-import { readFile, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 
 import {
   renderConversation,
@@ -30,15 +32,13 @@ import {
   blockedReason,
   parseOutput,
   LABEL,
-  nextJob,
-  nextVersion,
+  planJobs,
   planningIssueOf,
-  proposalBlocker,
+  prdTitle,
   refErrors,
   releaseReady,
   resolveRefs,
-  versionOf,
-  waitingOnOwner,
+  type IssueJob,
   type Job,
   type People,
   type PlanningIssue,
@@ -54,7 +54,7 @@ const repo = env("REPO");
 const gh = createGitHub(env("GH_TOKEN"));
 const dir = process.env.PLANNER_DIR ?? ".planner";
 const base = `/repos/${repo}`;
-/** 한 번 실행에서 답할 기획 이슈 수. 사용량 한도를 나눠 쓰므로 밀린 것은 다음 실행이 받는다. */
+/** 한 번 실행에서 다룰 기획 이슈 수. 사용량 한도를 나눠 쓰므로 밀린 것은 다음 실행이 받는다. */
 const MAX_JOBS = 3;
 const AGENT_READY = "agent-ready";
 
@@ -83,48 +83,42 @@ async function openPlanning(): Promise<PlanningIssue[]> {
   return Promise.all(issues.map(toPlanning));
 }
 
-async function upcomingVersion(planning: PlanningIssue[]): Promise<string> {
+async function issueJobs(mode: IssueJob["mode"]): Promise<IssueJob[]> {
+  const planning = await openPlanning();
   const milestones = await gh.list<ApiMilestone>(`${base}/milestones?state=all`);
   const pkg = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
-  return nextVersion([...milestones.map((m) => m.title), ...planning.map((p) => p.title)], pkg.version);
+  const used = milestones.map((m) => m.title);
+  return planJobs(mode, planning, await people(), used, pkg.version, MAX_JOBS);
 }
 
-async function jobs(): Promise<Job[]> {
-  const event = env("EVENT_NAME");
-  if (event === "issues" && process.env.EVENT_ACTION === "closed") {
+/** 이슈가 닫혀서 불렸으면 그 이슈의 마일스톤만, 수동 실행이면 열린 마일스톤을 모두 본다. */
+async function releaseJobs(): Promise<Job[]> {
+  let milestones: ApiMilestone[];
+  if (process.env.EVENT_NAME === "issues") {
     const payload = JSON.parse(await readFile(env("GITHUB_EVENT_PATH"), "utf8")) as { issue: ApiIssue };
     const number = payload.issue.milestone?.number;
     if (!number) return [];
-    const m = await gh.request<ApiMilestone>(`${base}/milestones/${number}`);
-    const ready = releaseReady({
-      title: m.title,
-      state: m.state,
-      openIssues: m.open_issues,
-      closedIssues: m.closed_issues,
-    });
-    return ready ? [{ mode: "release", milestone: number, version: m.title }] : [];
+    milestones = [await gh.request<ApiMilestone>(`${base}/milestones/${number}`)];
+  } else {
+    milestones = await gh.list<ApiMilestone>(`${base}/milestones?state=open`);
   }
+  return milestones
+    .filter((m) =>
+      releaseReady({ title: m.title, state: m.state, openIssues: m.open_issues, closedIssues: m.closed_issues }),
+    )
+    .map((m) => ({ mode: "release", milestone: m.number, version: m.title }));
+}
 
-  const who = await people();
-  const planning = await openPlanning();
-  const version = await upcomingVersion(planning);
-  if (event === "schedule" || process.env.MODE === "propose") {
-    const open = await gh.list<ApiIssue>(`${base}/issues?state=open`);
-    const blocker = proposalBlocker({
-      agentReady: issuesOnly(open).filter((i) => i.labels.some((l) => l.name === AGENT_READY)).length,
-      agentPrs: open.filter((i) => i.pull_request && i.labels.some((l) => l.name === "agent")).length,
-      waiting: planning.filter((p) => waitingOnOwner(p, who)).map((p) => p.number),
-    });
-    if (blocker) {
-      console.error(`제안 건너뜀: ${blocker}`);
-      return [];
-    }
-    return [{ mode: "propose", version }];
+async function jobs(mode: string | undefined): Promise<Job[]> {
+  switch (mode) {
+    case "prd":
+    case "breakdown":
+      return issueJobs(mode);
+    case "release":
+      return releaseJobs();
+    default:
+      throw new Error(`알 수 없는 모드: ${mode}`);
   }
-  return planning
-    .map((p) => nextJob(p, who, version))
-    .filter((j): j is Job => j !== null)
-    .slice(0, MAX_JOBS);
 }
 
 function todayKst(): string {
@@ -162,13 +156,14 @@ async function releaseItems(milestone: number): Promise<ReleaseItem[]> {
 }
 
 async function context(job: Job): Promise<void> {
+  if (job.mode === "release") throw new Error("릴리즈는 모델 입력을 만들지 않는다");
   const state = await repoState();
-  const parts = [renderHeader(job, state)];
-  if (job.mode === "converse" || job.mode === "breakdown") {
-    const issue = await gh.request<ApiIssue>(`${base}/issues/${job.issue}`);
-    parts.push(renderConversation(await toPlanning(issue), await people()));
-  }
-  parts.push(renderState(state));
+  const issue = await gh.request<ApiIssue>(`${base}/issues/${job.issue}`);
+  const parts = [
+    renderHeader(job, state),
+    renderConversation(await toPlanning(issue), await people()),
+    renderState(state),
+  ];
   await writeFile(`${dir}/context.md`, parts.join("\n\n---\n\n") + "\n");
 }
 
@@ -192,22 +187,24 @@ async function removeLabel(issue: number, label: string): Promise<void> {
   }
 }
 
-type ConverseOut = { comment: string; title: string | null; state: "prd-draft" | null };
+type PrdOut = { comment: string; title: string };
 type BreakdownOut = {
   comment: string;
   milestone_description: string;
   issues: { title: string; body: string; labels: string[]; agent: boolean }[];
 };
-type ProposeOut = { title: string; body: string };
-
-async function applyConverse(job: Extract<Job, { mode: "converse" }>, out: ConverseOut): Promise<void> {
+async function applyPrd(job: Extract<Job, { mode: "prd" }>, out: PrdOut): Promise<void> {
+  // prd-draft를 달면 승인 한 번에 이슈 나누기가 돈다. 나눌 PRD 파일이 없으면 달지 않는다.
+  const prd = `${job.version}-PRD.md`;
+  await access(`${dir}/wiki/${prd}`).catch(() => {
+    throw new Error(`기획자가 wiki/${prd}를 쓰지 않았다`);
+  });
   const issue = await gh.request<ApiIssue>(`${base}/issues/${job.issue}`);
-  let title = out.title ?? issue.title;
-  // 다음 버전 번호는 기획 이슈 제목으로 예약한다 (nextVersion). PRD 초안이면 버전이 꼭 붙어 있어야 한다.
-  if (out.state === LABEL.prdDraft && !versionOf(title)) title = `[${job.version}] ${title}`;
+  // 다음 버전 번호는 기획 이슈 제목으로 예약한다 (nextVersion). 그래서 제목에 버전이 꼭 붙어 있어야 한다.
+  const title = prdTitle(job.version, out.title, issue.title);
   if (title !== issue.title) await gh.request(`${base}/issues/${job.issue}`, { method: "PATCH", body: { title } });
   await comment(job.issue, out.comment);
-  if (out.state === LABEL.prdDraft) await addLabels(job.issue, [LABEL.prdDraft]);
+  if (!issue.labels.some((l) => l.name === LABEL.prdDraft)) await addLabels(job.issue, [LABEL.prdDraft]);
 }
 
 async function milestoneFor(version: string, description: string, planning: number): Promise<number> {
@@ -252,14 +249,6 @@ async function applyBreakdown(job: Extract<Job, { mode: "breakdown" }>, out: Bre
   await addLabels(job.issue, [LABEL.issued]);
 }
 
-async function applyPropose(out: ProposeOut): Promise<void> {
-  const issue = await gh.request<ApiIssue>(`${base}/issues`, {
-    method: "POST",
-    body: { title: out.title, body: out.body + footer(), labels: [LABEL.planning, LABEL.report] },
-  });
-  console.log(`제안 이슈 #${issue.number}`);
-}
-
 async function applyRelease(job: Extract<Job, { mode: "release" }>): Promise<void> {
   const tag = `${job.version}.0`;
   const releases = await gh.list<{ tag_name: string; html_url: string }>(`${base}/releases`);
@@ -291,17 +280,15 @@ async function apply(job: Job, outPath: string | undefined): Promise<void> {
   const reason = blockedReason(out);
   if (reason) throw new Error(`기획자가 멈춤: ${reason}`);
   switch (job.mode) {
-    case "converse":
-      return applyConverse(job, out as ConverseOut);
+    case "prd":
+      return applyPrd(job, out as PrdOut);
     case "breakdown":
       return applyBreakdown(job, out as BreakdownOut);
-    case "propose":
-      return applyPropose(out as ProposeOut);
   }
 }
 
 async function fail(job: Job, outPath: string | undefined): Promise<void> {
-  if (job.mode !== "converse" && job.mode !== "breakdown") return;
+  if (job.mode === "release") return;
   const out = parseOutput(outPath ? await readFile(outPath, "utf8").catch(() => null) : null);
   const reason = out ? blockedReason(out) : null;
   // 실패도 봇의 마지막 글이 되므로 같은 이슈를 계속 다시 돌리지 않는다. 다시 하려면 사용자가 코멘트를 단다.
@@ -312,19 +299,18 @@ async function fail(job: Job, outPath: string | undefined): Promise<void> {
 }
 
 const [command, jobArg, outPath] = process.argv.slice(2);
-const job = jobArg ? (JSON.parse(jobArg) as Job) : null;
 switch (command) {
   case "jobs":
-    console.log(JSON.stringify(await jobs()));
+    console.log(JSON.stringify(await jobs(jobArg)));
     break;
   case "context":
-    await context(job!);
+    await context(JSON.parse(jobArg!) as Job);
     break;
   case "apply":
-    await apply(job!, outPath);
+    await apply(JSON.parse(jobArg!) as Job, outPath);
     break;
   case "fail":
-    await fail(job!, outPath);
+    await fail(JSON.parse(jobArg!) as Job, outPath);
     break;
   default:
     throw new Error(`알 수 없는 명령: ${command}`);

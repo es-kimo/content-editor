@@ -1,0 +1,109 @@
+name: Breakdown
+
+# 소유자가 승인한 PRD 초안(prd-draft)을 마일스톤과 작업 이슈로 나눈다. 코드를 읽고 이슈를 쓰는 일이라 구현과 같은 Claude가 맡는다.
+# 할 일은 이벤트 내용이 아니라 열린 기획 이슈의 상태로 고른다. 그래서 다른 워크플로가 불러도(workflow_call) 같은 일을 한다.
+# 밤 근무에 넣으려면 night-shift.yml에 `uses: ./.github/workflows/breakdown.yml`, `secrets: inherit` job을 두고 plan job이 기다리게 한다.
+# 흐름과 설정은 .github/planner/README.md.
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  REPO: ${{ github.repository }}
+  OWNER: ${{ github.repository_owner }}
+  CLAUDE_MODEL: ${{ vars.PLANNER_CLAUDE_MODEL || vars.AGENT_MODEL || 'claude-opus-5-5' }}
+  CLAUDE_VERSION: "2.1.303"
+  PLANNER_DIR: ${{ github.workspace }}/.planner
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  breakdown:
+    # 승인인지는 할 일 고르기에서 scripts/planner/plan.mts의 isApproval로 판단한다. 여기서 본문을 보면 판단이 두 곳으로 갈린다.
+    # 불려서 돌 때(workflow_call)는 부른 워크플로의 이벤트가 들어오므로 코멘트 조건을 보지 않는다.
+    if: >-
+      vars.PLANNER_ENABLED == 'true' && (
+        github.event_name != 'issue_comment' ||
+        (!github.event.issue.pull_request &&
+          github.event.comment.user.login == github.repository_owner &&
+          contains(github.event.issue.labels.*.name, 'prd-draft'))
+      )
+    # 같은 PRD를 두 실행이 나누면 이슈가 두 벌 생긴다.
+    concurrency:
+      group: breakdown
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 모델이 읽을 수 있는 작업 폴더에 토큰을 남기지 않는다.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 할 일 고르기
+        id: jobs
+        env:
+          GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+        run: |
+          jobs=$(node scripts/planner/run.mts jobs breakdown)
+          echo "할 일: $jobs"
+          echo "list=$jobs" >> "$GITHUB_OUTPUT"
+
+      - name: 준비
+        if: steps.jobs.outputs.list != '[]'
+        env:
+          GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+        run: |
+          npm install -g "@anthropic-ai/claude-code@${CLAUDE_VERSION}"
+          mkdir -p "$PLANNER_DIR"
+          gh label create issued -R "$REPO" --color 0e8a16 --description "작업 이슈로 나눴다. 마일스톤 vX.Y에서 진행한다" --force
+          bash scripts/planner/wiki.sh clone
+
+      - name: 이슈 나누기
+        if: steps.jobs.outputs.list != '[]'
+        env:
+          JOBS: ${{ steps.jobs.outputs.list }}
+          GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          MODEL: ${{ env.CLAUDE_MODEL }}
+          EFFORT: ${{ vars.PLANNER_EFFORT_BREAKDOWN || 'high' }}
+        run: |
+          prompt="\`../.github/planner/role.md\`를 읽고 따른다. 이번 모드는 \`breakdown\`이고 지시는 \`../.github/planner/breakdown.md\`에 있다. 입력은 \`context.md\`에 있다."
+          schema=$(jq -c . .github/planner/schema-breakdown.json)
+          out="$PLANNER_DIR/out.json"
+          failed=0
+          # 반복문의 stdin(할 일 목록)을 명령이 읽지 않게 /dev/null을 준다. 모델이 읽으면 프롬프트로 들어간다.
+          while read -r job; do
+            echo "::group::$job ($MODEL, effort $EFFORT)"
+            bash scripts/planner/wiki.sh reset < /dev/null
+            rm -f "$out"
+            node scripts/planner/run.mts context "$job" < /dev/null
+            # Bash는 검색만 허용한다. 레포 코드는 --add-dir로 읽고, 쓰기는 wiki만 저장된다.
+            if (cd "$PLANNER_DIR" && env -u GH_TOKEN claude -p "$prompt" \
+              --model "$MODEL" --fallback-model sonnet --effort "$EFFORT" --max-turns 80 \
+              --output-format json --json-schema "$schema" \
+              --permission-mode acceptEdits --add-dir "$GITHUB_WORKSPACE" \
+              --allowedTools "Read,Glob,Grep,Edit,Write,Bash(rg *),Bash(ls *)" \
+              < /dev/null > "$PLANNER_DIR/claude.json") \
+              && jq -c '{subtype, num_turns, usage: (.usage | {input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens})}' "$PLANNER_DIR/claude.json" \
+              && jq -e '.structured_output // empty' "$PLANNER_DIR/claude.json" > "$out"; then
+              msg=$(jq -r 'select(.status == "done") | .wiki_message // empty' "$out")
+              if [ -n "$msg" ]; then bash scripts/planner/wiki.sh push "$msg" < /dev/null; fi
+              if ! node scripts/planner/run.mts apply "$job" "$out" < /dev/null; then
+                failed=1
+                node scripts/planner/run.mts fail "$job" "$out" < /dev/null || true
+              fi
+            else
+              failed=1
+              node scripts/planner/run.mts fail "$job" "$out" < /dev/null || true
+            fi
+            echo "::endgroup::"
+          done < <(jq -c '.[]' <<<"$JOBS")
+          exit $failed
