@@ -314,7 +314,6 @@ describe("createUploadSession 원문 편집 첨부 판정", () => {
 
 describe("원문 편집 첨부와 저장 흐름", () => {
   const LIST: Leave = { kind: "push", href: "/repos/es-kimo/yjshd" };
-  const syntax = {};
 
   /** 글 화면처럼 영역별 미저장을 모으는 저장 흐름과 이탈 확인. */
   function screen() {
@@ -345,7 +344,7 @@ describe("원문 편집 첨부와 저장 흐름", () => {
     flow.report("sourceImages", session.unsaved(source));
     const conflict: SaveState = { status: "error", message: "글을 연 뒤 다른 곳에서 글이 바뀌었어요." };
 
-    flow.request({ target: "source", before: SOURCE, after: source, syntax }, async () => conflict);
+    flow.request({ target: "post", action: "update", mode: "source" }, async () => conflict);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(flow.getState().phase).toEqual({ kind: "idle" });
@@ -355,22 +354,12 @@ describe("원문 편집 첨부와 저장 흐름", () => {
   });
 
   test("원문 이미지 저장이 성공해도 일반 편집의 미저장 첨부를 저장한 것으로 치지 않는다", async () => {
-    const { source } = await withSourceImage();
     const { flow, guard } = screen();
     flow.report("images", true);
     flow.report("sourceImages", true);
 
-    // 본문이 바뀌는 원문 저장은 일반 편집을 다시 열므로 그 첨부를 버릴지 먼저 묻는다.
-    flow.request({ target: "source", before: SOURCE, after: source, syntax }, async () => ({
-      status: "saved",
-      href: "/saved",
-    }));
-    expect(flow.getState().phase).toMatchObject({ kind: "confirming", discarded: ["images"] });
-    flow.cancel();
-
-    // 본문을 바꾸지 않는 원문 저장이 성공하면 일반 편집 첨부는 미저장으로 남아 떠날 때 묻는다.
-    const importOnly = SOURCE.replace('"./1.png";\n', '"./1.png";\nimport image2 from "./2.png";\n');
-    flow.request({ target: "source", before: SOURCE, after: importOnly, syntax }, async () => ({
+    // 원문 편집으로 한 글 저장은 원문과 그 첨부만 담으므로, 일반 편집 첨부는 미저장으로 남아 떠날 때 묻는다.
+    flow.request({ target: "post", action: "update", mode: "source" }, async () => ({
       status: "saved",
       href: "/saved",
     }));

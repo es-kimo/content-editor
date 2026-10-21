@@ -6,7 +6,10 @@ import { addImageAt } from "@/lib/mdx-doc";
 import { startApp, type App } from "./app";
 
 const REPO = "es-kimo/images";
-const METADATA = { title: { type: "string", label: "제목", required: true } };
+const METADATA = {
+  title: { type: "string", label: "제목", required: true },
+  "other.status": { type: "select", label: "상태", options: ["ready", "draft"] },
+};
 const CONFIG = {
   branch: "main",
   syntax: { gfm: false, math: false },
@@ -32,6 +35,7 @@ const source = (title: string, extra = "") => `import image1 from "./1.png";
 
 export const metadata = {
   title: '${title}',
+  other: { status: 'draft' },
 };
 
 # ${title}
@@ -168,12 +172,14 @@ async function applyAlt(alt: string) {
   await imageForm().waitFor({ state: "detached" });
 }
 
-/** 저장하고 저장한 커밋으로 글 화면이 다시 열릴 때까지 기다린다. 앞 저장의 안내가 남아 있어 주소로 기다린다. */
-async function saveAndReopen(label: "본문 저장" | "원문 저장") {
+const saveButton = () => page.getByRole("button", { name: "임시저장" });
+
+/** 임시저장하고 저장한 커밋으로 글 화면이 다시 열릴 때까지 기다린다. 앞 저장의 안내가 남아 있어 주소로 기다린다. */
+async function saveAndReopen() {
   const before = page.url();
-  await page.getByRole("button", { name: label }).click();
+  await saveButton().click();
   await page.waitForURL((url) => url.href !== before && url.searchParams.has("saved"));
-  await page.getByText(/^저장했어요\./).waitFor();
+  await page.getByText(/^임시저장했어요\./).waitFor();
 }
 
 describe("일반 편집 이미지", () => {
@@ -191,7 +197,7 @@ describe("일반 편집 이미지", () => {
     expect(await isFocused(altInput(imageForm()))).toBe(true);
     await applyAlt("진료 시간표");
     await unsaved("본문, 첨부 이미지").waitFor();
-    await saveAndReopen("본문 저장");
+    await saveAndReopen();
 
     expect(newCommits()).toBe(1);
     const saved = app.file(path)!;
@@ -211,7 +217,7 @@ describe("일반 편집 이미지", () => {
     await altInput(edit).fill("12월 진료 시간표");
     await edit.getByRole("button", { name: "적용" }).click();
     await unsaved("본문").waitFor();
-    await saveAndReopen("본문 저장");
+    await saveAndReopen();
 
     expect(newCommits()).toBe(2);
     // 일반 편집은 본문을 편집기의 정규화대로 저장하므로 import와 고친 대체 텍스트만 확인한다.
@@ -240,7 +246,7 @@ describe("일반 편집 이미지", () => {
     await giveFiles(bodyEditor(), "drop");
     await applyAlt("붙인 사진");
     await unsaved("본문, 첨부 이미지").waitFor();
-    await saveAndReopen("본문 저장");
+    await saveAndReopen();
     expect(newCommits()).toBe(1);
     // 취소한 이미지(2.png)는 올리지 않고, 적용한 이미지만 다음 이름으로 올린다.
     expect(app.file(`${dir(POSTS.bodyPaste)}/2.png`)).toBeUndefined();
@@ -280,7 +286,7 @@ describe("원문 편집 이미지", () => {
     );
     if (!expected.ok) throw new Error(expected.reason);
     await unsaved("원문 편집, 원문 편집 첨부 이미지").waitFor();
-    await saveAndReopen("원문 저장");
+    await saveAndReopen();
 
     expect(newCommits()).toBe(1);
     expect(app.file(path)).toBe(expected.source);
@@ -296,14 +302,14 @@ describe("원문 편집 이미지", () => {
     await page.keyboard.press("Enter");
     await edit.waitFor({ state: "detached" });
     expect(await page.getByText(/저장하지 않은 변경이 있어요/).count()).toBe(0);
-    await page.getByRole("button", { name: "원문 저장" }).click();
+    await saveButton().click();
     await page.getByText("변경된 내용이 없어요.").waitFor();
     expect(newCommits()).toBe(1);
 
     await editImage().click();
     await altInput(edit).fill("12월 진료 시간표");
     await page.keyboard.press("Enter");
-    await saveAndReopen("원문 저장");
+    await saveAndReopen();
     expect(newCommits()).toBe(2);
     expect(app.file(path)).toBe(expected.source.replace('alt="진료 시간표"', 'alt="12월 진료 시간표"'));
   });
@@ -333,7 +339,7 @@ describe("원문 편집 이미지", () => {
 
     await chooseSourceImage();
     await page.getByText("이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 저장해 주세요.").waitFor();
-    expect(await page.getByRole("button", { name: "원문 저장" }).isDisabled()).toBe(true);
+    expect(await saveButton().isDisabled()).toBe(true);
     await unsaved("원문 편집 첨부 이미지").waitFor();
 
     await page.getByRole("link", { name: `${REPO} · 원문` }).click();
@@ -343,8 +349,8 @@ describe("원문 편집 이미지", () => {
 
     await finishImagePreparing();
     await imageForm().waitFor();
-    expect(await page.getByRole("button", { name: "원문 저장" }).isDisabled()).toBe(false);
-    await page.getByRole("button", { name: "원문 저장" }).click();
+    expect(await saveButton().isDisabled()).toBe(false);
+    await saveButton().click();
     await page.getByText(BLOCKED).waitFor();
     expect(newCommits()).toBe(0);
   });
@@ -358,7 +364,7 @@ describe("원문 편집 이미지", () => {
     app.pushElsewhere(path, source("다른 곳에서 고친 글"));
     const elsewhere = app.commits();
 
-    await page.getByRole("button", { name: "원문 저장" }).click();
+    await saveButton().click();
     await page
       .getByText("글을 연 뒤 다른 곳에서 글이 바뀌었어요. 입력한 내용을 따로 보관한 뒤 글을 다시 열어 주세요.")
       .waitFor();
@@ -383,24 +389,27 @@ describe("원문 편집 이미지", () => {
 });
 
 describe("두 편집 영역의 첨부", () => {
-  test("원문 이미지 저장은 일반 편집의 미저장 첨부를 저장한 것으로 치지 않고 버릴지 먼저 묻는다", async () => {
+  test("일반 편집에 저장하지 않은 첨부가 있으면 원문 편집으로 바꾸지 않고, 저장한 뒤에는 바꾼 원문에 그 첨부가 있다", async () => {
+    const sourceMode = () => page.getByRole("button", { name: "원문 편집", exact: true });
     await openBody(POSTS.both);
     await bodyEditor().click();
     await page.keyboard.press("Control+End");
     await chooseImage(page.getByTitle("이미지 넣기"));
     await applyAlt("일반 편집 사진");
-    await page.getByRole("button", { name: "원문 편집", exact: true }).click();
-    await chooseSourceImage();
-    await applyAlt("원문 편집 사진");
-    await unsaved("본문, 첨부 이미지, 원문 편집, 원문 편집 첨부 이미지").waitFor();
+    await unsaved("본문, 첨부 이미지").waitFor();
 
-    await page.getByRole("button", { name: "원문 저장" }).click();
-    const confirm = page.getByRole("dialog", { name: "저장하면 다른 곳의 저장하지 않은 입력이 사라져요" });
-    await confirm.getByText("저장한 글로 다시 열면서 입력이 사라지는 곳: 본문, 첨부 이미지").waitFor();
-    await confirm.getByRole("button", { name: "계속 편집" }).click();
-
+    await sourceMode().click();
+    await page
+      .getByText("일반 편집에 저장하지 않은 변경이 있어 모드를 바꿀 수 없어요. 먼저 저장하거나 변경을 되돌려 주세요.")
+      .waitFor();
+    expect(await sourceMode().getAttribute("aria-pressed")).toBe("false");
     expect(newCommits()).toBe(0);
-    await unsaved("본문, 첨부 이미지, 원문 편집, 원문 편집 첨부 이미지").waitFor();
+
+    await saveAndReopen();
+    expect(newCommits()).toBe(1);
+    await sourceMode().click();
+    expect(await sourceMode().getAttribute("aria-pressed")).toBe("true");
+    expect(await sourceText()).toContain('<Image src={image2} alt="일반 편집 사진" />');
   });
 
   test("이미지를 준비하는 동안 모드를 바꿀 수 없어, 준비가 끝나면 보이는 편집기에 폼이 열리고 적용한 뒤 다시 바꿀 수 있다", async () => {
@@ -421,8 +430,14 @@ describe("두 편집 영역의 첨부", () => {
     await applyAlt("준비 중 사진");
     expect(await sourceText()).toContain('<Image src={image2} alt="준비 중 사진" />');
 
+    expect(await page.getByText("이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 모드를 바꿔 주세요.").count()).toBe(0);
+    // 준비가 끝나 모드 버튼은 다시 누를 수 있지만, 일반 편집이 넣은 이미지를 이어받지 못하므로 저장한 뒤에 바꾼다.
+    await page.getByRole("button", { name: "일반 편집", exact: true }).click();
+    await page
+      .getByText("원문 편집에 저장하지 않은 변경이 있어 모드를 바꿀 수 없어요. 먼저 저장하거나 변경을 되돌려 주세요.")
+      .waitFor();
+    await saveAndReopen();
     await page.getByRole("button", { name: "일반 편집", exact: true }).click();
     await bodyEditor().waitFor({ state: "visible" });
-    expect(await page.getByText("이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 모드를 바꿔 주세요.").count()).toBe(0);
   });
 });

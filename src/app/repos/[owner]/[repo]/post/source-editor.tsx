@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useMemo, useRef, useState } from "react";
 
-import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
+import { useReportUnsaved, useSaveLocked } from "@/app/_lib/unsaved";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 미리보기 메시지와 넣기 메뉴만 가져온다.
 import {
   advancedComponents,
@@ -13,7 +13,6 @@ import {
   removeInsert,
 } from "@/lib/content/insert-form";
 import { previewMessage, previewUploads } from "@/lib/content/preview";
-import type { SaveState } from "@/lib/content/save-flow";
 import { sourceChanged } from "@/lib/content/unsaved";
 import { IMAGE_COMPONENT, MAX_IMAGE_SIDE, sourceUploads } from "@/lib/content/upload";
 import { hasTocHeading, parseMdx, readInserts, type Syntax } from "@/lib/mdx-doc";
@@ -21,9 +20,9 @@ import { hasTocHeading, parseMdx, readInserts, type Syntax } from "@/lib/mdx-doc
 import type { BodyImageUpload } from "./body-editor";
 import { BodyPreview } from "./body-preview";
 import type { SourceEditorHandle } from "./codemirror-source-editor";
-import { AttachedImagesNotice, ImagePreparingNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
+import { AttachedImagesNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
-import { SaveRow } from "./save-row";
+import { usePostInput } from "./post-editor";
 
 const CodeMirrorSourceEditor = dynamic(() => import("./codemirror-source-editor"), {
   ssr: false,
@@ -37,7 +36,6 @@ export function SourceEditor({
   components,
   upload,
   preview,
-  action,
 }: {
   source: string;
   syntax: Syntax;
@@ -47,10 +45,8 @@ export function SourceEditor({
   upload: BodyImageUpload | null;
   /** config `preview`. 있으면 사이트 미리보기를 띄운다. */
   preview?: string;
-  /** 원문과, 넣은 이미지를 파일 이름이 `N.ext`인 `image` 파일로 담은 FormData를 보낸다. */
-  action: (source: string, images: FormData) => Promise<SaveState>;
 }) {
-  const save = useSave("source");
+  const locked = useSaveLocked();
   const edited = useRef(source);
   const [current, setCurrent] = useState(source);
   // 서버가 변경 없음으로 답한 원문. 그 원문은 저장한 것과 같으므로 미저장 판정의 기준으로 삼는다.
@@ -81,24 +77,16 @@ export function SourceEditor({
   useReportUnsaved("sourceImages", images.session.unsaved(current));
   const inserts = useMemo(() => readInserts(current, syntax), [current, syntax]);
   const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
-  const formLocked = save.locked || !forms.canOpen || images.preparing;
+  const formLocked = locked || !forms.canOpen || images.preparing;
   const menu = insertMenuItems(upload ? [IMAGE_COMPONENT, ...components] : components);
+  usePostInput("source", () => {
+    const next = edited.current;
+    const data = images.upload(next);
+    return data && { text: next, data, unchanged: () => setBaseline(next) };
+  });
 
   return (
-    <form
-      className="flex flex-col gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const next = edited.current;
-        const data = images.upload(next);
-        if (!data) return;
-        save.request(
-          { target: "source", before: source, after: next, syntax },
-          () => action(next, data),
-          () => setBaseline(next),
-        );
-      }}
-    >
+    <div className="flex flex-col gap-2">
       <p className="text-xs text-zinc-500">글 설정과 이미지 연결을 포함한 파일 전체를 고쳐요.</p>
       <InsertMenu
         disabled={formLocked}
@@ -131,7 +119,7 @@ export function SourceEditor({
           source={source}
           syntax={syntax}
           components={advancedComponents(components)}
-          readOnly={save.locked}
+          readOnly={locked}
           onChange={(next) => {
             edited.current = next;
             setCurrent(next);
@@ -146,7 +134,7 @@ export function SourceEditor({
         </p>
       )}
       <AttachedImagesNotice upload={images}>
-        원문을 저장할 때 글 폴더에 함께 저장하고, 원문에서 가져오지 않는 이미지는 올리지 않아요.
+        글을 저장할 때 글 폴더에 함께 저장하고, 원문에서 가져오지 않는 이미지는 올리지 않아요.
       </AttachedImagesNotice>
       <ImageProblemNotice upload={images} />
       <BodyPreview
@@ -163,8 +151,6 @@ export function SourceEditor({
             : undefined
         }
       />
-      <ImagePreparingNotice upload={images} />
-      <SaveRow label="원문 저장" save={save} disabled={images.preparing} />
-    </form>
+    </div>
   );
 }

@@ -16,7 +16,10 @@ const CONFIG = {
     {
       name: "게시판",
       path: "content/게시판/{slug}/page.mdx",
-      metadata: { title: { type: "string", label: "제목", required: true } },
+      metadata: {
+        title: { type: "string", label: "제목", required: true },
+        "other.status": { type: "select", label: "상태", options: ["ready", "draft"] },
+      },
       components: ["Image"],
       editor: "wysiwyg",
     },
@@ -33,7 +36,10 @@ const CONFIG = {
     {
       name: "각주",
       path: "content/각주/{slug}/page.mdx",
-      metadata: { title: { type: "string", label: "제목", required: true } },
+      metadata: {
+        title: { type: "string", label: "제목", required: true },
+        "other.status": { type: "select", label: "상태", options: ["ready", "draft"] },
+      },
       components: ["Footnote"],
       editor: "source",
     },
@@ -43,6 +49,7 @@ const CONFIG = {
 const FOOTNOTE_POST = "content/각주/휴진/page.mdx";
 const SOURCE = `export const metadata = {
   title: '휴진 안내',
+  other: { status: 'draft' },
 };
 
 # 휴진 안내
@@ -123,12 +130,19 @@ async function attachImage() {
   await page.getByText(/넣은 이미지: /).waitFor();
 }
 
-/** 제목을 바꾸고 이미지를 넣고 원문 모드로 바꾼다. 모드 전환은 입력을 유지하므로 묻지 않아야 한다. */
+const MODE_BLOCKED =
+  "일반 편집에 저장하지 않은 변경이 있어 모드를 바꿀 수 없어요. 먼저 저장하거나 변경을 되돌려 주세요.";
+
+/**
+ * 제목을 바꾸고 이미지를 넣은 뒤 원문 모드로 바꾸려 한다.
+ * 원문 편집은 이 입력을 이어받지 못하므로 전환을 막고 이유를 보이며, 이동이 아니라 묻지 않는다.
+ */
 async function editPost() {
   await titleInput().fill("휴진 안내 (수정)");
   await attachImage();
   await page.getByText(POST_EDITED).waitFor();
   await sourceMode().click();
+  await page.getByText(MODE_BLOCKED).waitFor();
   expect(await leaveDialog().isVisible()).toBe(false);
 }
 
@@ -137,9 +151,8 @@ async function expectPostKept() {
   expect(page.url()).toBe(postUrl(app));
   expect(await titleInput().inputValue()).toBe("휴진 안내 (수정)");
   expect(await page.getByText(POST_EDITED).count()).toBe(1);
-  // 원문 모드라 WYSIWYG 쪽은 숨어 있지만 넣은 이미지는 남아 있다.
   expect(await page.getByText(/넣은 이미지: /).count()).toBe(1);
-  expect(await sourceMode().getAttribute("aria-pressed")).toBe("true");
+  expect(await sourceMode().getAttribute("aria-pressed")).toBe("false");
 }
 
 /** 이력 이동을 막으면 Playwright가 이동을 기다리다 끝나므로 기다리지 않는다. */
@@ -275,22 +288,23 @@ describe("기존 글", () => {
     expect(await titleInput().inputValue()).toBe("휴진 안내 (수정)");
   });
 
-  test("metadata를 저장해 다시 열릴 때는 경고하지 않고, 남은 본문·첨부 입력은 계속 지킨다", async () => {
+  test("제목·본문·첨부를 함께 임시저장해 다시 열릴 때는 경고하지 않고, 저장한 뒤 떠나도 묻지 않는다", async () => {
     await openPost(SAVED_POST);
     await titleInput().fill("휴진 안내 (수정)");
     await attachImage();
     await page.getByText(POST_EDITED).waitFor();
 
-    await page.getByRole("button", { name: "글 설정 저장" }).click();
-    // 본문·첨부 입력은 다시 열리지 않으므로 묻지 않고 저장한다.
-    await page.getByText(/^저장했어요\./).waitFor();
+    await page.getByRole("button", { name: "임시저장" }).click();
+    await page.getByText(/^임시저장했어요\./).waitFor();
     expect(await leaveDialog().isVisible()).toBe(false);
     expect(newCommits()).toBe(1);
+    expect(app.file(SAVED_POST)).toContain("휴진 안내 (수정)");
+    expect(app.file(SAVED_POST)).toContain('alt="병원 입구"');
+    await page.getByText(/저장하지 않은 변경이 있어요/).waitFor({ state: "detached" });
 
     await listLink().click();
-    await leaveDialog().waitFor();
-    expect(await leaveDialog().getByText("바뀐 곳: 본문, 첨부 이미지").count()).toBe(1);
-    await keepButton().click();
+    await page.waitForURL(listUrl(app, "게시판"));
+    expect(await leaveDialog().count()).toBe(0);
     expect(browserDialogs).toEqual([]);
   });
 });

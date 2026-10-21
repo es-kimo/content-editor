@@ -2,7 +2,7 @@ import type { Collection, MetadataField } from "@/lib/editor-config";
 import { lookupMetadata, type MetadataValue } from "@/lib/mdx-doc";
 
 import { datetimeInput, datetimeValue } from "./datetime";
-import { fieldLabel } from "./labels";
+import { fieldLabel, STATUS_FIELD } from "./labels";
 
 export type MetadataObject = { [key: string]: MetadataValue };
 
@@ -39,9 +39,13 @@ export const REQUIRED_MESSAGE = "값을 입력해 주세요.";
 /** 입력 해석에 필요한 필드 정보. 서버의 config 필드와 클라이언트의 `FormField`가 같은 해석을 쓴다. */
 type InputField = { type: MetadataField["type"]; options?: readonly string[] };
 
-/** config의 metadata 정의와 글의 지금 값으로 폼을 만든다. config에 적힌 순서를 따른다. */
+/**
+ * config의 metadata 정의와 글의 지금 값으로 폼을 만든다. config에 적힌 순서를 따른다.
+ * 게시 상태는 상태별 저장 행동으로만 바꾸므로 폼에 넣지 않는다. 제출되지 않는 필드라 저장할 때 원래 값이 남는다.
+ */
 export function buildForm(collection: Collection, metadata: MetadataObject): FormField[] {
-  return Object.entries(collection.metadata).map(([key, field]) => {
+  const entries = Object.entries(collection.metadata).filter(([key]) => key !== STATUS_FIELD);
+  return entries.map(([key, field]) => {
     const found = lookupMetadata(metadata, key);
     const base = {
       key,

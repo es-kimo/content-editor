@@ -5,6 +5,7 @@ import { postHref } from "@/app/_lib/repo";
 import { createPost } from "@/lib/content";
 import { TITLE_FIELD } from "@/lib/metadata-form";
 
+import { savedPostHref } from "../post/save-result";
 import { createError, createResultState, type CreateState } from "./create-result";
 
 /**
@@ -32,8 +33,5 @@ export async function createPostAction(repo: string, collection: string, data: F
     ),
   );
   if (!outcome.ok) return createError(outcome.message, { detail: outcome.detail });
-  return createResultState(
-    outcome.value,
-    (path, commit) => `${postHref(repo, path)}&${new URLSearchParams({ saved: commit })}`,
-  );
+  return createResultState(outcome.value, (path, commit) => savedPostHref(postHref(repo, path), commit, "save-draft"));
 }

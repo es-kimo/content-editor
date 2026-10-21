@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 
-import { ConfirmDialog } from "@/app/_lib/confirm-dialog";
 import { LeaveGuardProvider } from "@/app/_lib/leave";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 미저장 판정과 저장 흐름만 가져온다.
 import { leavingAreas } from "@/lib/content/leave-guard";
@@ -23,7 +22,7 @@ import {
   type SaveState,
   type SaveTarget,
 } from "@/lib/content/save-flow";
-import { areaNames, unsavedAreas, type EditArea } from "@/lib/content/unsaved";
+import { unsavedAreas, type EditArea } from "@/lib/content/unsaved";
 
 const SaveFlowContext = createContext<SaveFlow | null>(null);
 
@@ -55,12 +54,15 @@ function UnsavedScope({
 }) {
   const router = useRouter();
   const [flow] = useState(() => createSaveFlow({ navigate: (href) => router.push(href) }));
-  useEffect(() => flow.settle(), [flow, revision]);
+  useEffect(() => {
+    const settled = flow.settle();
+    // 게시 내리기는 미저장 편집을 버리기로 하고 한 것이다. 바뀌지 않은 본문의 편집기는 key가 같아 남으므로 모두 다시 연다.
+    if (settled?.target === "post" && settled.action === "unpublish") onDiscarded();
+  }, [flow, revision, onDiscarded]);
   return (
     <SaveFlowContext value={flow}>
       <LeaveGuardProvider areas={() => leavingAreas(flow.getState())} onDiscarded={onDiscarded}>
         {children}
-        <DiscardDialog flow={flow} />
       </LeaveGuardProvider>
     </SaveFlowContext>
   );
@@ -83,6 +85,11 @@ export function useReportUnsaved(area: EditArea, changed: boolean) {
   }, [flow, area, changed]);
 }
 
+/** 편집 영역들이 알린 미저장 변경. */
+export function useUnsavedChanged(): { [area in EditArea]?: boolean } {
+  return useFlowState(useFlow()).changed;
+}
+
 /** 편집 영역이 이미지를 준비하는 중인지 알린다. 영역이 사라지면 함께 거둔다. */
 export function useReportPreparing(area: FormArea, preparing: boolean) {
   const flow = useFlow();
@@ -97,7 +104,7 @@ export function useImagePreparing(): boolean {
   return Object.values(useFlowState(useFlow()).preparing).some(Boolean);
 }
 
-/** 저장이 진행 중이거나 확인 중이면 true. 그동안 입력·첨부·모드 전환·다른 저장·폼 열기를 막는다. */
+/** 저장이 진행 중이면 true. 그동안 입력·첨부·모드 전환·다른 저장·폼 열기를 막는다. */
 export function useSaveLocked(): boolean {
   return useFlowState(useFlow()).phase.kind !== "idle";
 }
@@ -110,11 +117,12 @@ export function useSave(target: SaveTarget) {
   const { phase, results, form } = useFlowState(flow);
   return {
     state: results[target] ?? IDLE,
-    // 성공한 뒤 저장한 글 화면이 열릴 때까지도 저장 중으로 보인다.
-    pending: (phase.kind === "saving" || phase.kind === "saved") && phase.target === target,
+    /** 이 대상의 진행 중인 저장. 성공한 뒤 저장한 글 화면이 열릴 때까지도 저장 중이다. */
+    pending: phase.kind !== "idle" && phase.request.target === target ? phase.request : null,
     locked: phase.kind !== "idle",
-    /** 적용하지 않은 폼 때문에 이 저장을 막았는지. */
-    formBlocked: form?.blocked === target,
+    /** 적용하지 않은 폼 때문에 막은 마지막 동작. */
+    formBlocked: form?.blocked ?? null,
+    blocks: (request: SaveRequest) => flow.blocks(request),
     request: (request: SaveRequest, submit: () => Promise<SaveState>, onUnchanged?: () => void) =>
       flow.request(request, submit, onUnchanged),
   };
@@ -126,7 +134,7 @@ export function useFormFlow() {
   const { phase, form } = useFlowState(flow);
   return {
     form,
-    /** 저장 중이거나 확인 중이거나 다른 폼이 열려 있으면 새 폼을 열 수 없다. */
+    /** 저장 중이거나 다른 폼이 열려 있으면 새 폼을 열 수 없다. */
     canOpen: phase.kind === "idle" && form === null,
     // 화면이 effect 정리에 쓸 수 있게 흐름의 메서드를 그대로 넘겨 렌더마다 같은 함수가 되게 한다.
     open: flow.openForm,
@@ -146,24 +154,4 @@ export function UnsavedNotice() {
   const areas = unsavedAreas(useFlowState(useFlow()).changed);
   if (areas.length === 0) return null;
   return <p className="text-sm text-amber-600">저장하지 않은 변경이 있어요. 바뀐 곳: {areas.join(", ")}</p>;
-}
-
-/** 저장으로 다른 영역의 미저장 입력이 사라질 때 묻는다. */
-function DiscardDialog({ flow }: { flow: SaveFlow }) {
-  const { phase } = useFlowState(flow);
-  return (
-    <ConfirmDialog
-      open={phase.kind === "confirming"}
-      title="저장하면 다른 곳의 저장하지 않은 입력이 사라져요"
-      confirmLabel="다른 변경 버리고 저장"
-      onKeep={() => flow.cancel()}
-      onConfirm={() => flow.confirm()}
-    >
-      <p className="text-sm">
-        저장한 글로 다시 열면서 입력이 사라지는 곳:{" "}
-        {phase.kind === "confirming" && areaNames(phase.discarded).join(", ")}
-      </p>
-      <p className="text-xs text-zinc-500">저장이 실패하면 모든 입력이 그대로 남아요.</p>
-    </ConfirmDialog>
-  );
 }

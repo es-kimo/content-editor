@@ -1,20 +1,30 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { createGitHubClient } from "@/lib/github";
-import { yjshdConfig } from "@/test/config";
+import type { MetadataObject, PostAction } from "@/lib/metadata-form";
+import { testConfig, yjshdConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
+import { PNG } from "@/test/upload-images";
 
-import { editorKeys, readPost, type Post } from "./read";
-import { saveBody } from "./save-body";
-import { createSaveFlow, discardedAreas, reopenedAreas, type SaveRequest, type SaveState } from "./save-flow";
-import { saveMetadata } from "./save-metadata";
-import { saveSource } from "./save-source";
+import { editorKeys, readPost } from "./read";
+import {
+  collectPostInput,
+  createSaveFlow,
+  modeHasUnsaved,
+  postActions,
+  savedAreas,
+  STATUS_PROBLEM_MESSAGES,
+  TRASHED_MESSAGE,
+  type SaveRequest,
+  type SaveState,
+} from "./save-flow";
+import { saveEdit } from "./save-edit";
 import type { EditArea } from "./unsaved";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";
 const config = yjshdConfig();
-const syntax = config.syntax;
+const board = config.collections.find((collection) => collection.name === "게시판")!;
 
 const SOURCE = `import image1 from "./1.png";
 
@@ -22,7 +32,7 @@ export const metadata = {
   title: '11월 휴진 안내',
   description: '안녕하세요.',
   keywords: [],
-  other: { status: "ready", createdAt: "2020-11-20T00:00:00Z" },
+  other: { status: "draft", createdAt: "2020-11-20T00:00:00Z" },
 };
 
 # 11월 휴진 안내
@@ -30,115 +40,201 @@ export const metadata = {
 본문 <Image src={image1} alt="" />
 `;
 
-const FORM = {
-  title: "12월 휴진 안내",
-  description: "안녕하세요.",
-  "other.createdAt": "2020-11-20T00:00",
-  "other.status": "ready",
-};
+const ALL_ACTIONS: PostAction[] = ["save-draft", "publish", "update", "unpublish"];
 
-const setup = () => {
-  const repo = fakeGitRepo(REPO, "main", [
-    { path: POST, content: SOURCE },
-    { path: "README.md", content: "# yjshd\n" },
-  ]);
-  const client = createGitHubClient("ghu_token", repo.fetch);
-  return { repo, client, read: async () => (await readPost(client, REPO, config, POST))! };
-};
+/** 행동 하나를 일반 편집으로 하는 글 저장 요청. 게시 내리기는 입력을 담지 않는다. */
+const postSave = (action: PostAction, mode: "wysiwyg" | "source" = "wysiwyg"): SaveRequest =>
+  action === "unpublish" ? { target: "post", action } : { target: "post", action, mode };
 
-/** 글 화면(`post/page.tsx`)이 저장 뒤 다시 여는 영역. metadata·본문은 `editorKeys`, 원문은 sha가 key다. */
-function actuallyReopened(before: Post, after: Post): EditArea[] {
-  const [b, a] = [editorKeys(before), editorKeys(after)];
-  return [
-    ...(b.metadata !== a.metadata ? (["metadata"] as const) : []),
-    ...(b.body !== a.body ? (["body", "images"] as const) : []),
-    ...(before.sha !== after.sha ? (["source", "sourceImages"] as const) : []),
-  ];
-}
-
-const sourceSave = (after: string): SaveRequest => ({ target: "source", before: SOURCE, after, syntax });
-
-describe("reopenedAreas", () => {
-  test("metadata를 저장하면 metadata와 원문만 다시 열리고 고치던 본문은 남는다", async () => {
-    const { client, read } = setup();
-    const before = await read();
-
-    await saveMetadata(client, REPO, config, { path: POST, baseSha: before.sha, values: FORM });
-
-    expect(actuallyReopened(before, await read())).toEqual(reopenedAreas({ target: "metadata" }));
-    expect(reopenedAreas({ target: "metadata" })).not.toContain("body");
+describe("savedAreas", () => {
+  test("일반 편집의 글 단위 저장은 제목·설정·본문·첨부를 한 요청에 함께 담는다", () => {
+    for (const action of ["save-draft", "publish", "update"] as const) {
+      expect(savedAreas(postSave(action))).toEqual(["metadata", "body", "images"]);
+    }
   });
 
-  test("본문을 저장하면 본문·첨부와 원문만 다시 열리고 고치던 metadata 폼은 남는다", async () => {
-    const { client, read } = setup();
-    const before = await read();
-    const body = `${before.doc.ok ? before.doc.body : ""}\n추가 문단\n`;
-
-    await saveBody(client, REPO, config, { path: POST, baseSha: before.sha, body });
-
-    expect(actuallyReopened(before, await read())).toEqual(reopenedAreas({ target: "body" }));
-    expect(reopenedAreas({ target: "body" })).not.toContain("metadata");
+  test("원문 편집의 글 단위 저장은 원문과 원문 첨부를 한 요청에 함께 담는다", () => {
+    expect(savedAreas(postSave("update", "source"))).toEqual(["source", "sourceImages"]);
   });
 
-  test.each([
-    [
-      "metadata만 고친 원문",
-      SOURCE.replace("11월 휴진 안내',", "12월 휴진 안내',"),
-      ["metadata", "source", "sourceImages"],
-    ],
-    [
-      "본문만 고친 원문",
-      SOURCE.replace("본문 <Image", "고친 본문 <Image"),
-      ["body", "images", "source", "sourceImages"],
-    ],
-    [
-      "metadata와 본문을 함께 고친 원문",
-      SOURCE.replace("11월 휴진 안내',", "12월 휴진 안내',").replace("본문 <Image", "고친 본문 <Image"),
-      ["metadata", "body", "images", "source", "sourceImages"],
-    ],
-    ["import만 고친 원문", SOURCE.replace("./1.png", "./2.png"), ["source", "sourceImages"]],
-  ])("%s을 저장하면 실제로 다시 열리는 영역을 미리 안다", async (_, edited, expected) => {
-    const { client, read } = setup();
-    const before = await read();
+  test("게시 내리기는 상태만 바꾸므로 입력을 담지 않는다", () => {
+    expect(savedAreas(postSave("unpublish"))).toEqual([]);
+  });
 
-    await saveSource(client, REPO, config, { path: POST, baseSha: before.sha, source: edited });
+  test("일반 편집 저장 한 번이 제목·설정·본문·첨부를 커밋 하나로 남기고, 다시 연 글은 그 값으로 열린다", async () => {
+    const repo = fakeGitRepo(REPO, "main", [
+      { path: POST, content: SOURCE },
+      { path: "content/4.게시판/1.휴진/1.png", content: PNG },
+    ]);
+    const client = createGitHubClient("ghu_token", repo.fetch);
+    const before = (await readPost(client, REPO, config, POST))!;
 
-    expect(reopenedAreas(sourceSave(edited))).toEqual(expected);
-    expect(actuallyReopened(before, await read())).toEqual(expected);
+    const result = await saveEdit(client, REPO, config, {
+      path: POST,
+      baseSha: before.sha,
+      action: "save-draft",
+      content: {
+        mode: "form",
+        values: { title: "12월 휴진 안내", description: "새 요약" },
+        body: `${before.doc.ok ? before.doc.body : ""}\n<Image src={image2} alt="안내문" />\n`,
+        images: [{ file: "2.png", content: PNG }],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(repo.log()).toHaveLength(2);
+    const after = (await readPost(client, REPO, config, POST))!;
+    expect(after.metadata?.editable && after.metadata.value).toMatchObject({ title: "12월 휴진 안내" });
+    expect(after.metadata?.editable && after.metadata.value).toMatchObject({ description: "새 요약" });
+    expect(editorKeys(after).body).toContain('<Image src={image2} alt="안내문" />');
+    expect(repo.file("content/4.게시판/1.휴진/2.png")).toBeDefined();
   });
 });
 
-describe("discardedAreas", () => {
-  const all = { metadata: true, body: true, images: true, source: true };
+/** 이름·값 쌍으로 만든 FormData. */
+const formData = (entries: [string, string | File][]) => {
+  const data = new FormData();
+  for (const [name, value] of entries) data.append(name, value);
+  return data;
+};
 
-  test("metadata·본문 저장은 다른 영역 중 원문 입력만 버린다", () => {
-    expect(discardedAreas({ target: "metadata" }, all)).toEqual(["source"]);
-    expect(discardedAreas({ target: "body" }, all)).toEqual(["source"]);
+describe("collectPostInput", () => {
+  const image = new File([PNG], "2.png", { type: "image/png" });
+  const settings = (unchanged = vi.fn()) => ({
+    data: formData([
+      ["title", "12월 휴진 안내"],
+      ["description", "새 요약"],
+    ]),
+    unchanged,
+  });
+  const wysiwyg = (unchanged = vi.fn()) => ({ text: "새 본문\n", data: formData([["image", image]]), unchanged });
+  const source = (unchanged = vi.fn()) => ({ text: SOURCE, data: formData([["image", image]]), unchanged });
+
+  test("일반 편집은 설정 폼 값과 본문·첨부 이미지를 한 요청에 함께 담는다", () => {
+    const input = collectPostInput(
+      { settings: () => settings(), wysiwyg: () => wysiwyg(), source: () => source() },
+      "wysiwyg",
+    );
+
+    expect(input?.text).toBe("새 본문\n");
+    expect(input?.data.get("title")).toBe("12월 휴진 안내");
+    expect(input?.data.get("description")).toBe("새 요약");
+    expect(input?.data.getAll("image")).toHaveLength(1);
+    expect((input?.data.get("image") as File).name).toBe("2.png");
   });
 
-  test("원문 저장은 고친 원문이 바꾸는 영역의 입력만 버린다", () => {
-    expect(discardedAreas(sourceSave(SOURCE.replace("11월 휴진 안내',", "12월 휴진 안내',")), all)).toEqual([
-      "metadata",
-    ]);
-    expect(discardedAreas(sourceSave(SOURCE.replace("본문 <Image", "고친 본문 <Image")), all)).toEqual([
-      "body",
-      "images",
-    ]);
+  test("일반 편집이 변경 없음으로 끝나면 설정 폼과 본문 모두 낸 입력을 저장 기준으로 삼는다", () => {
+    const settingsUnchanged = vi.fn();
+    const bodyUnchanged = vi.fn();
+    const input = collectPostInput(
+      { settings: () => settings(settingsUnchanged), wysiwyg: () => wysiwyg(bodyUnchanged) },
+      "wysiwyg",
+    );
+
+    input?.unchanged();
+
+    expect(settingsUnchanged).toHaveBeenCalledOnce();
+    expect(bodyUnchanged).toHaveBeenCalledOnce();
   });
 
-  test("일반 편집 첨부와 원문 편집 첨부는 각자의 저장으로만 저장하고, 다른 쪽 저장은 버리는지 묻거나 그대로 둔다", () => {
-    const attached = { images: true, sourceImages: true };
+  test("원문 편집은 원문과 그 첨부만 담고 설정 폼과 일반 편집 본문은 읽지 않는다", () => {
+    const readSettings = vi.fn(() => settings());
+    const readBody = vi.fn(() => wysiwyg());
+    const input = collectPostInput({ settings: readSettings, wysiwyg: readBody, source: () => source() }, "source");
 
-    expect(discardedAreas({ target: "body" }, attached)).toEqual(["sourceImages"]);
-    expect(discardedAreas({ target: "metadata" }, attached)).toEqual(["sourceImages"]);
-    // 본문을 바꾸지 않는 원문 저장은 일반 편집을 다시 열지 않으므로 그 첨부는 미저장으로 남는다.
-    expect(discardedAreas(sourceSave(SOURCE.replace("./1.png", "./2.png")), attached)).toEqual([]);
-    expect(discardedAreas(sourceSave(SOURCE.replace("본문 <Image", "고친 본문 <Image")), attached)).toEqual(["images"]);
+    expect(input?.text).toBe(SOURCE);
+    expect(input?.data.get("title")).toBeNull();
+    expect(input?.data.getAll("image")).toHaveLength(1);
+    expect(readSettings).not.toHaveBeenCalled();
+    expect(readBody).not.toHaveBeenCalled();
   });
 
-  test("다시 열리는 영역에 미저장 입력이 없으면 버릴 것이 없다", () => {
-    expect(discardedAreas({ target: "metadata" }, { metadata: true, body: true, images: true })).toEqual([]);
-    expect(discardedAreas({ target: "new" }, { title: true, submenu: true })).toEqual([]);
+  test("설정 폼이 입력을 낼 수 없으면 저장하지 않고 본문보다 먼저 설정 폼을 알린다", () => {
+    const readBody = vi.fn(() => wysiwyg());
+
+    expect(collectPostInput({ settings: () => null, wysiwyg: readBody }, "wysiwyg")).toBeNull();
+    expect(readBody).not.toHaveBeenCalled();
+  });
+
+  test("어느 영역이든 입력을 낼 수 없으면 저장하지 않는다", () => {
+    expect(collectPostInput({ settings: () => settings(), wysiwyg: () => null }, "wysiwyg")).toBeNull();
+    expect(collectPostInput({ settings: () => settings() }, "wysiwyg")).toBeNull();
+    expect(collectPostInput({ settings: () => settings(), source: () => null }, "source")).toBeNull();
+    expect(collectPostInput({ settings: () => settings(), wysiwyg: () => wysiwyg() }, "source")).toBeNull();
+  });
+});
+
+describe("modeHasUnsaved", () => {
+  test("일반 편집은 제목·설정·본문·첨부, 원문 편집은 원문과 그 첨부의 미저장 입력만 센다", () => {
+    expect(modeHasUnsaved("wysiwyg", { metadata: true })).toBe(true);
+    expect(modeHasUnsaved("wysiwyg", { images: true })).toBe(true);
+    expect(modeHasUnsaved("wysiwyg", { source: true, sourceImages: true })).toBe(false);
+    expect(modeHasUnsaved("source", { sourceImages: true })).toBe(true);
+    expect(modeHasUnsaved("source", { metadata: true, body: true })).toBe(false);
+  });
+});
+
+describe("postActions", () => {
+  const metadata = (other: MetadataObject["other"]): MetadataObject => ({ title: "제목", other });
+
+  test("초안은 ‘게시’가 주 행동이고 ‘임시저장’이 보조 행동이다", () => {
+    expect(postActions(board, metadata({ status: "draft" }))).toEqual({
+      ok: true,
+      status: "draft",
+      primary: "publish",
+      secondary: ["save-draft"],
+    });
+  });
+
+  test("게시 대상은 ‘수정 반영’이 주 행동이고 ‘게시 내리기’가 보조 행동이다", () => {
+    expect(postActions(board, metadata({ status: "ready" }))).toEqual({
+      ok: true,
+      status: "ready",
+      primary: "update",
+      secondary: ["unpublish"],
+    });
+  });
+
+  test("휴지통 글은 게시 상태 값과 상관없이 휴지통이고 복구하라는 안내만 있다", () => {
+    expect(postActions(board, metadata({ status: "ready", trashedAt: "2026-10-20T00:00:00Z" }))).toEqual({
+      ok: false,
+      status: "trashed",
+      notice: TRASHED_MESSAGE,
+    });
+  });
+
+  test("설정에 초안·게시 상태가 없는 글 분류의 글은 행동이 없고 편집 설정을 확인하라고 안내한다", () => {
+    const noField = testConfig([{ name: "글", path: "content/{slug}/page.mdx", metadata: {} }]).collections[0]!;
+    const oneOption = testConfig([
+      {
+        name: "글",
+        path: "content/{slug}/page.mdx",
+        metadata: { "other.status": { type: "select", options: ["ready", "hidden"] } },
+      },
+    ]).collections[0]!;
+
+    expect(postActions(noField, metadata({ status: "draft" }))).toEqual({
+      ok: false,
+      status: null,
+      notice: STATUS_PROBLEM_MESSAGES["status-field"],
+    });
+    expect(postActions(oneOption, metadata({ status: "ready" }))).toEqual({
+      ok: false,
+      status: null,
+      notice: STATUS_PROBLEM_MESSAGES["status-options"],
+    });
+    expect(STATUS_PROBLEM_MESSAGES["status-field"]).toContain("편집 설정을 확인");
+  });
+
+  test("상태를 읽을 수 없는 글은 다른 상태로 넘겨짚지 않고 행동 없이 원문을 확인하라고 안내한다", () => {
+    for (const value of [metadata({ status: "hidden" }), metadata({}), metadata("x"), null]) {
+      expect(postActions(board, value)).toEqual({
+        ok: false,
+        status: null,
+        notice: STATUS_PROBLEM_MESSAGES["status-value"],
+      });
+    }
+    expect(STATUS_PROBLEM_MESSAGES["status-value"]).toContain("원문");
   });
 });
 
@@ -161,72 +257,97 @@ const setupFlow = (changed: { [area in EditArea]?: boolean } = {}) => {
   return { flow, navigate };
 };
 
-const HREF = "/repos/es-kimo/yjshd/post?path=a&saved=c1";
+const HREF = "/repos/es-kimo/yjshd/post?path=a&saved=c1&action=update";
 const SAVED: SaveState = { status: "saved", href: HREF };
+const UPDATE = postSave("update");
 
 describe("createSaveFlow", () => {
-  test("응답이 올 때까지 저장 중으로 두고 같은 저장도 다른 영역 저장도 다시 제출하지 않는다", async () => {
+  test("응답이 올 때까지 저장 중으로 두고 같은 행동도 다른 행동도 다시 제출하지 않는다", async () => {
     const { flow } = setupFlow({ metadata: true, body: true });
     const pending = deferred();
     const submit = vi.fn(() => pending.promise);
     const other = vi.fn(() => pending.promise);
 
-    expect(flow.request({ target: "metadata" }, submit)).toBe(true);
-    expect(flow.request({ target: "metadata" }, submit)).toBe(false);
-    expect(flow.request({ target: "body" }, other)).toBe(false);
+    expect(flow.request(UPDATE, submit)).toBe(true);
+    expect(flow.request(UPDATE, submit)).toBe(false);
+    expect(flow.request(postSave("unpublish"), other)).toBe(false);
 
     expect(submit).toHaveBeenCalledTimes(1);
     expect(other).not.toHaveBeenCalled();
-    expect(flow.getState().phase).toEqual({ kind: "saving", target: "metadata" });
+    expect(flow.getState().phase).toEqual({ kind: "saving", request: UPDATE });
     expect(flow.getState().changed).toEqual({ metadata: true, body: true });
+  });
+
+  test("글 단위 저장은 다른 영역 입력을 버릴지 묻지 않고 바로 제출한다", () => {
+    for (const [request, changed] of [
+      [postSave("publish"), { metadata: true, body: true, images: true }],
+      [postSave("update", "source"), { source: true, sourceImages: true }],
+    ] as const) {
+      const { flow } = setupFlow(changed);
+      const submit = vi.fn(() => new Promise<SaveState>(() => {}));
+
+      expect(flow.request(request, submit)).toBe(true);
+
+      expect(submit).toHaveBeenCalledOnce();
+      expect(flow.getState().phase.kind).toBe("saving");
+    }
   });
 
   test("성공하면 저장한 글 화면으로 한 번 가고, 그 화면이 열릴 때까지 다음 저장을 받지 않는다", async () => {
     const { flow, navigate } = setupFlow({ metadata: true, body: true });
     const pending = deferred();
 
-    flow.request({ target: "metadata" }, () => pending.promise);
+    flow.request(UPDATE, () => pending.promise);
     pending.resolve(SAVED);
     await flush();
 
     expect(navigate).toHaveBeenCalledExactlyOnceWith(HREF);
-    expect(flow.getState().phase).toMatchObject({
-      kind: "saved",
-      target: "metadata",
-      reopened: ["metadata", "source", "sourceImages"],
-    });
-    expect(flow.request({ target: "body" }, () => pending.promise)).toBe(false);
+    expect(flow.getState().phase).toMatchObject({ kind: "saved", request: UPDATE });
+    expect(flow.request(UPDATE, () => pending.promise)).toBe(false);
 
-    flow.settle();
+    expect(flow.settle()).toEqual(UPDATE);
     expect(flow.getState().phase).toEqual({ kind: "idle" });
-    expect(flow.getState().changed.body).toBe(true);
+    expect(flow.settle()).toBeNull();
   });
 
-  test("저장한 글 화면이 열리면 다시 열린 영역의 결과만 지우고 남은 영역의 결과는 둔다", async () => {
-    const { flow } = setupFlow();
-    flow.request({ target: "body" }, async () => ({ status: "error", message: "본문 오류" }));
-    await flush();
+  test("저장 중에 알린 미저장 입력은 성공 응답이 와도 지우지 않는다", async () => {
+    const { flow } = setupFlow({ body: true });
+    const pending = deferred();
+    flow.request(UPDATE, () => pending.promise);
 
-    flow.request({ target: "metadata" }, async () => SAVED);
+    flow.report("metadata", true);
+    pending.resolve(SAVED);
     await flush();
     flow.settle();
 
-    expect(flow.getState().results.metadata).toBeUndefined();
-    expect(flow.getState().results.body).toEqual({ status: "error", message: "본문 오류" });
+    expect(flow.getState().changed).toEqual({ body: true, metadata: true });
   });
 
-  test("변경 없음이면 제출한 영역의 기준만 갱신하고 다른 영역의 미저장 표시는 그대로다", async () => {
+  test("저장한 글 화면이 열리면 그 저장의 결과만 지우고 다른 대상의 결과는 둔다", async () => {
+    const { flow } = setupFlow();
+    flow.request({ target: "new" }, async () => ({ status: "error", message: "새 글 오류" }));
+    await flush();
+
+    flow.request(UPDATE, async () => SAVED);
+    await flush();
+    flow.settle();
+
+    expect(flow.getState().results.post).toBeUndefined();
+    expect(flow.getState().results.new).toEqual({ status: "error", message: "새 글 오류" });
+  });
+
+  test("변경 없음이면 제출한 입력의 기준만 갱신하고 미저장 표시는 편집 영역이 알린 그대로다", async () => {
     const { flow, navigate } = setupFlow({ metadata: true, body: true });
     const onUnchanged = vi.fn();
 
-    flow.request({ target: "body" }, async () => ({ status: "unchanged" }), onUnchanged);
+    flow.request(UPDATE, async () => ({ status: "unchanged" }), onUnchanged);
     await flush();
 
     expect(onUnchanged).toHaveBeenCalledOnce();
     expect(navigate).not.toHaveBeenCalled();
     expect(flow.getState().phase).toEqual({ kind: "idle" });
     expect(flow.getState().changed).toEqual({ metadata: true, body: true });
-    expect(flow.getState().results.body).toEqual({ status: "unchanged" });
+    expect(flow.getState().results.post).toEqual({ status: "unchanged" });
   });
 
   test.each<[string, SaveState]>([
@@ -235,18 +356,19 @@ describe("createSaveFlow", () => {
     ["충돌", { status: "error", message: "글을 연 뒤 다른 곳에서 글이 바뀌었어요." }],
   ])("%s로 실패하면 결과를 보이고 미저장 표시를 둔 채 다시 저장할 수 있다", async (_, result) => {
     const { flow, navigate } = setupFlow({ source: true });
+    const request = postSave("update", "source");
 
-    flow.request({ target: "source", before: SOURCE, after: SOURCE, syntax }, async () => result);
+    flow.request(request, async () => result);
     await flush();
 
     expect(flow.getState().phase).toEqual({ kind: "idle" });
-    expect(flow.getState().results.source).toEqual(result);
+    expect(flow.getState().results.post).toEqual(result);
     expect(flow.getState().changed).toEqual({ source: true });
     expect(navigate).not.toHaveBeenCalled();
-    expect(flow.request({ target: "source", before: SOURCE, after: SOURCE, syntax }, async () => SAVED)).toBe(true);
+    expect(flow.request(request, async () => SAVED)).toBe(true);
   });
 
-  test("새 글 만들기 요청 자체가 실패해도 제목·하위 메뉴 표시를 둔 채 오류를 보이고 다시 만들 수 있다", async () => {
+  test("저장 요청 자체가 실패해도 입력 표시를 둔 채 오류를 보이고 다시 저장할 수 있다", async () => {
     const { flow } = setupFlow({ title: true, submenu: true });
     const pending = deferred();
 
@@ -257,84 +379,59 @@ describe("createSaveFlow", () => {
     expect(flow.getState().phase).toEqual({ kind: "idle" });
     expect(flow.getState().results.new?.status).toBe("error");
     expect(flow.getState().changed).toEqual({ title: true, submenu: true });
-  });
-
-  test("저장으로 사라질 다른 영역 입력이 있으면 제출하기 전에 그 영역을 알린다", () => {
-    const { flow } = setupFlow({ metadata: true, source: true });
-    const submit = vi.fn(async () => SAVED);
-
-    flow.request({ target: "metadata" }, submit);
-
-    expect(submit).not.toHaveBeenCalled();
-    expect(flow.getState().phase).toEqual({ kind: "confirming", target: "metadata", discarded: ["source"] });
-    expect(flow.request({ target: "body" }, submit)).toBe(false);
-  });
-
-  test("계속 편집을 고르면 제출하지 않아 커밋이 생기지 않고 입력 표시도 그대로다", async () => {
-    const { repo, client, read } = setup();
-    const post = await read();
-    const { flow, navigate } = setupFlow({ metadata: true, source: true });
-
-    flow.request({ target: "metadata" }, async () => {
-      await saveMetadata(client, REPO, config, { path: POST, baseSha: post.sha, values: FORM });
-      return SAVED;
-    });
-    flow.cancel();
-    await flush();
-
-    expect(repo.log()).toHaveLength(1);
-    expect(navigate).not.toHaveBeenCalled();
-    expect(flow.getState().phase).toEqual({ kind: "idle" });
-    expect(flow.getState().changed).toEqual({ metadata: true, source: true });
-  });
-
-  test("버리기에 동의해도 저장이 실패하면 아무 영역도 다시 열지 않고 모든 미저장 표시를 둔다", async () => {
-    const { flow, navigate } = setupFlow({ metadata: true, body: true, images: true, source: true });
-
-    flow.request({ target: "metadata" }, async () => ({
-      status: "error",
-      message: "글을 연 뒤 다른 곳에서 글이 바뀌었어요.",
-    }));
-    flow.confirm();
-    await flush();
-
-    expect(navigate).not.toHaveBeenCalled();
-    expect(flow.getState().phase).toEqual({ kind: "idle" });
-    expect(flow.getState().changed).toEqual({ metadata: true, body: true, images: true, source: true });
-  });
-
-  test("버리기에 동의하고 저장이 성공하면 그때 저장한 글 화면으로 가 동의한 영역을 다시 연다", async () => {
-    const { repo, client, read } = setup();
-    const post = await read();
-    const { flow, navigate } = setupFlow({ metadata: true, source: true });
-
-    flow.request({ target: "metadata" }, async () => {
-      const result = await saveMetadata(client, REPO, config, { path: POST, baseSha: post.sha, values: FORM });
-      return result.ok ? SAVED : { status: "error", message: "실패" };
-    });
-    flow.confirm();
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledOnce());
-
-    expect(repo.log()).toHaveLength(2);
-    expect(flow.getState().phase).toMatchObject({ kind: "saved", reopened: ["metadata", "source", "sourceImages"] });
+    expect(flow.request({ target: "new" }, async () => SAVED)).toBe(true);
   });
 });
 
-describe("적용하지 않은 폼", () => {
-  test.each<SaveRequest>([{ target: "metadata" }, { target: "body" }, sourceSave(SOURCE), { target: "new" }])(
-    "폼이 열려 있으면 $target 저장을 제출하지 않고 막은 저장을 알린다",
-    (request) => {
-      const { flow } = setupFlow({ metadata: true, body: true, source: true });
-      const submit = vi.fn(async () => SAVED);
-      flow.openForm("body");
+describe("적용하지 않은 폼과 준비 중인 이미지", () => {
+  test.each(ALL_ACTIONS)("폼이 열려 있으면 %s 저장을 제출하지 않고 막은 행동을 알린다", (action) => {
+    const { flow } = setupFlow({ metadata: true, body: true });
+    const submit = vi.fn(async () => SAVED);
+    flow.openForm("body");
 
-      expect(flow.request(request, submit)).toBe(false);
+    expect(flow.blocks(postSave(action))).toBe(true);
+    expect(flow.request(postSave(action), submit)).toBe(false);
+
+    expect(submit).not.toHaveBeenCalled();
+    expect(flow.getState().phase).toEqual({ kind: "idle" });
+    expect(flow.getState().form?.blocked).toBe(action);
+  });
+
+  test("폼이 열려 있으면 새 글 만들기도 제출하지 않는다", () => {
+    const { flow } = setupFlow({ title: true });
+    const submit = vi.fn(async () => SAVED);
+    flow.openForm("body");
+
+    expect(flow.request({ target: "new" }, submit)).toBe(false);
+
+    expect(submit).not.toHaveBeenCalled();
+    expect(flow.getState().form?.blocked).toBe("new");
+  });
+
+  test.each(ALL_ACTIONS)("어느 편집 영역이든 이미지를 준비하는 중이면 %s 저장을 제출하지 않는다", (action) => {
+    for (const area of ["body", "source"] as const) {
+      const { flow } = setupFlow({ body: true });
+      const submit = vi.fn(async () => SAVED);
+      flow.prepare(area, true);
+
+      expect(flow.blocks(postSave(action))).toBe(true);
+      expect(flow.request(postSave(action), submit)).toBe(false);
 
       expect(submit).not.toHaveBeenCalled();
       expect(flow.getState().phase).toEqual({ kind: "idle" });
-      expect(flow.getState().form?.blocked).toBe(request.target);
-    },
-  );
+    }
+  });
+
+  test("이미지 준비가 끝나면 다시 저장할 수 있다", () => {
+    const { flow } = setupFlow({ body: true });
+    const submit = vi.fn(() => new Promise<SaveState>(() => {}));
+    flow.prepare("body", true);
+    flow.prepare("body", false);
+
+    expect(flow.blocks(UPDATE)).toBe(false);
+    expect(flow.request(UPDATE, submit)).toBe(true);
+    expect(submit).toHaveBeenCalledOnce();
+  });
 
   test("폼이 열려 있으면 모드 전환을 막고, 폼이 없으면 막지 않는다", () => {
     const { flow } = setupFlow();
@@ -369,37 +466,31 @@ describe("적용하지 않은 폼", () => {
     expect(flow.blockedByForm("image")).toBe(false);
   });
 
-  test("폼을 적용하거나 취소해 닫으면 다시 저장할 수 있고 미저장 표시는 편집 영역이 알린 그대로다", async () => {
+  test("폼을 적용하거나 취소해 닫으면 다시 저장할 수 있고 미저장 표시는 편집 영역이 알린 그대로다", () => {
     const { flow } = setupFlow({ body: true });
     const submit = vi.fn(async () => SAVED);
     flow.openForm("body");
     flow.editForm(true);
-    flow.request({ target: "body" }, submit);
+    flow.request(UPDATE, submit);
 
     flow.closeForm();
 
     expect(flow.getState().changed).toEqual({ body: true });
-    expect(flow.request({ target: "body" }, submit)).toBe(true);
+    expect(flow.request(UPDATE, submit)).toBe(true);
     expect(submit).toHaveBeenCalledOnce();
   });
 
-  test("저장 중이거나 버릴지 묻는 중에는 폼을 열지 않는다", () => {
-    const saving = setupFlow({ body: true }).flow;
-    saving.request({ target: "body" }, () => new Promise<SaveState>(() => {}));
-    expect(saving.openForm("body")).toBe(false);
+  test("저장 중에는 폼을 열지 않는다", () => {
+    const { flow } = setupFlow({ body: true });
+    flow.request(UPDATE, () => new Promise<SaveState>(() => {}));
 
-    const confirming = setupFlow({ metadata: true, source: true }).flow;
-    confirming.request({ target: "metadata" }, async () => SAVED);
-    expect(confirming.openForm("source")).toBe(false);
-    expect(confirming.getState().form).toBeNull();
+    expect(flow.openForm("body")).toBe(false);
+    expect(flow.getState().form).toBeNull();
   });
 
   test("저장이 실패해도 그 뒤에 연 폼의 상태와 모든 영역의 미저장 표시를 둔다", async () => {
     const { flow } = setupFlow({ metadata: true, body: true, images: true });
-    flow.request({ target: "metadata" }, async () => ({
-      status: "error",
-      message: "글을 연 뒤 다른 곳에서 글이 바뀌었어요.",
-    }));
+    flow.request(UPDATE, async () => ({ status: "error", message: "글을 연 뒤 다른 곳에서 글이 바뀌었어요." }));
     await flush();
 
     expect(flow.openForm("body")).toBe(true);

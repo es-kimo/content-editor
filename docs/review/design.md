@@ -154,16 +154,15 @@ Tailwind 기본 팔레트를 쓰고, 역할마다 값 하나만 쓴다.
 
 ## 알려진 불일치
 
-| 불일치                                                                                                   | 위치                                                                       |
-| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| 처음 화면만 페이지 폭이 `max-w-2xl`이다                                                                  | `src/app/page.tsx`                                                         |
-| 주 버튼 클래스가 두 곳에 복사돼 있다                                                                     | `src/app/_lib/repo.tsx` `LoginLink`, `post/metadata-form.tsx`              |
-| 페이지 셸과 로딩 fallback이 화면마다 복사돼 있다                                                         | `src/app/page.tsx`, `repos/[owner]/[repo]/page.tsx`, `post/page.tsx`       |
-| 문서 언어가 `en`, 제목이 `Create Next App`이다                                                           | `src/app/layout.tsx`                                                       |
-| `body`의 `font-family: Arial`이 Geist 글꼴 설정을 덮는다. `font-sans`를 단 `main` 안만 Geist다           | `src/app/globals.css`                                                      |
-| 화면 문구가 해라체이고 원문 모드·컬렉션·metadata·WYSIWYG를 쓴다 (v0.3에서 고침)                          | `src/app/` 전반                                                            |
-| API 호출 수·시간, blob SHA가 기본 화면에 보인다 (v0.3에서 기술 상세로 옮김)                              | `repos/[owner]/[repo]/page.tsx`, `post/page.tsx`                           |
-| 저장이 영역별이다: ‘글 설정 저장’·‘본문 저장’·‘원문 저장’ (v0.4에서 글 단위 저장과 상태별 버튼으로 바꿈) | `post/metadata-form.tsx`, `post/body-editor.tsx`, `post/source-editor.tsx` |
+| 불일치                                                                                         | 위치                                                                 |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 처음 화면만 페이지 폭이 `max-w-2xl`이다                                                        | `src/app/page.tsx`                                                   |
+| 주 버튼 클래스가 두 곳에 복사돼 있다                                                           | `src/app/_lib/repo.tsx` `LoginLink`, `post/metadata-form.tsx`        |
+| 페이지 셸과 로딩 fallback이 화면마다 복사돼 있다                                               | `src/app/page.tsx`, `repos/[owner]/[repo]/page.tsx`, `post/page.tsx` |
+| 문서 언어가 `en`, 제목이 `Create Next App`이다                                                 | `src/app/layout.tsx`                                                 |
+| `body`의 `font-family: Arial`이 Geist 글꼴 설정을 덮는다. `font-sans`를 단 `main` 안만 Geist다 | `src/app/globals.css`                                                |
+| 화면 문구가 해라체이고 원문 모드·컬렉션·metadata·WYSIWYG를 쓴다 (v0.3에서 고침)                | `src/app/` 전반                                                      |
+| API 호출 수·시간, blob SHA가 기본 화면에 보인다 (v0.3에서 기술 상세로 옮김)                    | `repos/[owner]/[repo]/page.tsx`, `post/page.tsx`                     |
 
 ## 결정 필요
 
