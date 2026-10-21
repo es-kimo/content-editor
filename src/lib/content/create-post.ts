@@ -8,13 +8,13 @@ import {
   STATUS_FIELD,
   TITLE_FIELD,
   type FormValues,
-  type PostAction,
   type StatusProblem,
 } from "@/lib/metadata-form";
 
 import { savePost } from "./commit";
 import { editBody, withRequired } from "./edit-post";
 import { readPostList } from "./posts";
+import { SUBMENU_FIELD, type NewPostAction } from "./save-flow";
 import { checkSubmenuName, newPostPath, postSlug, submenuFolder } from "./slug";
 import { checkUploads, type UploadCheck, type UploadImage } from "./upload";
 
@@ -46,7 +46,7 @@ export type CreatePostInput = {
   /** 컬렉션 이름 (`Collection.name`). */
   collection: string;
   /** 처음 저장은 초안으로 두거나 바로 게시한다. */
-  action: Extract<PostAction, "save-draft" | "publish">;
+  action: NewPostAction;
   /** 제목을 포함한 설정 폼 값. 게시 상태는 행동이 정하므로 따르지 않는다. */
   values: FormValues;
   body: string;
@@ -55,9 +55,6 @@ export type CreatePostInput = {
   /** 하위 메뉴가 있는 컬렉션에서만 쓴다. */
   submenu?: NewPostSubmenu;
 };
-
-/** 하위 메뉴 필드 오류의 키. */
-export const SUBMENU_FIELD = "submenu";
 
 export type CreatePostResult =
   | { ok: true; path: string; commit: string }

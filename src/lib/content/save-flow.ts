@@ -30,16 +30,25 @@ export type SaveState =
 /** 본문 필드 오류의 키. 설정 폼의 키와 겹치지 않는다. */
 export const BODY_FIELD = "body";
 
+/** 새 글의 하위 메뉴 필드 오류의 키. 설정 폼의 키와 겹치지 않는다. */
+export const SUBMENU_FIELD = "submenu";
+
+/** 저장한 적 없는 새 글을 처음 저장하는 행동. 초안으로 두거나 바로 게시한다. */
+export type NewPostAction = Extract<PostAction, "save-draft" | "publish">;
+
 /** 편집 모드마다 저장할 때 함께 담는 영역. 제목 입력은 글 설정 폼이라 `metadata`에 든다. */
 const MODE_AREAS: { [mode in EditorMode]: EditArea[] } = {
   wysiwyg: ["metadata", "body", "images"],
   source: ["source", "sourceImages"],
 };
 
-/** 저장 대상의 화면이 두는 편집 영역. 글 화면은 두 모드의 편집기를 모두 띄워 둔다. */
+/** 새 글 화면이 모드와 상관없이 함께 저장하는 영역. 제목은 하위 메뉴와 함께 글 폴더를 정해 글 설정과 따로 센다. */
+const NEW_POST_AREAS: EditArea[] = ["title", "submenu"];
+
+/** 저장 대상의 화면이 두는 편집 영역. 두 화면 모두 두 모드의 편집기를 띄워 둔다. */
 const SCREEN_AREAS: { [target in SaveTarget]: EditArea[] } = {
   post: [...MODE_AREAS.wysiwyg, ...MODE_AREAS.source],
-  new: ["title", "submenu"],
+  new: [...NEW_POST_AREAS, ...MODE_AREAS.wysiwyg, ...MODE_AREAS.source],
 };
 
 /** 글 화면이 metadata 폼과 WYSIWYG 본문을 다시 열지 정하는 key. 원문은 파일 전체라 저장마다 다시 연다. */
@@ -54,18 +63,19 @@ export function docEditorKeys(source: string, doc: MdxDoc): EditorKeys {
 /**
  * 저장 하나. 글 저장은 행동과, 그 행동이 담을 입력을 정하는 편집 모드를 함께 받는다.
  * 게시 내리기는 상태만 바꾸므로 입력을 담지 않는다. 화면이 먼저 반영하거나 버리게 한다.
+ * 새 글도 행동(`newPostRequest`)으로만 처음 저장한다. 입력·모드 전환·이미지 준비는 저장 요청을 만들지 않는다.
  */
 export type SaveRequest =
   | { target: "post"; action: Exclude<PostAction, "unpublish">; mode: EditorMode }
   | { target: "post"; action: "unpublish" }
-  | { target: "new" };
+  | { target: "new"; action: NewPostAction; mode: EditorMode };
 
 /**
  * 저장 요청이 함께 커밋하는 편집 영역. 일반 편집은 제목·설정·본문·첨부를, 원문 편집은 원문과 그 첨부를 한 번에 담는다.
  * 영역마다 따로 저장하지 않으므로 한 저장이 같은 모드의 다른 영역 입력을 남겨 두고 버리는 일이 없다.
  */
 export function savedAreas(request: SaveRequest): EditArea[] {
-  if (request.target === "new") return SCREEN_AREAS.new;
+  if (request.target === "new") return [...NEW_POST_AREAS, ...MODE_AREAS[request.mode]];
   if (request.action === "unpublish") return [];
   return MODE_AREAS[request.mode];
 }
@@ -148,6 +158,21 @@ export function postActions(collection: Collection, metadata: MetadataObject | n
   return { ok: true, status, ...STATUS_ACTIONS[status] };
 }
 
+/**
+ * 저장한 적 없는 새 글의 저장 행동. 새 글은 초안에서 시작하므로 ‘게시’가 주 행동이고 ‘임시저장’이 보조 행동이다.
+ * 설정이 게시 상태를 다루지 못하면 행동을 두지 않는다.
+ */
+export function newPostActions(collection: Collection): PostActions {
+  const support = statusSupport(collection);
+  if (!support.ok) return { ok: false, status: null, notice: STATUS_PROBLEM_MESSAGES[support.reason] };
+  return { ok: true, status: "draft", ...STATUS_ACTIONS.draft };
+}
+
+/** 새 글 화면에서 누른 행동의 저장 요청. 새 글이 처음 할 수 없는 행동(수정 반영·게시 내리기)이면 null. */
+export function newPostRequest(action: PostAction, mode: EditorMode): SaveRequest | null {
+  return action === "save-draft" || action === "publish" ? { target: "new", action, mode } : null;
+}
+
 export type SavePhase =
   | { kind: "idle" }
   | { kind: "saving"; request: SaveRequest }
@@ -160,8 +185,8 @@ export type SavePhase =
 /** 넣기·수정 폼을 여는 편집 영역. 폼을 적용하면 이 영역의 미저장 변경이 된다. */
 export type FormArea = Extract<EditArea, "body" | "source">;
 
-/** 폼이 열려 있어 막은 동작. 글 저장 행동, 새 글 만들기, 모드 전환, 이미지 받기. */
-export type FormBlocked = PostAction | "new" | "mode" | "image";
+/** 폼이 열려 있어 막은 동작. 글·새 글 저장 행동, 모드 전환, 이미지 받기. */
+export type FormBlocked = PostAction | "mode" | "image";
 
 /**
  * 적용하지 않은 넣기·수정 폼.
@@ -225,9 +250,6 @@ const FAILED: SaveState = { status: "error", message: "저장하지 못했어요
 const settledAreas = (request: SaveRequest): EditArea[] =>
   request.target === "post" && request.action === "unpublish" ? SCREEN_AREAS.post : savedAreas(request);
 
-/** 폼 때문에 막았다고 기록할 동작. */
-const blockedAction = (request: SaveRequest): FormBlocked => (request.target === "post" ? request.action : "new");
-
 /** 한 화면의 저장들을 하나씩만 진행하게 묶는다. @param navigate 저장에 성공하면 저장한 글 화면으로 간다. */
 export function createSaveFlow({ navigate }: { navigate: (href: string) => void }): SaveFlow {
   let state: SaveFlowState = { phase: { kind: "idle" }, changed: {}, results: {}, form: null, preparing: {} };
@@ -264,9 +286,7 @@ export function createSaveFlow({ navigate }: { navigate: (href: string) => void 
   };
 
   const blocks = (request: SaveRequest) =>
-    state.phase.kind !== "idle" ||
-    blockedByForm(blockedAction(request)) ||
-    Object.values(state.preparing).some(Boolean);
+    state.phase.kind !== "idle" || blockedByForm(request.action) || Object.values(state.preparing).some(Boolean);
 
   return {
     getState: () => state,

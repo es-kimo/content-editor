@@ -29,7 +29,7 @@ export function SaveRow({
         <button type="submit" disabled={locked} className={PRIMARY_BUTTON_CLASS}>
           {pending ? "저장 중…" : label}
         </button>
-        {formBlocked === "new" && <FormBlockedNotice />}
+        {formBlocked === "save-draft" && <FormBlockedNotice />}
       </div>
       <SaveResultNotice state={state} />
     </div>

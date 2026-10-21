@@ -11,7 +11,7 @@ import { SaveRow } from "../post/save-row";
 import type { CreateState } from "./create-result";
 
 const inputClass = "rounded border px-2 py-1 text-sm disabled:opacity-60";
-const INITIAL: NewPostInput = { title: "", submenu: "" };
+const INITIAL: NewPostInput = { title: "", submenu: { kind: "existing", name: "" } };
 
 export function NewPostForm({
   collection,
@@ -25,8 +25,8 @@ export function NewPostForm({
 }) {
   const save = useSave("new");
   const [title, setTitle] = useState(INITIAL.title);
-  const [submenu, setSubmenu] = useState(INITIAL.submenu);
-  const changes = newPostChanges(INITIAL, { title, submenu });
+  const [submenu, setSubmenu] = useState(INITIAL.submenu.name);
+  const changes = newPostChanges(INITIAL, { title, submenu: { kind: "existing", name: submenu } });
   useReportUnsaved("title", changes.title);
   useReportUnsaved("submenu", changes.submenu);
   const fieldErrors = save.state.status === "error" ? (save.state.fields ?? {}) : {};
@@ -39,7 +39,7 @@ export function NewPostForm({
       onSubmit={(event) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
-        save.request({ target: "new" }, () => action(data));
+        save.request({ target: "new", action: "save-draft", mode: "wysiwyg" }, () => action(data));
       }}
     >
       {/* 만드는 중에는 입력을 막는다. 막힌 입력은 제출되지 않지만 제출할 값은 막기 전에 읽어 두었다. */}

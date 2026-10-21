@@ -183,12 +183,14 @@ describe("저장 뒤 이동", () => {
     expect(guard.request(LIST)).toBe(false);
   });
 
-  test("새 글을 만들고 편집 화면으로 가는 동안은 저장한 제목·하위 메뉴 때문에 경고하지 않는다", async () => {
+  test("새 글을 저장하고 글 화면으로 가는 동안은 저장한 제목·하위 메뉴·설정·본문·첨부 때문에 경고하지 않는다", async () => {
     const { flow, guard, navigate } = setup();
-    flow.report("title", true);
-    flow.report("submenu", true);
+    for (const area of ["title", "submenu", "metadata", "body", "images"] as const) flow.report(area, true);
 
-    flow.request({ target: "new" }, async () => ({ status: "saved", href: "/repos/es-kimo/yjshd/post?path=a" }));
+    flow.request({ target: "new", action: "save-draft", mode: "wysiwyg" }, async () => ({
+      status: "saved",
+      href: "/repos/es-kimo/yjshd/post?path=a",
+    }));
     await vi.waitFor(() => expect(navigate).toHaveBeenCalled());
 
     expect(guard.warnsUnload()).toBe(false);

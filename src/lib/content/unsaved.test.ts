@@ -40,19 +40,50 @@ describe("sourceChanged", () => {
 });
 
 describe("newPostChanges", () => {
-  const initial = { title: "", submenu: "" };
+  const NONE = { kind: "existing" as const, name: "" };
+  const initial = { title: "", submenu: NONE };
 
   test("처음 표시한 빈 입력 그대로면 바뀐 영역이 없다", () => {
     expect(newPostChanges(initial, initial)).toEqual({ title: false, submenu: false });
   });
 
   test("제목이나 하위 메뉴를 입력하면 그 영역이 바뀐 것이다", () => {
-    expect(newPostChanges(initial, { title: "새 글", submenu: "" })).toEqual({ title: true, submenu: false });
-    expect(newPostChanges(initial, { title: "", submenu: "공지" })).toEqual({ title: false, submenu: true });
+    expect(newPostChanges(initial, { title: "새 글", submenu: NONE })).toEqual({ title: true, submenu: false });
+    expect(newPostChanges(initial, { title: "", submenu: { kind: "existing", name: "공지" } })).toEqual({
+      title: false,
+      submenu: true,
+    });
   });
 
   test("필수 제목이 공백뿐인 중간 입력도 바뀐 것이고, 처음 값으로 지우면 해제된다", () => {
-    expect(newPostChanges(initial, { title: " ", submenu: "" }).title).toBe(true);
-    expect(newPostChanges(initial, { title: "", submenu: "" }).title).toBe(false);
+    expect(newPostChanges(initial, { title: " ", submenu: NONE }).title).toBe(true);
+    expect(newPostChanges(initial, { title: "", submenu: NONE }).title).toBe(false);
+  });
+
+  test("새 메뉴 이름을 입력하면 하위 메뉴가 바뀐 것이고 이탈 확인에 ‘하위 메뉴’로 나온다", () => {
+    const changes = newPostChanges(initial, { title: "", submenu: { kind: "new", name: "AI" } });
+
+    expect(changes.submenu).toBe(true);
+    expect(unsavedAreas(changes)).toEqual(["하위 메뉴"]);
+  });
+
+  test("‘새 메뉴’로 바꾸기만 해도 바뀐 것이고, 새 메뉴로 시작한 화면은 이름을 지우면 해제된다", () => {
+    const fresh = { title: "", submenu: { kind: "new" as const, name: "" } };
+
+    expect(newPostChanges(initial, { title: "", submenu: { kind: "new", name: "" } }).submenu).toBe(true);
+    expect(newPostChanges(fresh, { title: "", submenu: { kind: "new", name: "A" } }).submenu).toBe(true);
+    expect(newPostChanges(fresh, fresh).submenu).toBe(false);
+  });
+
+  test("제목·하위 메뉴는 글 설정·본문·첨부 변경과 함께 화면 순서로 이름이 나온다", () => {
+    const changes = newPostChanges(initial, { title: "새 글", submenu: { kind: "new", name: "AI" } });
+
+    expect(unsavedAreas({ ...changes, metadata: true, body: true, images: true })).toEqual([
+      "하위 메뉴",
+      "제목",
+      "글 설정",
+      "본문",
+      "첨부 이미지",
+    ]);
   });
 });

@@ -11,7 +11,6 @@ export {
   createPost,
   listSubmenus,
   needsSubmenu,
-  SUBMENU_FIELD,
   type CreatePostInput,
   type CreatePostResult,
   type NewPostSubmenu,
@@ -89,6 +88,7 @@ export {
   type SourceModeInput,
   type SwitchPost,
 } from "./mode-switch";
+export { newPostFromSource, newPostSource, newSwitchPost } from "./new-post";
 export {
   fetchBlobTexts,
   fetchTree,
@@ -116,13 +116,17 @@ export {
   collectPostInput,
   createSaveFlow,
   docEditorKeys,
+  newPostActions,
+  newPostRequest,
   postActions,
   savedAreas,
+  SUBMENU_FIELD,
   STATUS_PROBLEM_MESSAGES,
   TRASHED_MESSAGE,
   type EditorKeys,
   type FormArea,
   type FormBlocked,
+  type NewPostAction,
   type OpenForm,
   type PostActions,
   type PostInput,
