@@ -363,35 +363,46 @@ export function bodyImageMoves(doc: MdxDoc, body: string, item: ImageInsertItem,
 
 /**
  * 일반 편집기가 그린 본문 요소 하나가 삽입 항목 목록(`insertEntries(bodyInserts(...))`)의 어느 항목인지.
- * 편집기는 요소의 원문 위치를 주지 않으므로 본문의 몇 번째 JSX 요소인지(`index`, 바깥 요소가 안쪽보다 먼저)로 찾는다.
- * 같은 이미지를 여러 곳에서 써도 자리가 다르므로 각각 다른 항목이다.
- * 그 자리의 요소가 넘긴 요소와 이름·속성이 다르면 편집기와 원문이 어긋난 것이므로 다른 항목을 고르지 않고 null이다.
- * 삽입 항목이 아닌 요소도 null이다.
+ * 편집기는 요소의 원문 위치를 주지 않으므로 본문에서 태그(`printJsxTag`)가 같은 요소 중 몇 번째인지(`nth`,
+ * 문서 순서로 바깥 요소가 안쪽보다 먼저)로 찾는다. 편집기는 `<p>`·`<br />` 같은 HTML 요소를 JSX 요소로 그리지 않아
+ * 모든 요소의 순서로는 원문과 어긋나지만, 같은 태그끼리의 순서는 어긋나지 않는다.
+ * 같은 이미지를 여러 곳에서 써도 자리가 다르므로 각각 다른 항목이다. 그 태그가 `nth`번째까지 없거나 삽입 항목이 아니면 null이다.
  */
 export function bodyEntryAt(
   doc: MdxDoc,
   body: string,
   element: JsxElement,
-  index: number,
+  nth: number,
   syntax: Syntax = {},
 ): InsertItem | LimitedInsert | null {
   if (!doc.ok) return null;
   const source = bodySource(doc, body);
-  const found = readJsxTags(source, syntax)?.[index];
-  if (!found || found.tag !== printJsxTag(element)) return null;
+  const tag = printJsxTag(element);
+  const found = readJsxTags(source, syntax)?.filter((jsx) => jsx.tag === tag)[nth];
+  if (!found) return null;
   const list = readInserts(source, syntax);
   if (!list.ok) return null;
   return insertEntries(list).find((entry) => entry.from === found.from && entry.to === found.to) ?? null;
 }
 
-/** 삽입 항목 목록의 `entryIndex`번째 항목이 본문의 몇 번째 JSX 요소인지. `bodyEntryAt`의 반대이고, 없으면 -1이다. */
-export function bodyEntryElementIndex(doc: MdxDoc, body: string, entryIndex: number, syntax: Syntax = {}): number {
-  if (!doc.ok) return -1;
+/** 본문 요소의 태그와, 본문에서 그 태그가 같은 요소 중 몇 번째인지. `bodyEntryAt`이 이 값으로 찾는다. */
+export type BodyElementAt = { tag: string; nth: number };
+
+/** 삽입 항목 목록의 `entryIndex`번째 항목이 본문의 어느 요소인지. `bodyEntryAt`의 반대이고, 없으면 null이다. */
+export function bodyEntryElementAt(
+  doc: MdxDoc,
+  body: string,
+  entryIndex: number,
+  syntax: Syntax = {},
+): BodyElementAt | null {
+  if (!doc.ok) return null;
   const source = bodySource(doc, body);
   const list = readInserts(source, syntax);
   const entry = list.ok ? insertEntries(list)[entryIndex] : undefined;
-  if (!entry) return -1;
-  return readJsxTags(source, syntax)?.findIndex(({ from, to }) => from === entry.from && to === entry.to) ?? -1;
+  const tags = readJsxTags(source, syntax);
+  const found = entry && tags?.find(({ from, to }) => from === entry.from && to === entry.to);
+  if (!found || !tags) return null;
+  return { tag: found.tag, nth: tags.filter((jsx) => jsx.tag === found.tag).indexOf(found) };
 }
 
 /** 일반 편집에서 파일을 바꿀 이미지. `bodyInserts`로 읽은 그 원문을 함께 둔다. */

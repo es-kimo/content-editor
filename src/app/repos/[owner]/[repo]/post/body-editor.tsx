@@ -10,7 +10,7 @@ import { draftAttachments } from "@/lib/content/draft";
 import {
   applyBodyInsertForm,
   bodyEntryAt,
-  bodyEntryElementIndex,
+  bodyEntryElementAt,
   bodyImageMoves,
   bodyImageReplace,
   bodyInsert,
@@ -193,8 +193,8 @@ function OpenedBodyEditor({
   };
   const editorBox = useRef<HTMLDivElement>(null);
   const photos = useBodyPhotos(editorBox, {
-    image: (element, index) => {
-      const entry = bodyEntryAt(attachedDoc, current, element, index, syntax);
+    image: (element, nth) => {
+      const entry = bodyEntryAt(attachedDoc, current, element, nth, syntax);
       return entry && isImageInsert(entry) ? entry : null;
     },
     moves: imageMoves,
@@ -205,7 +205,7 @@ function OpenedBodyEditor({
     move: (item, direction) => {
       const result = moveImage(item, direction);
       if (!result.ok) return result;
-      return { ok: true, index: bodyEntryElementIndex(attachedDoc, result.body, result.index, syntax) };
+      return { ok: true, at: bodyEntryElementAt(attachedDoc, result.body, result.index, syntax) };
     },
   });
   // 본문과 본문에 넣은 이미지를 낸다. 일반 편집으로 고칠 수 없게 된 글도 제목·설정은 일반 편집에서 저장하므로,
@@ -276,7 +276,11 @@ function OpenedBodyEditor({
             readOnly={locked}
             handleRef={editor}
             onChange={(markdown, initialMarkdownNormalize) => {
-              if (!initialMarkdownNormalize) return edit(markdown);
+              if (!initialMarkdownNormalize) {
+                // 고른 사진의 차례가 바뀌었을 수 있어 다른 이미지를 고치지 않게 선택을 푼다.
+                photos.select(null);
+                return edit(markdown);
+              }
               setCurrent(markdown);
               normalized.current = markdown;
               setDraft(editedBody(body, normalized.current, edited.current));

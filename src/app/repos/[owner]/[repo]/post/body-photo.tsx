@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useId, useRef, useState, type RefObject } from "react";
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 
 import { SECONDARY_BUTTON_CLASS } from "@/app/_lib/ui";
@@ -9,22 +9,23 @@ import {
   imageActionMessage,
   imageMoveNotice,
   insertItemName,
+  type BodyElementAt,
   type ImageInsertItem,
   type ImageMoveProblem,
   type ImageMoves,
   type InsertFormProblem,
 } from "@/lib/content/insert-form";
-import type { JsxElement, MoveDirection } from "@/lib/mdx-doc";
+import { printJsxTag, type JsxElement, type MoveDirection } from "@/lib/mdx-doc";
 
 import { focusImageAction, ImageActions, type FormOpener } from "./insert-form";
 
 /**
  * 본문 사진을 골라 하는 조작. 일반 편집 본문이 그 편집기에 적용한다.
- * `index`는 사진이 본문의 몇 번째 JSX 요소인지다. 편집기는 요소의 원문 위치를 주지 않아 순서로 가리킨다.
+ * 편집기는 요소의 원문 위치를 주지 않아 사진을 본문에서 태그가 같은 요소 중 몇 번째인지(`nth`)로 가리킨다.
  */
 export type BodyPhotoActions = {
-  /** 그 자리의 요소가 교체·제거·이동할 수 있는 이미지면 그 항목. */
-  image: (element: JsxElement, index: number) => ImageInsertItem | null;
+  /** 그 요소가 교체·제거·이동할 수 있는 이미지면 그 항목. */
+  image: (element: JsxElement, nth: number) => ImageInsertItem | null;
   moves: (item: ImageInsertItem) => ImageMoves;
   /** 저장 중이거나 폼이 열려 있으면 조작을 막는다. */
   disabled: boolean;
@@ -33,37 +34,42 @@ export type BodyPhotoActions = {
   replace: ((item: ImageInsertItem, button: HTMLElement, opener: FormOpener) => void) | null;
   /** 지우지 못하면 이유를 돌려준다. */
   remove: (item: ImageInsertItem) => InsertFormProblem | null;
-  /** 옮기면 옮긴 이미지가 본문의 몇 번째 JSX 요소가 됐는지 돌려준다. */
+  /** 옮기면 옮긴 이미지가 본문의 어느 요소가 됐는지 돌려준다. */
   move: (
     item: ImageInsertItem,
     direction: MoveDirection,
-  ) => { ok: true; index: number } | { ok: false; reason: ImageMoveProblem };
+  ) => { ok: true; at: BodyElementAt | null } | { ok: false; reason: ImageMoveProblem };
 };
 
-/** 고른 사진. `id`는 그 사진의 자리 표시 값이고 `index`는 고를 때 본문의 몇 번째 JSX 요소였는지다. */
-type Selected = { id: string; index: number };
+/**
+ * 고른 사진. `id`는 그 사진의 자리 표시 값이고 `nth`는 고를 때 태그가 같은 사진 중 몇 번째였는지다.
+ * 본문이 바뀌면 `nth`가 달라질 수 있어 선택을 푼다(`select(null)`).
+ */
+type Selected = { id: string; nth: number };
+
+/** 다시 그린 본문에서 찾을 사진. 모든 사진 중 몇 번째인지(`photo`)거나 태그가 같은 사진 중 몇 번째인지다. */
+type PhotoAt = { photo: number } | BodyElementAt;
 
 type BodyPhotos = {
   actions: BodyPhotoActions;
   selected: Selected | null;
   select: (selected: Selected | null) => void;
-  /** 자리 표시가 본문의 몇 번째 JSX 요소인지. */
-  indexOf: (mark: Element) => number;
-  /** 편집기가 본문을 다시 그린 뒤 `index`번째 요소의 사진을 고르고 `focus` 쪽 버튼에 초점을 둔다. */
-  reselect: (index: number, focus: MoveDirection | "select") => void;
+  /** 자리 표시의 사진이 본문에서 태그가 같은 사진 중 몇 번째인지. */
+  nthOf: (mark: Element) => number;
+  /** 자리 표시의 사진이 본문의 모든 사진 중 몇 번째인지. */
+  photoOf: (mark: Element) => number;
+  /** 편집기가 본문을 다시 그린 뒤 `at`의 사진을 고르고 `focus` 쪽 버튼에 초점을 둔다. */
+  reselect: (at: PhotoAt, focus: MoveDirection | "select") => void;
   /** 지금 자리 표시가 든 블록을 기억해 두고, 돌려준 함수를 부르면 다시 그린 본문에서 그 앞 블록으로 초점을 옮긴다. */
   focusBefore: (mark: Element) => () => void;
 };
 
 /**
- * 편집기가 그리는 JSX 요소마다 맨 앞에 두는 자리 표시. 문서 순서로 세면 본문의 몇 번째 JSX 요소인지가 된다.
- * 사진의 자리 표시는 값으로 사진을 구별한다.
+ * 사진마다 맨 앞에 두는 자리 표시. 값으로 사진을 구별하고, 태그(`printJsxTag`)를 함께 둬 태그가 같은 사진끼리 센다.
+ * 편집기는 `<p>`·`<br />` 같은 HTML 요소를 JSX 요소로 그리지 않아 모든 요소의 순서로는 원문과 어긋난다.
  */
-const MARK = "data-body-element";
-
-export function BodyElementMark() {
-  return <span {...{ [MARK]: "" }} hidden />;
-}
+const MARK = "data-body-photo";
+const TAG = "data-body-photo-tag";
 
 // 편집기는 처음 만든 플러그인으로 요소를 그리므로, 본문이 바뀔 때마다 달라지는 조작은 context로 넘긴다.
 export const BodyPhotosContext = createContext<BodyPhotos | null>(null);
@@ -79,19 +85,22 @@ const afterRedraw = (run: () => void) => requestAnimationFrame(run);
 export function useBodyPhotos(box: RefObject<HTMLElement | null>, actions: BodyPhotoActions): BodyPhotos {
   const [selected, setSelected] = useState<Selected | null>(null);
   const marks = () => [...(box.current?.querySelectorAll(`[${MARK}]`) ?? [])];
+  const sameTag = (tag: string | null) => marks().filter((mark) => mark.getAttribute(TAG) === tag);
   const editable = () => box.current?.querySelector<HTMLElement>('[contenteditable="true"]') ?? null;
 
   return {
     actions,
     selected,
     select: setSelected,
-    indexOf: (mark) => marks().indexOf(mark),
-    reselect: (index, focus) =>
+    nthOf: (mark) => sameTag(mark.getAttribute(TAG)).indexOf(mark),
+    photoOf: (mark) => marks().indexOf(mark),
+    reselect: (at, focus) =>
       afterRedraw(() => {
-        const mark = marks()[index];
+        const mark = "photo" in at ? marks()[at.photo] : sameTag(at.tag)[at.nth];
         const id = mark?.getAttribute(MARK);
         if (!mark?.parentElement || !id) return;
-        flushSync(() => setSelected({ id, index }));
+        const nth = sameTag(mark.getAttribute(TAG)).indexOf(mark);
+        flushSync(() => setSelected({ id, nth }));
         focusImageAction(mark.parentElement, focus);
       }),
     focusBefore: (mark) => {
@@ -134,8 +143,9 @@ export function BodyPhoto({ photo, element, inline }: { photo: BodyImagePhoto; e
   const [problem, setProblem] = useState<string | null>(null);
   const Box = inline ? "span" : "div";
   const alt = photo.alt === "" ? "대체 텍스트 없음" : `대체 텍스트: ${photo.alt}`;
+  const tag = useMemo(() => printJsxTag(element), [element]);
   const selected = photos?.selected?.id === id ? photos.selected : null;
-  const item = selected && photos ? photos.actions.image(element, selected.index) : null;
+  const item = selected && photos ? photos.actions.image(element, selected.nth) : null;
   const moves = item && photos?.actions.moves(item);
 
   // 편집기는 본문의 키 입력을 받아 Enter로 문단을 나누는 등 본문을 고치므로, 사진과 그 버튼의 키 입력은 올려 보내지 않는다.
@@ -150,7 +160,22 @@ export function BodyPhoto({ photo, element, inline }: { photo: BodyImagePhoto; e
   const toggle = () => {
     if (!photos || !mark.current) return;
     setProblem(null);
-    photos.select(selected ? null : { id, index: photos.indexOf(mark.current) });
+    photos.select(selected ? null : { id, nth: photos.nthOf(mark.current) });
+  };
+  /**
+   * 누른 때 이 사진의 항목. 고른 뒤 본문이 바뀌었을 수 있어 고를 때의 차례를 쓰지 않고 자리 표시로 다시 센다.
+   * 찾지 못하면 다른 이미지를 고치지 않고 선택을 푼다.
+   */
+  const current = (run: (photos: BodyPhotos, item: ImageInsertItem, mark: Element) => void) => {
+    if (!photos || !mark.current) return;
+    const found = photos.actions.image(element, photos.nthOf(mark.current));
+    if (!found) return photos.select(null);
+    run(photos, found, mark.current);
+  };
+  // 폼을 닫으면 본문을 다시 그렸을 수 있다. 대체 텍스트나 파일을 바꿔도 사진 수는 그대로라 같은 차례의 사진에 초점을 둔다.
+  const reopener = (photos: BodyPhotos, mark: Element): FormOpener => {
+    const photo = photos.photoOf(mark);
+    return { focus: () => photos.reselect({ photo }, "select") };
   };
 
   const actions = photos && selected && item && moves && (
@@ -159,30 +184,33 @@ export function BodyPhoto({ photo, element, inline }: { photo: BodyImagePhoto; e
       moves={moves}
       notice={imageMoveNotice(moves, "body")}
       disabled={photos.actions.disabled}
-      // 폼을 닫으면 본문을 다시 그렸을 수 있어 같은 자리의 사진을 다시 찾아 초점을 둔다.
-      onEdit={() => photos.actions.edit(item, { focus: () => photos.reselect(selected.index, "select") })}
+      onEdit={() => current((photos, item, mark) => photos.actions.edit(item, reopener(photos, mark)))}
       onReplace={
         photos.actions.replace &&
-        ((button) => photos.actions.replace?.(item, button, { focus: () => photos.reselect(selected.index, "select") }))
+        ((button) => current((photos, item, mark) => photos.actions.replace?.(item, button, reopener(photos, mark))))
       }
-      onRemove={() => {
-        const refocus = photos.focusBefore(mark.current!);
-        const reason = photos.actions.remove(item);
-        if (reason) return setProblem(imageActionMessage(reason, "body"));
-        photos.select(null);
-        refocus();
-      }}
-      onMove={(direction) => {
-        const result = photos.actions.move(item, direction);
-        if (!result.ok) return setProblem(imageActionMessage(result.reason, "body"));
-        photos.reselect(result.index, direction);
-      }}
+      onRemove={() =>
+        current((photos, item, mark) => {
+          const refocus = photos.focusBefore(mark);
+          const reason = photos.actions.remove(item);
+          if (reason) return setProblem(imageActionMessage(reason, "body"));
+          photos.select(null);
+          refocus();
+        })
+      }
+      onMove={(direction) =>
+        current((photos, item) => {
+          const result = photos.actions.move(item, direction);
+          if (!result.ok) return setProblem(imageActionMessage(result.reason, "body"));
+          if (result.at) photos.reselect(result.at, direction);
+        })
+      }
     />
   );
 
   return (
     <Box ref={box} className="inline-flex max-w-full flex-col gap-1 align-top">
-      <span ref={mark} {...{ [MARK]: id }} hidden />
+      <span ref={mark} {...{ [MARK]: id, [TAG]: tag }} hidden />
       <button
         type="button"
         data-image-action="select"

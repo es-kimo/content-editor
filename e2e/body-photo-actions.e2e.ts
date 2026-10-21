@@ -40,12 +40,16 @@ const PNG_TEXT = new TextDecoder().decode(PNG);
 const POSTS = {
   twice: "content/게시판/두-번/page.mdx",
   manage: "content/게시판/관리/page.mdx",
+  html: "content/게시판/태그/page.mdx",
+  typing: "content/게시판/고치기/page.mdx",
 };
 const BODIES = {
   twice:
     '# 두 번\n\n진료 시간을 안내해요.\n\n<Image src={image1} alt="병원 입구" />\n\n<Image src={image1} alt="입구 다시" />',
   // 맨 앞 블록이 사진이라 ‘앞으로’가 막힌다.
   manage: '<Image src={image1} alt="맨 앞" />\n\n진료 시간을 안내해요.\n\n<Image src={image1} alt="뒤 사진" />',
+  // 편집기는 <p>·<br />를 JSX 요소로 그리지 않는다. 그 뒤에 같은 태그의 사진이 두 번 온다.
+  html: '<p>진료 안내</p>\n\n<Image src={image1} alt="같음" />\n\n줄<br />바꿈\n\n<Image src={image1} alt="같음" />',
 };
 const dir = (path: string) => path.slice(0, path.lastIndexOf("/"));
 
@@ -62,6 +66,10 @@ beforeAll(async () => {
     { path: `${dir(POSTS.twice)}/1.png`, content: PNG },
     { path: POSTS.manage, content: source("관리", BODIES.manage) },
     { path: `${dir(POSTS.manage)}/1.png`, content: PNG },
+    { path: POSTS.html, content: source("태그", BODIES.html) },
+    { path: `${dir(POSTS.html)}/1.png`, content: PNG },
+    { path: POSTS.typing, content: source("고치기", BODIES.twice) },
+    { path: `${dir(POSTS.typing)}/1.png`, content: PNG },
   ]);
 });
 afterAll(async () => app?.close());
@@ -149,27 +157,34 @@ describe("본문 사진 조작", () => {
     expect(app.file(`${dir(POSTS.twice)}/1.png`)).toBe(PNG_TEXT);
   });
 
-  test("본문에서 고른 사진의 앞으로·교체·제거는 그 자리만 바꾸고, 맨 앞 블록의 ‘앞으로’는 막혀 있다", async () => {
+  test("본문에서 고른 사진의 뒤로·앞으로·교체·제거는 그 자리만 바꾸고, 맨 앞 블록의 ‘앞으로’는 막혀 있다", async () => {
+    const original = app.file(POSTS.manage)!;
     await openPost(POSTS.manage);
+    /** 사진 `alt`가 본문 문단보다 뒤에 그려졌는지. */
+    const afterParagraph = async (alt: string) =>
+      photo(alt).evaluate(
+        (el, paragraph) => Boolean(el.compareDocumentPosition(paragraph!) & Node.DOCUMENT_POSITION_PRECEDING),
+        await bodyEditor().getByText("진료 시간을 안내해요.").elementHandle(),
+      );
 
     await photo("맨 앞").click();
     expect(await action("앞으로").isDisabled()).toBe(true);
-    expect(await action("뒤로").isEnabled()).toBe(true);
+    await action("뒤로").click();
+    await unsaved("본문").waitFor();
+    // 옮긴 사진이 계속 골라져 있고 누른 버튼에 초점이 남는다.
+    await waitFocused(action("뒤로"));
+    expect(await focusedText()).toBe("뒤로");
+    expect(await photo("맨 앞").getAttribute("aria-pressed")).toBe("true");
+    expect(await afterParagraph("맨 앞")).toBe(true);
 
     await photo("뒤 사진").click();
     expect(await actions().count()).toBe(1);
     expect(await action("뒤로").isDisabled()).toBe(true);
     await action("앞으로").click();
-    await unsaved("본문").waitFor();
-    // 옮긴 사진이 계속 골라져 있고 누른 버튼에 초점이 남는다.
     await waitFocused(action("앞으로"));
     expect(await focusedText()).toBe("앞으로");
     expect(await photo("뒤 사진").getAttribute("aria-pressed")).toBe("true");
-    const moved = await photo("뒤 사진").evaluate(
-      (el, paragraph) => Boolean(el.compareDocumentPosition(paragraph!) & Node.DOCUMENT_POSITION_FOLLOWING),
-      await bodyEditor().getByText("진료 시간을 안내해요.").elementHandle(),
-    );
-    expect(moved).toBe(true);
+    expect(await afterParagraph("뒤 사진")).toBe(true);
 
     await chooseImage(action("교체"));
     await replaceForm().waitFor();
@@ -183,17 +198,54 @@ describe("본문 사진 조작", () => {
     await photo("맨 앞").click();
     await action("제거").click();
     await photo("맨 앞").waitFor({ state: "detached" });
-    // 맨 앞 블록을 지웠으므로 초점은 본문 처음으로 간다.
-    await waitFocused(bodyEditor());
+    // 지운 사진의 바로 앞 블록인 사진으로 초점이 간다.
+    await waitFocused(photo("뒤 사진"));
 
     await saveAndReopen();
     expect(newCommits()).toBe(1);
-    const saved = app.file(POSTS.manage)!;
-    expect(saved).toContain('import image2 from "./2.png";');
-    expect(saved).not.toContain('alt="맨 앞"');
-    expect(saved).toContain('<Image src={image2} alt="뒤 사진" />\n\n진료 시간을 안내해요.\n');
+    expect(app.file(POSTS.manage)).toBe(
+      original
+        .replace('import image1 from "./1.png";', 'import image1 from "./1.png";\nimport image2 from "./2.png";')
+        .replace(BODIES.manage, '진료 시간을 안내해요.\n\n<Image src={image2} alt="뒤 사진" />'),
+    );
     expect(app.file(`${dir(POSTS.manage)}/1.png`)).toBe(PNG_TEXT);
     expect(app.file(`${dir(POSTS.manage)}/2.png`)).toBeDefined();
+  });
+
+  test("<p>·<br /> 뒤에 같은 태그의 사진이 두 번 오는 글에서 두 번째 사진을 고쳐도 두 번째 태그만 바뀐다", async () => {
+    const original = app.file(POSTS.html)!;
+    await openPost(POSTS.html);
+    const same = (index: number) => photo("같음").nth(index);
+
+    await same(0).click();
+    await actions().waitFor();
+    await same(1).click();
+    expect(await actions().getByRole("button").allInnerTexts()).toEqual(["수정", "교체", "제거", "앞으로", "뒤로"]);
+    await action("수정").click();
+    await editForm().waitFor();
+    await altInput(editForm()).fill("둘째");
+    await editForm().getByRole("button", { name: "적용" }).click();
+    await editForm().waitFor({ state: "detached" });
+    await waitFocused(photo("둘째"));
+
+    await saveAndReopen();
+    const second = original.lastIndexOf('alt="같음"');
+    expect(app.file(POSTS.html)).toBe(
+      `${original.slice(0, second)}alt="둘째"${original.slice(second + 'alt="같음"'.length)}`,
+    );
+  });
+
+  test("사진을 고른 뒤 본문을 고치면 선택이 풀려 고를 때의 자리로 다른 이미지를 고치지 않는다", async () => {
+    await openPost(POSTS.typing);
+
+    await photo("입구 다시").click();
+    await actions().waitFor();
+    await bodyEditor().getByText("진료 시간을 안내해요.").click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("!");
+    await unsaved("본문").waitFor();
+    expect(await actions().count()).toBe(0);
+    expect(await photo("입구 다시").getAttribute("aria-pressed")).toBe("false");
   });
 
   test("키보드만으로 사진을 골라 대체 텍스트 폼을 열고 취소하면 초점이 그 사진으로 돌아오고, 같은 값으로 적용해도 미저장이 아니다", async () => {

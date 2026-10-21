@@ -47,7 +47,7 @@ import {
 import type { BodyImagePhoto } from "@/lib/content/body-image";
 import { advancedComponents } from "@/lib/content/insert-form";
 
-import { BodyElementMark, BodyPhoto } from "./body-photo";
+import { BodyPhoto } from "./body-photo";
 
 export type MdxBodyEditorProps = {
   markdown: string;
@@ -190,22 +190,12 @@ function leaveOnTab(event: ReactKeyboardEvent) {
   event.stopPropagation();
 }
 
-/**
- * 사진 주소가 있는 이미지는 사진으로, 나머지 요소는 이름과 속성으로 그린다. 표현만 바꾸고 요소는 고치지 않는다.
- * 사진을 고르면 본문의 몇 번째 요소인지로 삽입 항목을 찾으므로 모든 요소 앞에 자리 표시를 둔다.
- */
+/** 사진 주소가 있는 이미지는 사진으로, 나머지 요소는 이름과 속성으로 그린다. 표현만 바꾸고 요소는 고치지 않는다. */
 function JsxEditor(props: JsxEditorProps) {
   const photoOf = useContext(PhotoContext);
   const { mdastNode, descriptor } = props;
   const photo = useMemo(() => photoOf?.(mdastNode) ?? null, [photoOf, mdastNode]);
-  if (!photo) {
-    return (
-      <>
-        <BodyElementMark />
-        <GenericJsxEditor {...props} />
-      </>
-    );
-  }
+  if (!photo) return <GenericJsxEditor {...props} />;
   return <BodyPhoto key={photo.src} photo={photo} element={mdastNode} inline={descriptor.kind === "text"} />;
 }
 

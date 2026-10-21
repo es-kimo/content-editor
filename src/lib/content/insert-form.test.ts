@@ -1,8 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { parseMdx, readInserts, type InsertItem } from "@/lib/mdx-doc";
+import { parseMdx, printJsxTag, readInserts, type InsertItem, type JsxElement } from "@/lib/mdx-doc";
 import { yjshdConfig } from "@/test/config";
-import { editorElements } from "@/test/editor-elements";
+import { editorElementsAt } from "@/test/editor-elements";
 import { fixtureSources, loadFixtures } from "@/test/fixtures";
 import { PNG } from "@/test/upload-images";
 
@@ -11,7 +11,7 @@ import {
   applyBodyInsertForm,
   applyInsertForm,
   bodyEntryAt,
-  bodyEntryElementIndex,
+  bodyEntryElementAt,
   bodyImageMoves,
   bodyImageReplace,
   bodyInsert,
@@ -939,26 +939,23 @@ describe("이미지 이동", () => {
 
 describe("본문 표현의 삽입 항목", () => {
   if (!galleryDoc.ok) throw new Error("나눌 수 없음");
-  const elements = editorElements(GALLERY_BODY);
-  const entries = () => {
-    const list = bodyInserts(galleryDoc, GALLERY_BODY, syntax);
+  const drawn = editorElementsAt(GALLERY_BODY);
+  const entryOf = (body: string, { element, nth }: { element: JsxElement; nth: number }) =>
+    bodyEntryAt(galleryDoc, body, element, nth, syntax);
+  const entries = (body: string) => {
+    const list = bodyInserts(galleryDoc, body, syntax);
     if (!list.ok) throw new Error("읽지 못함");
     return insertEntries(list);
   };
 
   test("같은 import를 두 곳에서 써도 편집기가 그린 순서대로 각각 다른 이미지 항목이다", () => {
-    const first = bodyEntryAt(galleryDoc, GALLERY_BODY, elements[0]!, 0, syntax);
-    const second = bodyEntryAt(galleryDoc, GALLERY_BODY, elements[2]!, 2, syntax);
-
-    expect(first).toMatchObject({ kind: "image", name: "image1", alt: "병원 입구" });
-    expect(second).toMatchObject({ kind: "image", name: "image1", alt: "입구 다시" });
-    expect(elements.map((element, index) => bodyEntryAt(galleryDoc, GALLERY_BODY, element, index, syntax))).toEqual(
-      entries(),
-    );
+    expect(entryOf(GALLERY_BODY, drawn[0]!)).toMatchObject({ kind: "image", name: "image1", alt: "병원 입구" });
+    expect(entryOf(GALLERY_BODY, drawn[2]!)).toMatchObject({ kind: "image", name: "image1", alt: "입구 다시" });
+    expect(drawn.map((at) => entryOf(GALLERY_BODY, at))).toEqual(entries(GALLERY_BODY));
   });
 
   test("고른 두 번째 이미지의 대체 텍스트를 고치면 그 태그만 바뀐다", () => {
-    const second = bodyEntryAt(galleryDoc, GALLERY_BODY, elements[2]!, 2, syntax);
+    const second = entryOf(GALLERY_BODY, drawn[2]!);
     if (!second || !isTextInsert(second)) throw new Error("항목 없음");
 
     expect(applyBodyInsertForm(galleryDoc, GALLERY_BODY, { kind: "edit", item: second }, text("뒷문"), syntax)).toEqual(
@@ -981,37 +978,69 @@ describe("본문 표현의 삽입 항목", () => {
       "<TOC items={toc} />",
       "",
     ].join("\n");
-    const found = editorElements(body).map((element, index) => bodyEntryAt(galleryDoc, body, element, index, syntax));
+    const found = editorElementsAt(body).map((at) => entryOf(body, at));
 
     expect(found).toMatchObject([null, { kind: "image", alt: "안쪽" }, { kind: "footnote", id: 1 }, { kind: "toc" }]);
+  });
+
+  test("편집기가 요소로 그리지 않는 <p>·<div>·<br />가 앞에 있어도 같은 태그 두 사진을 각각 찾는다", () => {
+    const body = [
+      "<p>안내</p>",
+      "",
+      "<div>",
+      "",
+      '<Image src={image1} alt="같음" />',
+      "",
+      "</div>",
+      "",
+      "줄<br />바꿈",
+      "",
+      '<Image src={image1} alt="같음" />',
+      "",
+    ].join("\n");
+    const at = editorElementsAt(body);
+    const [first, second] = entries(body);
+
+    expect(at.map(({ element, nth }) => [element.name, nth])).toEqual([
+      ["Image", 0],
+      ["Image", 1],
+    ]);
+    expect(entryOf(body, at[0]!)).toEqual(first);
+    // 두 번째 사진을 골라 첫 번째 사진을 고치면 안 된다.
+    expect(entryOf(body, at[1]!)).toEqual(second);
+    expect(second!.from).toBeGreaterThan(body.indexOf("<br />"));
   });
 
   test("폼으로 고칠 수 없는 이미지도 삽입 항목 목록의 그 항목이다", () => {
     const body = '<Image src="/banner.png" alt="배너" />\n';
 
-    expect(bodyEntryAt(galleryDoc, body, editorElements(body)[0]!, 0, syntax)).toMatchObject({
-      kind: "image",
-      reason: "not-image-import",
-    });
+    expect(entryOf(body, editorElementsAt(body)[0]!)).toMatchObject({ kind: "image", reason: "not-image-import" });
   });
 
-  test("그 자리의 요소가 넘긴 요소와 다르거나 자리가 없으면 다른 항목을 고르지 않고 null이다", () => {
-    expect(bodyEntryAt(galleryDoc, GALLERY_BODY, elements[0]!, 2, syntax)).toBeNull();
-    expect(bodyEntryAt(galleryDoc, GALLERY_BODY, elements[0]!, elements.length, syntax)).toBeNull();
-    expect(bodyEntryAt(galleryDoc, "<Image src={a} \n", elements[0]!, 0, syntax)).toBeNull();
+  test("본문에 그 태그가 그 차례까지 없거나 본문을 읽을 수 없으면 다른 항목을 고르지 않고 null이다", () => {
+    const { element } = drawn[0]!;
+    expect(bodyEntryAt(galleryDoc, GALLERY_BODY, element, 1, syntax)).toBeNull();
+    expect(bodyEntryAt(galleryDoc, '<Image src={image1} alt="다른 것" />\n', element, 0, syntax)).toBeNull();
+    expect(bodyEntryAt(galleryDoc, "<Image src={a} \n", element, 0, syntax)).toBeNull();
   });
 
-  test("옮긴 이미지가 본문의 몇 번째 요소가 됐는지 찾으면 편집기가 다시 그린 그 요소가 옮긴 이미지다", () => {
-    const item = imageIn(bodyInserts(galleryDoc, GALLERY_BODY, syntax), "입구 다시");
-    const moved = moveBodyInsert(galleryDoc, GALLERY_BODY, item, "before", syntax);
+  test.each([
+    ["before", "입구 다시"],
+    ["after", "병원 입구"],
+  ] as const)("%s로 옮긴 이미지를 다시 그린 본문에서 찾으면 옮긴 그 이미지다", (direction, alt) => {
+    const item = imageIn(bodyInserts(galleryDoc, GALLERY_BODY, syntax), alt);
+    const moved = moveBodyInsert(galleryDoc, GALLERY_BODY, item, direction, syntax);
     if (!moved.ok) throw new Error(moved.reason);
 
-    const index = bodyEntryElementIndex(galleryDoc, moved.body, moved.index, syntax);
-    const redrawn = editorElements(moved.body);
+    const at = bodyEntryElementAt(galleryDoc, moved.body, moved.index, syntax);
+    const redrawn = editorElementsAt(moved.body).find(
+      ({ element, nth }) => printJsxTag(element) === at?.tag && nth === at.nth,
+    );
 
-    expect(index).toBe(1);
-    expect(bodyEntryAt(galleryDoc, moved.body, redrawn[index]!, index, syntax)).toMatchObject({ alt: "입구 다시" });
-    expect(bodyEntryElementIndex(galleryDoc, moved.body, 99, syntax)).toBe(-1);
+    expect(moved.body).not.toBe(GALLERY_BODY);
+    expect(at?.tag).toBe(`<Image src={image1} alt="${alt}" />`);
+    expect(redrawn && entryOf(moved.body, redrawn)).toEqual(entries(moved.body)[moved.index]);
+    expect(bodyEntryElementAt(galleryDoc, moved.body, 99, syntax)).toBeNull();
   });
 });
 
@@ -1019,7 +1048,7 @@ describe.each(fixtureSources.map((source) => [source.name, source.syntax, loadFi
   "%s 픽스처 전체의 본문 표현",
   (_, fixtureSyntax, fixtures) => {
     test.skipIf(!fixtures)(
-      "모든 삽입 항목은 편집기가 그린 순서의 요소로 다시 찾으면 같은 항목이다",
+      "모든 삽입 항목은 편집기가 그린 요소의 태그와 차례로 다시 찾으면 같은 항목이다",
       { timeout: 60_000 },
       () => {
         const wrong: string[] = [];
@@ -1028,11 +1057,12 @@ describe.each(fixtureSources.map((source) => [source.name, source.syntax, loadFi
           const doc = parseMdx(fixture.source, fixtureSyntax);
           const list = doc.ok ? bodyInserts(doc, doc.body, fixtureSyntax) : null;
           if (!doc.ok || !list?.ok) continue;
-          const elements = editorElements(doc.body, fixtureSyntax);
+          const drawn = editorElementsAt(doc.body, fixtureSyntax);
           for (const [entryIndex, entry] of insertEntries(list).entries()) {
-            const index = bodyEntryElementIndex(doc, doc.body, entryIndex, fixtureSyntax);
-            const at = elements[index] && bodyEntryAt(doc, doc.body, elements[index], index, fixtureSyntax);
-            if (JSON.stringify(at) !== JSON.stringify(entry)) wrong.push(`${fixture.path}@${entry.from}`);
+            const at = bodyEntryElementAt(doc, doc.body, entryIndex, fixtureSyntax);
+            const element = drawn.find((d) => printJsxTag(d.element) === at?.tag && d.nth === at.nth);
+            const back = element && bodyEntryAt(doc, doc.body, element.element, element.nth, fixtureSyntax);
+            if (JSON.stringify(back) !== JSON.stringify(entry)) wrong.push(`${fixture.path}@${entry.from}`);
             else found += 1;
           }
         }
