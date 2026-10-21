@@ -110,9 +110,10 @@ export function BodyEditor({
   const inserts = useMemo(() => bodyInserts(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
   const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
   const formLocked = locked || !forms.canOpen || images.preparing;
-  // 일반 편집으로 고칠 수 없게 된 글은 원문 편집으로 저장하게 하고, 본문과 본문에 넣은 이미지를 낸다.
+  // 본문과 본문에 넣은 이미지를 낸다. 일반 편집으로 고칠 수 없게 된 글도 제목·설정은 일반 편집에서 저장하므로,
+  // 본문은 연 그대로 첨부 없이 낸다.
   usePostInput("wysiwyg", () => {
-    if (problem) return null;
+    if (problem) return { text: body, data: new FormData(), unchanged: () => {} };
     const next = editedBody(body, normalized.current, edited.current);
     const data = images.upload(next);
     return data && { text: next, data, unchanged: () => setBaseline(next) };

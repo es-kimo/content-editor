@@ -15,6 +15,9 @@ const SAVED_POST = "content/게시판/저장/page.mdx";
 const STATUS_POST = "content/게시판/상태/page.mdx";
 /** 상태가 초안·게시 대상이 아닌 값인 글. */
 const HIDDEN_POST = "content/게시판/숨김/page.mdx";
+/** 일반 편집으로 열면 백슬래시 줄바꿈이 바뀌어 본문 구조가 달라지므로, 본문을 일반 편집으로 고칠 수 없는 글. */
+const STRUCTURE_POST = "content/게시판/구조/page.mdx";
+const STRUCTURE_BODY = "하나\\\n둘";
 const CONFIG = {
   branch: "main",
   syntax: { gfm: false, math: false },
@@ -65,6 +68,7 @@ beforeAll(async () => {
     { path: SAVED_POST, content: source("'저장해 볼 글'") },
     { path: STATUS_POST, content: source("'상태 바꿀 글'") },
     { path: HIDDEN_POST, content: source("'숨긴 글'", "hidden") },
+    { path: STRUCTURE_POST, content: source("'구조 바뀌는 글'").replace("본문 첫 문단.", STRUCTURE_BODY) },
   ]);
 });
 afterAll(async () => app?.close());
@@ -237,6 +241,30 @@ describe("글 단위 저장과 상태별 버튼", () => {
     await row("숨긴 글").waitFor();
     expect(await row("숨긴 글").getByRole("cell").nth(1).textContent()).toBe("hidden");
     expect(await row("구성 볼 글").getByRole("cell").nth(1).textContent()).toBe("게시 대상");
+  });
+
+  test("본문을 일반 편집으로 고칠 수 없는 글도 일반 편집에서 제목을 저장하고, 본문은 그대로이며 저장한 뒤 원문 편집으로 바꿀 수 있다", async () => {
+    const sourceMode = () => page.getByRole("button", { name: "원문 편집", exact: true });
+    await page.goto(postUrl(STRUCTURE_POST));
+    await page.getByText("이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요.", { exact: false }).waitFor();
+    await input("title").fill("고친 제목");
+    await page.getByText(UNSAVED_SETTINGS, { exact: true }).waitFor();
+
+    await sourceMode().click();
+    await page
+      .getByText("일반 편집에 저장하지 않은 변경이 있어 모드를 바꿀 수 없어요. 먼저 저장하거나 변경을 되돌려 주세요.")
+      .waitFor();
+
+    await button("수정 반영").click();
+    await page.getByText(PUBLISHED, { exact: true }).waitFor();
+    expect(newCommits()).toBe(1);
+    expect(app.file(STRUCTURE_POST)).toContain("고친 제목");
+    expect(app.file(STRUCTURE_POST)).toContain(STRUCTURE_BODY);
+    await heading().filter({ hasText: "고친 제목" }).waitFor();
+    expect(await page.getByText(/저장하지 않은 변경이 있/).count()).toBe(0);
+
+    await sourceMode().click();
+    expect(await sourceMode().getAttribute("aria-pressed")).toBe("true");
   });
 
   test("게시 내리기는 확인한 뒤 초안으로 저장하고, 초안을 게시하면 게시 대상이 되며 제목·작성일은 그대로다", async () => {
