@@ -16,12 +16,26 @@ export type AddedImage = {
   tag: string;
 };
 
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
+const IMAGE_CONTENT_TYPES = new Map([
+  ["png", "image/png"],
+  ["jpg", "image/jpeg"],
+  ["jpeg", "image/jpeg"],
+  ["gif", "image/gif"],
+  ["webp", "image/webp"],
+  ["avif", "image/avif"],
+  ["svg", "image/svg+xml"],
+]);
 
 /** 파일 이름이나 경로가 이미지 확장자로 끝나는지. 대소문자는 가리지 않는다. */
 export function isImageFile(name: string): boolean {
+  return imageContentType(name) !== null;
+}
+
+/** 이미지 확장자에 맞는 MIME 타입. 대소문자는 가리지 않고, 이미지 파일이 아니면 null. */
+export function imageContentType(name: string): string | null {
   const dot = name.lastIndexOf(".");
-  return dot !== -1 && IMAGE_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
+  if (dot === -1) return null;
+  return IMAGE_CONTENT_TYPES.get(name.slice(dot + 1).toLowerCase()) ?? null;
 }
 
 /** head의 이미지 import를 읽는다. 이름 없는 import(`import "./a.css"`)나 `{ a }` 형태, 이미지가 아닌 경로는 제외한다. */

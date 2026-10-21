@@ -9,6 +9,7 @@ export {
   addImage,
   addImageAs,
   findUnusedImageImports,
+  imageContentType,
   imageTag,
   isImageFile,
   readImageImports,
