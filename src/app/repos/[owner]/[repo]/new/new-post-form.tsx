@@ -1,59 +1,133 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
-import { newPostPath, postSlug } from "@/lib/content/slug";
-import { newPostChanges, type NewPostInput } from "@/lib/content/unsaved";
+import type { NewPostSubmenu } from "@/lib/content/create-post";
+import type { PostActions } from "@/lib/content/save-flow";
+import { newPostPreviewPath } from "@/lib/content/slug";
+import { newPostChanges } from "@/lib/content/unsaved";
 import type { Collection } from "@/lib/editor-config";
 
-import { SaveRow } from "../post/save-row";
+import { MetadataSettings, MetadataTitleInput, useMetadataTitle } from "../post/metadata-form";
+import { PostActionBar } from "../post/post-actions";
+import { usePostEditor } from "../post/post-editor";
+import type { NewPostSaveInput } from "./actions";
 import type { CreateState } from "./create-result";
 
 const inputClass = "rounded border px-2 py-1 text-sm disabled:opacity-60";
-const INITIAL: NewPostInput = { title: "", submenu: "" };
 
+// 폴더 이름에 쓸 수 없는 `/`로 시작해 기존 하위 메뉴 이름과 겹치지 않는다.
+const NEW_MENU = "/new";
+
+/**
+ * 새 글 화면의 입력. 글 화면과 같은 제목 입력·본문(`children`)·글 설정·저장 버튼에 하위 메뉴 선택을 더한다.
+ * 입력만으로는 저장하지 않고 ‘임시저장’·‘게시’를 눌러야 글 전체와 새 하위 메뉴를 한 번에 저장한다.
+ */
 export function NewPostForm({
   collection,
   submenus,
-  action,
+  actions,
+  save,
+  children,
 }: {
   collection: Collection;
-  /** 하위 메뉴가 있는 컬렉션이면 고를 수 있는 하위 메뉴. 없으면 null. */
+  /** 하위 메뉴가 있는 컬렉션이면 고를 수 있는 기존 하위 메뉴. 아직 없으면 빈 배열. 하위 메뉴가 없는 컬렉션이면 null. */
   submenus: string[] | null;
-  action: (data: FormData) => Promise<CreateState>;
+  actions: PostActions;
+  save: (input: NewPostSaveInput, data: FormData) => Promise<CreateState>;
+  children: ReactNode;
 }) {
-  const save = useSave("new");
-  const [title, setTitle] = useState(INITIAL.title);
-  const [submenu, setSubmenu] = useState(INITIAL.submenu);
-  const changes = newPostChanges(INITIAL, { title, submenu });
-  useReportUnsaved("title", changes.title);
-  useReportUnsaved("submenu", changes.submenu);
-  const fieldErrors = save.state.status === "error" ? (save.state.fields ?? {}) : {};
-  // 아직 입력하지 않은 자리는 자리 이름으로 채워, 만들 글이 어디에 생길지 처음부터 보여 준다.
-  const path = newPostPath(collection, postSlug(title) ?? "(제목)", submenus ? submenu || "(하위 메뉴)" : undefined);
+  const { mode } = usePostEditor();
+  const title = useMetadataTitle();
+  // 기존 메뉴가 없으면 고를 것이 없으니 새 메뉴 이름부터 받는다.
+  const [initial] = useState<NewPostSubmenu>({ kind: submenus?.length ? "existing" : "new", name: "" });
+  const [submenu, setSubmenu] = useState(initial);
+  const changes = newPostChanges({ title: "", submenu: initial }, { title, submenu });
+  // 원문 편집에서는 제목도 원문이 담아, 제목 칸의 숨은 입력은 원문 편집으로 넘어간 것이다.
+  useReportUnsaved("title", changes.title && mode === "wysiwyg");
+  useReportUnsaved("submenu", submenus !== null && changes.submenu);
+  const path = newPostPreviewPath(collection, title, submenus ? submenu.name : undefined);
 
   return (
-    <form
-      // form action은 제출 뒤 입력을 초기화한다. 만들기가 실패해도 입력이 남게 직접 보낸다.
-      onSubmit={(event) => {
-        event.preventDefault();
-        const data = new FormData(event.currentTarget);
-        save.request({ target: "new" }, () => action(data));
-      }}
-    >
-      {/* 만드는 중에는 입력을 막는다. 막힌 입력은 제출되지 않지만 제출할 값은 막기 전에 읽어 두었다. */}
-      <fieldset disabled={save.locked} className="flex flex-col gap-4">
-        {submenus && (
+    <>
+      {submenus && <SubmenuField submenus={submenus} value={submenu} onChange={setSubmenu} />}
+      <div className="flex flex-col gap-1">
+        <MetadataTitleInput />
+        <p hidden={mode === "source"} className="text-xs break-all text-zinc-500">
+          경로 {path}
+        </p>
+      </div>
+      <section className="flex flex-col gap-2">
+        <h2 className="font-medium">본문</h2>
+        {children}
+      </section>
+      <section className="flex flex-col gap-2">
+        <MetadataSettings />
+      </section>
+      <PostActionBar
+        target="new"
+        actions={actions}
+        title={title}
+        save={(input, data) => save({ ...input, submenu: submenus ? submenu : undefined }, data)}
+      />
+    </>
+  );
+}
+
+/** 기존 하위 메뉴를 고르거나 ‘새 메뉴’를 골라 이름을 입력한다. 새 메뉴는 글을 저장할 때 함께 만든다. */
+function SubmenuField({
+  submenus,
+  value,
+  onChange,
+}: {
+  submenus: string[];
+  value: NewPostSubmenu;
+  onChange: (value: NewPostSubmenu) => void;
+}) {
+  const save = useSave("new");
+  const error = save.state.status === "error" ? save.state.fields?.submenu : undefined;
+  const label = (
+    <span className="text-sm font-medium">
+      하위 메뉴<span className="text-red-600"> *</span>
+    </span>
+  );
+  const nameInput = (
+    <input
+      type="text"
+      value={value.name}
+      disabled={save.locked}
+      onChange={(event) => onChange({ kind: "new", name: event.target.value })}
+      className={inputClass}
+    />
+  );
+
+  return (
+    <div className="flex flex-col gap-1">
+      {submenus.length === 0 ? (
+        <>
           <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">
-              하위 메뉴<span className="text-red-600"> *</span>
-            </span>
+            {label}
+            {nameInput}
+          </label>
+          <span className="text-xs text-zinc-500">
+            아직 하위 메뉴가 없어요. 새 메뉴 이름을 입력하면 이 글을 저장할 때 함께 만들어요.
+          </span>
+        </>
+      ) : (
+        <>
+          <label className="flex flex-col gap-1">
+            {label}
             <select
-              name="submenu"
-              required
-              value={submenu}
-              onChange={(event) => setSubmenu(event.target.value)}
+              value={value.kind === "new" ? NEW_MENU : value.name}
+              disabled={save.locked}
+              onChange={(event) =>
+                onChange(
+                  event.target.value === NEW_MENU
+                    ? { kind: "new", name: "" }
+                    : { kind: "existing", name: event.target.value },
+                )
+              }
               className={`${inputClass} w-fit`}
             >
               <option value="" disabled>
@@ -64,27 +138,21 @@ export function NewPostForm({
                   {name}
                 </option>
               ))}
+              <option value={NEW_MENU}>새 메뉴</option>
             </select>
-            {fieldErrors.submenu && <span className="text-xs text-red-600">{fieldErrors.submenu}</span>}
           </label>
-        )}
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">
-            제목<span className="text-red-600"> *</span>
-          </span>
-          <input
-            type="text"
-            name="title"
-            required
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            className={inputClass}
-          />
-          <span className="text-xs break-all text-zinc-500">경로 {path}</span>
-          {fieldErrors.title && <span className="text-xs text-red-600">{fieldErrors.title}</span>}
-        </label>
-        <SaveRow label="만들기" save={save} />
-      </fieldset>
-    </form>
+          {value.kind === "new" && (
+            <>
+              <label className="flex flex-col gap-1">
+                <span className="text-sm">새 메뉴 이름</span>
+                {nameInput}
+              </label>
+              <span className="text-xs text-zinc-500">새 메뉴는 이 글을 저장할 때 함께 만들어요.</span>
+            </>
+          )}
+        </>
+      )}
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </div>
   );
 }

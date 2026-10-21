@@ -45,6 +45,8 @@ const ALL_ACTIONS: PostAction[] = ["save-draft", "publish", "update", "unpublish
 const postSave = (action: PostAction, mode: "wysiwyg" | "source" = "wysiwyg"): SaveRequest =>
   action === "unpublish" ? { target: "post", action } : { target: "post", action, mode };
 
+const NEW_DRAFT: SaveRequest = { target: "new", action: "save-draft", mode: "wysiwyg" };
+
 describe("savedAreas", () => {
   test("일반 편집의 글 단위 저장은 제목·설정·본문·첨부를 한 요청에 함께 담는다", () => {
     for (const action of ["save-draft", "publish", "update"] as const) {
@@ -314,7 +316,7 @@ describe("createSaveFlow", () => {
 
   test("저장한 글 화면이 열리면 그 저장의 결과만 지우고 다른 대상의 결과는 둔다", async () => {
     const { flow } = setupFlow();
-    flow.request({ target: "new" }, async () => ({ status: "error", message: "새 글 오류" }));
+    flow.request(NEW_DRAFT, async () => ({ status: "error", message: "새 글 오류" }));
     await flush();
 
     flow.request(UPDATE, async () => SAVED);
@@ -361,14 +363,14 @@ describe("createSaveFlow", () => {
     const { flow } = setupFlow({ title: true, submenu: true });
     const pending = deferred();
 
-    flow.request({ target: "new" }, () => pending.promise);
+    flow.request(NEW_DRAFT, () => pending.promise);
     pending.reject(new TypeError("Failed to fetch"));
     await flush();
 
     expect(flow.getState().phase).toEqual({ kind: "idle" });
     expect(flow.getState().results.new?.status).toBe("error");
     expect(flow.getState().changed).toEqual({ title: true, submenu: true });
-    expect(flow.request({ target: "new" }, async () => SAVED)).toBe(true);
+    expect(flow.request(NEW_DRAFT, async () => SAVED)).toBe(true);
   });
 });
 
@@ -386,15 +388,15 @@ describe("적용하지 않은 폼과 준비 중인 이미지", () => {
     expect(flow.getState().form?.blocked).toBe(action);
   });
 
-  test("폼이 열려 있으면 새 글 만들기도 제출하지 않는다", () => {
+  test("폼이 열려 있으면 새 글의 임시저장도 제출하지 않고 막은 행동을 알린다", () => {
     const { flow } = setupFlow({ title: true });
     const submit = vi.fn(async () => SAVED);
     flow.openForm("body");
 
-    expect(flow.request({ target: "new" }, submit)).toBe(false);
+    expect(flow.request(NEW_DRAFT, submit)).toBe(false);
 
     expect(submit).not.toHaveBeenCalled();
-    expect(flow.getState().form?.blocked).toBe("new");
+    expect(flow.getState().form?.blocked).toBe("save-draft");
   });
 
   test.each(ALL_ACTIONS)("어느 편집 영역이든 이미지를 준비하는 중이면 %s 저장을 제출하지 않는다", (action) => {

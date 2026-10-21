@@ -147,13 +147,17 @@ describe("글 화면 구성", () => {
     // 원문 편집기에는 글 원문(`export const metadata`)이 있어 화면 문구만 본다.
     expect(await page.getByText(/WYSIWYG|컬렉션|원문 모드/).count()).toBe(0);
 
-    for (const url of [`${app.origin}/repos/${REPO}`, `${app.origin}/repos/${REPO}/new`]) {
+    // 새 글 화면도 원문 편집기에 새 글 원문(`export const metadata`)이 있어 글 화면처럼 화면 문구만 본다.
+    for (const [url, jargon] of [
+      [`${app.origin}/repos/${REPO}`, /컬렉션|metadata/],
+      [`${app.origin}/repos/${REPO}/new`, /WYSIWYG|컬렉션|원문 모드/],
+    ] as const) {
       await page.goto(url);
       const tabs = page.getByRole("navigation", { name: "글 분류" });
       await tabs.waitFor();
       expect(await tabs.getByText("글 분류", { exact: true }).isVisible()).toBe(true);
       expect(await tabs.getByRole("link", { name: "게시판" }).isVisible()).toBe(true);
-      expect(await page.getByText(/컬렉션|metadata/).count()).toBe(0);
+      expect(await page.getByText(jargon).count()).toBe(0);
     }
   });
 

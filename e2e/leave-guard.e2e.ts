@@ -104,7 +104,8 @@ const leaveDialog = () => page.getByRole("dialog", { name: LEAVE_TITLE });
 const keepButton = () => leaveDialog().getByRole("button", { name: "계속 편집" });
 const leaveButton = () => leaveDialog().getByRole("button", { name: "변경 버리고 나가기" });
 const titleInput = () => page.locator(`input[name="${FIELD_PREFIX}title"]`);
-const newTitleInput = () => page.locator('input[name="title"]');
+// 새 글 화면도 글 화면과 같은 제목 입력을 쓴다.
+const newTitleInput = titleInput;
 const listLink = (collection = "게시판") => page.getByRole("link", { name: `${REPO} · ${collection}` });
 const isFocused = (locator: ReturnType<Page["locator"]>) => locator.evaluate((el) => el === document.activeElement);
 const sourceMode = () => page.getByRole("button", { name: "원문 편집", exact: true });
@@ -466,11 +467,11 @@ describe("새 글", () => {
     expect(browserDialogs).toEqual([]);
   });
 
-  test("새 글을 만들어 편집 화면으로 갈 때는 경고하지 않는다", async () => {
+  test("새 글을 임시저장해 글 화면으로 갈 때는 경고하지 않는다", async () => {
     await page.goto(newUrl(app, "공지"));
     await newTitleInput().fill("새 공지");
 
-    await page.getByRole("button", { name: "만들기" }).click();
+    await page.getByRole("button", { name: "임시저장" }).click();
     await page.waitForURL(/\/post\?/);
     // 새 글은 본문이 비어 있어 편집기가 같은 클래스의 자리 표시 문구를 함께 그린다.
     await page.locator(".body-editor-content[contenteditable='true']").waitFor();

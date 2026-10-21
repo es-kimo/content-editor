@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { yjshdConfig } from "@/test/config";
 
-import { checkSubmenuName, newPostPath, postSlug } from "./slug";
+import { checkSubmenuName, newPostPath, newPostPreviewPath, postSlug } from "./slug";
 
 describe("postSlug", () => {
   test("기존 글처럼 제목을 그대로 폴더 이름으로 쓴다", () => {
@@ -101,5 +101,21 @@ describe("newPostPath", () => {
     const collection = { ...board!, path: "content/{submenu}/posts/{slug}/index.mdx" };
 
     expect(newPostPath(collection, "제목", "공지")).toBe("content/공지/posts/제목/index.mdx");
+  });
+});
+
+describe("newPostPreviewPath", () => {
+  const [board, lecture] = yjshdConfig().collections;
+
+  test("입력한 제목과 하위 메뉴로 저장할 경로를 보이고, 아직 입력하지 않은 자리는 자리 이름으로 채운다", () => {
+    expect(newPostPreviewPath(lecture!, "불면증?", " AI ")).toBe("content/3.강좌/AI/불면증_/page.mdx");
+    expect(newPostPreviewPath(lecture!, "", "")).toBe("content/3.강좌/(하위 메뉴)/(제목)/page.mdx");
+    expect(newPostPreviewPath(board!, "11월 휴진 안내")).toBe("content/4.게시판/11월 휴진 안내/page.mdx");
+  });
+
+  test("폴더 이름으로 쓸 수 없는 새 메뉴 이름을 입력하는 중에도 경로를 만들지 못해 멈추지 않고 자리 이름을 보인다", () => {
+    for (const name of ["A/B", "..", "줄\n바꿈"]) {
+      expect(newPostPreviewPath(lecture!, "글", name)).toBe("content/3.강좌/(하위 메뉴)/글/page.mdx");
+    }
   });
 });

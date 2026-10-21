@@ -11,7 +11,6 @@ export {
   createPost,
   listSubmenus,
   needsSubmenu,
-  SUBMENU_FIELD,
   type CreatePostInput,
   type CreatePostResult,
   type NewPostSubmenu,
@@ -89,6 +88,7 @@ export {
   type SourceModeInput,
   type SwitchPost,
 } from "./mode-switch";
+export { newPostFromSource, newPostSource, openNewPost, readNewPostForm, type NewPost } from "./new-post";
 export {
   fetchBlobTexts,
   fetchTree,
@@ -116,13 +116,17 @@ export {
   collectPostInput,
   createSaveFlow,
   docEditorKeys,
+  newPostActions,
+  newPostRequest,
   postActions,
   savedAreas,
+  SUBMENU_FIELD,
   STATUS_PROBLEM_MESSAGES,
   TRASHED_MESSAGE,
   type EditorKeys,
   type FormArea,
   type FormBlocked,
+  type NewPostAction,
   type OpenForm,
   type PostActions,
   type PostInput,
@@ -136,7 +140,14 @@ export {
 } from "./save-flow";
 export { saveSource, type SaveSourceInput, type SaveSourceResult } from "./save-source";
 export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";
-export { checkSubmenuName, newPostPath, postSlug, type SubmenuNameCheck, type SubmenuNameProblem } from "./slug";
+export {
+  checkSubmenuName,
+  newPostPath,
+  newPostPreviewPath,
+  postSlug,
+  type SubmenuNameCheck,
+  type SubmenuNameProblem,
+} from "./slug";
 export { listTitle, postTitle, summarizePost, UNTITLED_POST, type PostSummary } from "./summary";
 export { timed } from "./timed";
 export { restorePost, trashPost, type TrashInput, type TrashResult } from "./trash";

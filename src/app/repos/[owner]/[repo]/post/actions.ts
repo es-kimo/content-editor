@@ -9,11 +9,11 @@ import {
   type EditorMode,
   type SaveEditInput,
   type SaveState,
-  type UploadImage,
 } from "@/lib/content";
 import type { Collection } from "@/lib/editor-config";
 import { readFormData, type PostAction } from "@/lib/metadata-form";
 
+import { readImages } from "./form-images";
 import { saveError, savedPostHref, saveResultState } from "./save-result";
 
 /**
@@ -23,14 +23,6 @@ import { saveError, savedPostHref, saveResultState } from "./save-result";
 export type PostSaveInput = { action: PostAction; mode: EditorMode; text: string };
 
 const ACTIONS: readonly PostAction[] = ["save-draft", "publish", "update", "unpublish"];
-
-/** 편집 화면이 넣은 이미지. 파일 이름이 `N.ext`인 `image` 파일로 받는다. */
-async function readImages(data: FormData): Promise<UploadImage[]> {
-  const files = data.getAll("image").filter((value): value is File => value instanceof File);
-  return Promise.all(
-    files.map(async (file) => ({ file: file.name, content: new Uint8Array(await file.arrayBuffer()) })),
-  );
-}
 
 /** 한 행동의 저장 입력. 게시 내리기는 상태만 바꾸므로 받은 입력을 담지 않는다. */
 async function readEdit(

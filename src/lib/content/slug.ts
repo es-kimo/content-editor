@@ -87,6 +87,18 @@ export function newPostPath(collection: Collection, slug: string, submenu?: stri
   return compilePathPattern(collection.path).build({ slug, submenu });
 }
 
+/**
+ * 새 글 화면이 입력하는 동안 보여 줄 글 경로. 아직 입력하지 않았거나 폴더 이름으로 쓸 수 없는 자리는 자리 이름으로 채운다.
+ * 쓸 수 없는 하위 메뉴 이름은 저장할 때 그 필드 옆에 알리므로, 여기서는 경로를 만들지 못해 멈추지 않게만 한다.
+ * @param submenu 하위 메뉴가 있는 컬렉션이면 고르거나 입력한 이름.
+ */
+export function newPostPreviewPath(collection: Collection, title: string, submenu?: string): string {
+  const slug = postSlug(title) ?? "(제목)";
+  if (submenu === undefined) return newPostPath(collection, slug);
+  const checked = checkSubmenuName(submenu, []);
+  return newPostPath(collection, slug, checked.ok ? checked.name : "(하위 메뉴)");
+}
+
 /** 하위 메뉴 폴더의 경로. 경로 패턴에서 `{submenu}` 단계까지다. */
 export function submenuFolder(collection: Collection, submenu: string): string {
   const segments = collection.path.split("/");
