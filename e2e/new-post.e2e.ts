@@ -24,6 +24,8 @@ const CONFIG = {
       editor: "wysiwyg",
     },
     { name: "게시판", path: "content/게시판/{submenu}/{slug}/page.mdx", metadata, editor: "wysiwyg" },
+    // 기존 글은 원문 편집으로 여는 글 분류.
+    { name: "메모", path: "content/메모/{slug}/page.mdx", metadata, editor: "source" },
   ],
 };
 const EXISTING = "content/게시판/공지/안내/page.mdx";
@@ -139,6 +141,40 @@ describe("새 글", () => {
     expect(saved).toContain("AI에게 물어봐도 될까요?");
     expect(saved).toContain('<Image src={image1} alt="강의실" />');
     expect(app.file("content/강좌/AI/첫 강좌/1.png")).toBeTruthy();
+  });
+
+  test("제목을 비운 새 글도 원문 편집과 일반 편집을 오가고, 원문 편집에서 제목 없이 ‘임시저장’하면 제목 오류를 보이고 커밋하지 않는다", async () => {
+    await openNew("게시판");
+    expect(await page.getByText("‘임시저장’은 글을 초안으로 레포에 저장해요.").isVisible()).toBe(true);
+    await page.getByRole("combobox", { name: "하위 메뉴 *" }).selectOption("공지");
+    await bodyEditor().click();
+    await page.keyboard.type("제목은 나중에 쓸게요.");
+
+    await modeButton("원문 편집").click();
+    expect(await modeButton("원문 편집").getAttribute("aria-pressed")).toBe("true");
+    const carried = await sourceEditor().innerText();
+    expect(carried).toContain('title: ""');
+    expect(carried).toContain("제목은 나중에 쓸게요.");
+
+    await page.getByRole("button", { name: "임시저장" }).click();
+    await page.getByText("제목: 값을 입력해 주세요.").waitFor();
+    expect(await page.getByText("새 글로 저장할 수 없는 것").count()).toBe(0);
+    expect(newCommits()).toBe(0);
+
+    await modeButton("일반 편집").click();
+    await bodyEditor().getByText("제목은 나중에 쓸게요.").waitFor();
+    expect(await titleInput().inputValue()).toBe("");
+    expect(newCommits()).toBe(0);
+  });
+
+  test("원문 편집이 기본인 글 분류도 새 글은 일반 편집으로 열고, 원문 편집으로 바꿔 쓸 수 있다", async () => {
+    await openNew("메모");
+    expect(await modeButton("일반 편집").getAttribute("aria-pressed")).toBe("true");
+    await titleInput().fill("첫 메모");
+
+    await modeButton("원문 편집").click();
+    expect(await sourceEditor().innerText()).toContain('title: "첫 메모"');
+    expect(newCommits()).toBe(0);
   });
 
   test("게시하는데 본문이 비거나 새 메뉴 이름에 쓸 수 없는 문자가 있으면 그 필드 옆에 오류를 보이고 입력을 둔 채 커밋하지 않는다", async () => {

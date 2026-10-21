@@ -11,6 +11,7 @@ import {
   collectPostInput,
   createSaveFlow,
   postActions,
+  SAVE_ACTIONS_HINTS,
   savedAreas,
   STATUS_PROBLEM_MESSAGES,
   TRASHED_MESSAGE,
@@ -163,6 +164,18 @@ describe("collectPostInput", () => {
     expect(collectPostInput({ settings: () => settings() }, "wysiwyg")).toBeNull();
     expect(collectPostInput({ settings: () => settings(), source: () => null }, "source")).toBeNull();
     expect(collectPostInput({ settings: () => settings(), wysiwyg: () => wysiwyg() }, "source")).toBeNull();
+  });
+});
+
+describe("SAVE_ACTIONS_HINTS", () => {
+  test("초안의 안내는 ‘임시저장’이 레포에 초안으로 저장하고 ‘게시’해야 사이트에 보인다고 알린다", () => {
+    expect(SAVE_ACTIONS_HINTS.draft).toContain("‘임시저장’은 글을 초안으로 레포에 저장해요");
+    expect(SAVE_ACTIONS_HINTS.draft).toContain("‘게시’해야 보여요");
+  });
+
+  test("게시 대상의 안내는 초안으로 따로 저장할 수 없고 ‘수정 반영’을 눌러야 레포에 저장된다고 알린다", () => {
+    expect(SAVE_ACTIONS_HINTS.ready).toContain("초안으로 따로 저장할 수 없어요");
+    expect(SAVE_ACTIONS_HINTS.ready).toContain("‘수정 반영’을 눌러야 레포에 저장돼요");
   });
 });
 

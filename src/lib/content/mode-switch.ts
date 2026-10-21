@@ -59,6 +59,7 @@ export const MODE_SWITCH_MESSAGES: { [reason in ModeSwitchProblem["reason"]]: st
 /**
  * 일반 편집 입력을 원문 편집 입력으로 바꾼다. 연 원문에 설정 폼 값·본문을 쓰고 새 이미지의 import를 더한다.
  * 첨부는 원문이 가리키므로 그대로 이어받는다. 게시 상태는 폼에 없어 연 원문의 값이 남는다.
+ * 비운 필수 값(아직 제목을 쓰지 않은 새 글 등)도 빈 값 그대로 옮긴다. 전환은 저장이 아니라 검사는 저장할 때 한다.
  */
 export function formToSource<I extends UploadImage>(
   post: SwitchPost,
@@ -68,7 +69,7 @@ export function formToSource<I extends UploadImage>(
   if (!opened.ok) return opened;
   let next: MdxDoc = opened.doc;
   if (opened.metadata) {
-    const applied = applyForm(post.collection, opened.metadata, input.values);
+    const applied = applyForm(post.collection, opened.metadata, input.values, { required: false });
     if (!applied.ok) return { ok: false, reason: "invalid", errors: applied.errors };
     next = setMetadata(opened.doc, applied.value);
   }

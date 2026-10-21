@@ -27,8 +27,10 @@ export type CarriedForm = { key: string; input: FormModeInput<DraftAttachment>; 
 /** 원문 편집에 이어받은 입력. */
 export type CarriedSource = { key: string; input: SourceModeInput<DraftAttachment> };
 
-/** 모드를 바꿀 때 편집기가 낼 지금 입력. 일반 편집의 설정 폼 값은 저장할 때와 같이 `settings`에서 읽는다. */
+/** 모드를 바꿀 때 편집기가 낼 지금 입력. */
 export type ModeInputCollectors = {
+  /** 일반 편집의 설정 폼 값. 넘길 수 없는 칸이 있으면 그 칸에 오류를 보이고 null. */
+  settings?: () => FormData | null;
   wysiwyg?: () => { body: string; images: DraftAttachment[]; doc: MdxDoc } | null;
   source?: () => SourceModeInput<DraftAttachment> | null;
 };
@@ -105,13 +107,13 @@ export function PostEditorProvider({
     const update = (next: Partial<Switched>) =>
       setSwitched({ source: post.source, switched: { ...switched, problem: null, ...next } });
 
-    /** 설정 폼에 확인할 칸이 있으면 저장할 때처럼 폼이 그 칸을 알리고, 전환은 막는다. */
+    /** 설정 폼에 넘길 수 없는 칸이 있으면 폼이 그 칸을 알리고, 전환은 막는다. 비운 필수 칸은 막지 않는다. */
     const toSource = (): ModeSwitchProblem | null => {
-      const settings = collectors.current.settings?.();
+      const settings = modeInputs.current.settings?.();
       if (settings === null) return { ok: false, reason: "invalid", errors: [] };
       const editor = modeInputs.current.wysiwyg?.();
       if (!editor) return null;
-      const { doc, ...form } = { values: settings ? readFormData(post.collection, settings.data) : {}, ...editor };
+      const { doc, ...form } = { values: settings ? readFormData(post.collection, settings) : {}, ...editor };
       const result = formToSource(post, form);
       if (!result.ok) return result;
       update({ source: { key: nextKey(), input: result.input }, previous: { input: form, doc } });

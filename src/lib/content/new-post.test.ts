@@ -3,8 +3,8 @@ import { describe, expect, test, vi } from "vitest";
 import { createGitHubClient } from "@/lib/github";
 import { parseMdx, readMetadata } from "@/lib/mdx-doc";
 import type { Collection } from "@/lib/editor-config";
-import { FIELD_PREFIX, readStatus, type PostAction } from "@/lib/metadata-form";
-import { testConfig, yjshdConfig } from "@/test/config";
+import { FIELD_PREFIX, readStatus, REQUIRED_MESSAGE, type PostAction } from "@/lib/metadata-form";
+import { blogConfig, testConfig, yjshdConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
 import { PNG } from "@/test/upload-images";
 
@@ -39,7 +39,7 @@ const metadataOf = (source: string) => {
 };
 
 describe("newPostSource", () => {
-  test("빈 제목·기본 설정·빈 본문의 초안으로, 글 분류의 기본 편집 모드로 열린다", () => {
+  test("빈 제목·기본 설정·빈 본문의 초안이고, 원문 편집으로만 열어야 하는 제한이 없다", () => {
     const source = newPostSource(board, config.syntax, NOW);
     const doc = parseMdx(source, config.syntax);
 
@@ -65,6 +65,15 @@ describe("openNewPost", () => {
     });
     expect(opened.doc.body).toBe("");
     expect(opened.fields.find((f) => f.key === "title")).toMatchObject({ initial: "", required: true, locked: null });
+  });
+
+  test("원문 편집이 기본인 글 분류도 새 글은 일반 편집으로 연다", () => {
+    const blog = blogConfig();
+    const [post] = blog.collections as [Collection];
+
+    expect(post.editor).toBe("source");
+    expect(openNewPost(post, blog.syntax, NOW).initial).toBe("wysiwyg");
+    expect(openNewPost(board, config.syntax, NOW).initial).toBe("wysiwyg");
   });
 
   test("글 설정에 제목 필드가 없는 글 분류에도 맨 앞에 비어 있는 필수 제목 칸을 둔다", () => {
@@ -216,6 +225,38 @@ describe("newPostFromSource", () => {
 
     expect(result.input.values).toMatchObject({ title: "첫 글" });
     expect(created).toMatchObject({ ok: true, path: "notes/첫 글/page.mdx" });
+  });
+
+  test("원문 편집에서 제목을 비운 새 글은 바꾸기에 실패하지 않고, 저장할 때 제목 필드 오류가 되며 커밋하지 않는다", async () => {
+    const blog = blogConfig();
+    const [post] = blog.collections as [Collection];
+    // 원문 편집으로 열린 새 글 틀에 글 설정의 제목은 비운 채 본문 제목과 Mermaid만 쓴 원문.
+    const source = newPostSource(post, blog.syntax, NOW).replace(
+      /\n*$/,
+      "\n\n# test\n\n<Mermaid chart={`\nflowchart TD\n    A[시작] --> B[끝]\n`} />\n",
+    );
+    const repo = fakeGitRepo("es-kimo/blog", "blog", []);
+    const save = (title: string) => {
+      const result = newPostFromSource(
+        post,
+        blog.syntax,
+        { source: source.replace('title: ""', title), images: [] },
+        NOW,
+      );
+      if (!result.ok) throw new Error(result.reason);
+      const submenu = { kind: "new" as const, name: "Frontend" };
+      const content = { collection: post.name, action: "save-draft" as const, ...result.input, submenu };
+      return createPost(createGitHubClient("ghu_token", repo.fetch), "es-kimo/blog", blog, content, NOW);
+    };
+    const before = repo.log().length;
+
+    expect(await save('title: ""')).toEqual({
+      ok: false,
+      reason: "invalid",
+      errors: [{ key: "title", message: REQUIRED_MESSAGE }],
+    });
+    expect(repo.log()).toHaveLength(before);
+    expect(await save('title: "test"')).toMatchObject({ ok: true });
   });
 
   test("일반 편집이 담을 수 없는 원문은 모드 전환과 같은 이유로 바꾸지 않는다", () => {

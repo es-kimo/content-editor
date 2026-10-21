@@ -10,6 +10,7 @@ import {
   type FormValues,
 } from "@/lib/metadata-form";
 
+import type { EditorMode } from "./editor-modes";
 import {
   sourceToForm,
   type FormModeInput,
@@ -36,10 +37,22 @@ export function newPostSource(collection: Collection, syntax: Syntax, now: Date)
   return printMdx(setBody(parseMdx(newMdx(newMetadata(collection, "", now), ""), syntax), ""));
 }
 
-/** 새 글 화면이 여는 글. 모드 전환이 여는 글(`post`), 일반 편집기가 여는 doc, 제목을 포함한 글 설정 필드다. */
-export type NewPost = { post: SwitchPost; doc: Extract<MdxDoc, { ok: true }>; fields: FormField[] };
+/**
+ * 새 글 화면이 여는 글. 모드 전환이 여는 글(`post`), 처음 보일 편집 모드(`initial`), 일반 편집기가 여는 doc,
+ * 제목을 포함한 글 설정 필드다.
+ */
+export type NewPost = {
+  post: SwitchPost;
+  initial: EditorMode;
+  doc: Extract<MdxDoc, { ok: true }>;
+  fields: FormField[];
+};
 
-/** `newPostSource`를 글 화면 편집기가 여는 모양으로 연다. 글 폴더가 아직 없어 파일이 없다. */
+/**
+ * `newPostSource`를 글 화면 편집기가 여는 모양으로 연다. 글 폴더가 아직 없어 파일이 없다.
+ * 글 분류의 기본 편집 모드(`editor`)와 상관없이 일반 편집으로 연다. blog의 `editor: "source"`는 JSX가 많은 기존 글이
+ * 일반 편집의 구조 검사를 통과하지 못해 정한 것이고, 본문이 빈 새 글에는 그 이유가 없다. 원문 편집은 전환으로 쓴다.
+ */
 export function openNewPost(original: Collection, syntax: Syntax, now: Date): NewPost {
   const collection = withTitleField(original);
   const metadata = newMetadata(collection, "", now);
@@ -47,13 +60,18 @@ export function openNewPost(original: Collection, syntax: Syntax, now: Date): Ne
   const doc = parseMdx(source, syntax);
   // 빈 본문의 새 글 틀이라 언제나 나눌 수 있다. 타입을 좁히려고만 확인한다.
   if (!doc.ok) throw new Error(`새 글 원문을 나눌 수 없다: ${doc.message}`);
-  return { post: { collection, syntax, source, files: [] }, doc, fields: buildForm(collection, metadata) };
+  return {
+    post: { collection, syntax, source, files: [] },
+    initial: "wysiwyg",
+    doc,
+    fields: buildForm(collection, metadata),
+  };
 }
 
 /**
  * 원문 편집으로 쓴 새 글을 처음 저장할 일반 편집 입력(제목·설정 값, 본문, 첨부)으로 바꾼다.
  * 새 글은 제목·설정으로 글 폴더와 글 설정을 만들므로, 일반 편집으로 바꿀 수 있는 원문만 저장한다.
- * 바꿀 수 없으면 모드 전환과 같은 이유를 돌려준다.
+ * 바꿀 수 없으면 모드 전환과 같은 이유를 돌려준다. 비운 제목 같은 필수 값은 바꾼 입력을 저장할 때(`createPost`) 필드 오류로 알린다.
  */
 export function newPostFromSource<I extends UploadImage>(
   collection: Collection,

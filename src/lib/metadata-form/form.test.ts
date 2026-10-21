@@ -4,7 +4,7 @@ import type { Collection } from "@/lib/editor-config";
 import type { MetadataValue } from "@/lib/mdx-doc";
 import { testConfig } from "@/test/config";
 
-import { applyForm, buildForm, FIELD_PREFIX, readFormData, splitTitleField } from "./form";
+import { applyForm, blocksModeSwitch, buildForm, FIELD_PREFIX, readFormData, splitTitleField } from "./form";
 import { fieldLabel, optionLabel, STATUS_FIELD } from "./labels";
 
 const collection = (metadata: Collection["metadata"]): Collection =>
@@ -235,6 +235,17 @@ describe("applyForm", () => {
     });
   });
 
+  test("필수 검사를 끄면 비운 필수 항목을 빈 값 그대로 반영하고, 형식 오류는 그대로 오류다", () => {
+    expect(applyForm(board, METADATA, { title: "" }, { required: false })).toEqual({
+      ok: true,
+      value: { ...METADATA, title: "" },
+    });
+    expect(applyForm(board, METADATA, { "other.createdAt": "어제" }, { required: false })).toMatchObject({
+      ok: false,
+      errors: [{ key: "other.createdAt" }],
+    });
+  });
+
   test("선택지에 없는 값은 받지 않는다. 원래 값이면 받는다", () => {
     expect(applyForm(board, METADATA, { "other.status": "hidden" })).toEqual({
       ok: false,
@@ -295,5 +306,26 @@ describe("applyForm", () => {
     expect(Object.getPrototypeOf(result.value)).toBe(Object.prototype);
     expect(Object.hasOwn(result.value, "__proto__")).toBe(true);
     expect((Object.getOwnPropertyDescriptor(result.value, "__proto__")!.value as { x: string }).x).toBe("값");
+  });
+});
+
+describe("blocksModeSwitch", () => {
+  const validity = (flags: { valid?: boolean; valueMissing?: boolean; badInput?: boolean }) => ({
+    valid: false,
+    valueMissing: false,
+    badInput: false,
+    ...flags,
+  });
+
+  test("비운 필수 칸은 모드 전환을 막지 않는다", () => {
+    expect(blocksModeSwitch(validity({ valid: true }))).toBe(false);
+    expect(blocksModeSwitch(validity({ valueMissing: true }))).toBe(false);
+  });
+
+  test("형식이 틀린 칸은 넘길 값이 없어 모드 전환을 막는다", () => {
+    expect(blocksModeSwitch(validity({ badInput: true }))).toBe(true);
+    // 날짜를 반만 입력한 필수 칸은 값이 비었다는 판정도 함께 나온다.
+    expect(blocksModeSwitch(validity({ valueMissing: true, badInput: true }))).toBe(true);
+    expect(blocksModeSwitch(validity({}))).toBe(true);
   });
 });

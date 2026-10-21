@@ -83,12 +83,14 @@ describe("휴지통", () => {
   test("게시 대상 글을 확인한 뒤 휴지통으로 옮기면 목록에서 빠지고 휴지통에 보이며, 복구하면 초안이 된다", async () => {
     const trashDialog = () => dialog("‘11월 휴진 안내’을 휴지통으로 옮길까요?");
     await page.goto(postUrl(POST));
+    await page.getByText("고친 내용은 ‘수정 반영’을 눌러야 레포에 저장돼요.").waitFor();
     await button("삭제").click();
     await trashDialog().waitFor();
     expect(await focused(trashDialog().getByRole("button", { name: "계속 편집" }))).toBe(true);
     for (const text of [
       "휴지통에서 초안으로 복구할 수 있어요",
       "첨부 이미지는 지우지 않아요",
+      "기간 제한 없이 남고 자동으로 지워지지 않아요",
       "사이트에서 사라지기까지 시간이 걸릴 수 있어요",
     ]) {
       expect(await trashDialog().getByText(text, { exact: false }).isVisible()).toBe(true);
@@ -112,6 +114,7 @@ describe("휴지통", () => {
     await page.goto(listUrl());
     await page.getByRole("link", { name: "휴지통", exact: true }).click();
     await page.getByRole("heading", { name: "휴지통", level: 1 }).waitFor();
+    await page.getByText("자동으로 지워지지 않아요. 글과 첨부 이미지 파일은 레포에").waitFor();
     // 최근에 지운 글이 위다.
     const titles = await rows().locator("td:first-child").allTextContents();
     expect(titles).toEqual(["11월 휴진 안내", "예전에 지운 글"]);

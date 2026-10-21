@@ -16,6 +16,7 @@ import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
 import { TechDetails } from "@/app/_lib/ui";
 import type { SaveTarget } from "@/lib/content/save-flow";
 import {
+  blocksModeSwitch,
   FIELD_PREFIX,
   metadataFormChanged,
   optionLabel,
@@ -27,13 +28,16 @@ import {
 } from "@/lib/metadata-form";
 
 import { useDraftInput, useDraftTouch } from "./drafts";
-import { usePostEditor, usePostInput } from "./post-editor";
+import { useModeInput, usePostEditor, usePostInput } from "./post-editor";
 
 const inputClass = "rounded border px-2 py-1 text-sm disabled:opacity-60";
 
 type FieldErrors = { [key: string]: string };
 
 type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+const isFieldElement = (element: Element): element is FieldElement =>
+  element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement;
 
 type MetadataFormValue = {
   formId: string;
@@ -111,6 +115,19 @@ export function MetadataForm({
     if (!element.reportValidity()) return null;
     // 변경 없음은 저장해도 지금 값과 같다는 뜻이라, 지금 입력을 저장한 값으로 본다.
     return { data: new FormData(element), unchanged: () => setChanged({ version: opened, changed: false }) };
+  });
+  useModeInput("settings", () => {
+    const element = form.current;
+    if (!element) return null;
+    setInvalid({ version: opened, errors: {} });
+    const blocked = [...element.elements].find(
+      (input): input is FieldElement => isFieldElement(input) && input.willValidate && blocksModeSwitch(input.validity),
+    );
+    if (blocked) {
+      blocked.reportValidity();
+      return null;
+    }
+    return new FormData(element);
   });
   // 보관은 입력 중인 값을 그대로 담으므로 저장할 때와 달리 검사하지 않는다.
   useDraftInput("settings", () => (form.current ? new FormData(form.current) : null));

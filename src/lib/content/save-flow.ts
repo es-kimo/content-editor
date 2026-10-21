@@ -178,6 +178,15 @@ export function newPostActions(collection: Collection): PostActions {
   return { ok: true, status: "draft", ...STATUS_ACTIONS.draft, remove: "cancel" };
 }
 
+/**
+ * 저장 버튼 아래에 둘, 버튼이 어디에 무엇을 저장하는지 안내. 브라우저 자동 보관과 레포 저장을 헷갈리지 않게 한다.
+ * 게시 대상 글은 레포에 따로 초안을 두지 않으므로 ‘수정 반영’ 전까지 이 브라우저에만 남는다고 알린다(v0.4 PRD §5).
+ */
+export const SAVE_ACTIONS_HINTS: { [status in PostStatus]: string } = {
+  draft: "‘임시저장’은 글을 초안으로 레포에 저장해요. 사이트에는 ‘게시’해야 보여요.",
+  ready: "게시 중인 글이라 초안으로 따로 저장할 수 없어요. 고친 내용은 ‘수정 반영’을 눌러야 레포에 저장돼요.",
+};
+
 /** 새 글 화면에서 누른 행동의 저장 요청. 새 글이 처음 할 수 없는 행동(수정 반영·게시 내리기)이면 null. */
 export function newPostRequest(action: PostAction, mode: EditorMode): SaveRequest | null {
   return action === "save-draft" || action === "publish" ? { target: "new", action, mode } : null;

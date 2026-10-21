@@ -1,5 +1,6 @@
 export {
   applyForm,
+  blocksModeSwitch,
   buildForm,
   FIELD_PREFIX,
   metadataFormChanged,

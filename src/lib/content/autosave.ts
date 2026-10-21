@@ -2,6 +2,7 @@
 import {
   clearSavedDraft,
   discardDraft,
+  DRAFT_TTL_DAYS,
   saveDraft,
   type Draft,
   type DraftContent,
@@ -156,6 +157,9 @@ export function createAutosave({
 
 /** 자동 보관 표시. `warning`이면 경고 색으로 보인다. 자동 보관은 레포 저장이 아니라 성공 색을 쓰지 않는다. */
 export type AutosaveNotice = { tone: "info" | "warning"; text: string };
+
+/** 자동 보관 상태 줄 아래에 두는 안내. 자동 보관을 레포의 ‘임시저장’과 헷갈리지 않게 보관 위치와 기간을 알린다. */
+export const AUTOSAVE_SCOPE = `자동 보관은 이 브라우저에만 ${DRAFT_TTL_DAYS}일 동안 두는 것이라 레포에는 저장되지 않아요.`;
 
 /** 자동 보관에 실패했을 때의 안내. */
 export const AUTOSAVE_FAILED = "자동 보관하지 못했어요. 저장하기 전에는 이 화면을 닫지 마세요.";

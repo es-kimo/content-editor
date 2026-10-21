@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { removeConfirm } from "./remove-confirm";
 
 describe("removeConfirm", () => {
-  test("저장된 글의 삭제 확인은 제목과 초안 복구, 첨부 보존, 사이트 반영 지연을 알리고 ‘삭제’로 실행한다", () => {
+  test("저장된 글의 삭제 확인은 제목과 초안 복구, 첨부 보존, 기간 제한 없는 보관, 사이트 반영 지연을 알리고 ‘삭제’로 실행한다", () => {
     const confirm = removeConfirm({ action: "trash", title: "11월 휴진 안내", status: "ready", lost: [] });
 
     expect(confirm.kind).toBe("confirm");
@@ -12,6 +12,7 @@ describe("removeConfirm", () => {
     expect(confirm.title).toContain("‘11월 휴진 안내’");
     expect(text).toContain("휴지통에서 초안으로 복구할 수 있어요");
     expect(text).toContain("첨부 이미지는 지우지 않아요");
+    expect(text).toContain("기간 제한 없이 남고 자동으로 지워지지 않아요");
     expect(text).toContain("사이트에서 사라지기까지 시간이 걸릴 수 있어요");
     expect(confirm.confirmLabel).toBe("삭제");
   });

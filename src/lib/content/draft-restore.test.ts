@@ -6,7 +6,7 @@ import { memoryStorage } from "@/test/draft-storage";
 import { PNG } from "@/test/upload-images";
 
 import { discardDraft, listDrafts, saveDraft, type DraftContent, type DraftKey } from "./draft";
-import { draftChoices, restoreDraft } from "./draft-restore";
+import { DRAFT_RESTORE_LIMIT, draftChoices, restoreDraft } from "./draft-restore";
 import type { SwitchPost } from "./mode-switch";
 import { findCollection } from "./read";
 
@@ -134,5 +134,12 @@ describe("복구 안내", () => {
 
     const after = await listDrafts(storage, OWNER, DOC, NOW);
     expect(after.map((draft) => draft.key.tab)).toEqual(["tab-2"]);
+  });
+});
+
+describe("복구 안내의 보장 범위", () => {
+  test("보관본이 마지막 보관 뒤 30일이 지나면 지워진다는 것과 다른 기기·브라우저에서는 복구할 수 없다는 것을 함께 알린다", () => {
+    expect(DRAFT_RESTORE_LIMIT).toContain("마지막으로 보관한 뒤 30일이 지나면 지워져요");
+    expect(DRAFT_RESTORE_LIMIT).toContain("다른 기기나 다른 브라우저");
   });
 });

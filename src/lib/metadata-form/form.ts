@@ -106,8 +106,14 @@ export function readFormData(collection: Collection, data: FormData): FormValues
 /**
  * 폼 값을 metadata에 반영한 새 객체를 만든다. config에 없는 키와 키 순서는 그대로 둔다.
  * 원래 없던 키는 값을 채웠을 때만 끝에 더한다. 고칠 수 없는 필드(locked)와 제출되지 않은 필드는 원래 값을 둔다.
+ * @param options.required false면 비운 필수 필드를 오류로 보지 않고 빈 값 그대로 반영한다. 저장이 아닌 모드 전환이 쓴다.
  */
-export function applyForm(collection: Collection, metadata: MetadataObject, values: FormValues): ApplyResult {
+export function applyForm(
+  collection: Collection,
+  metadata: MetadataObject,
+  values: FormValues,
+  { required = true }: { required?: boolean } = {},
+): ApplyResult {
   const next = structuredClone(metadata);
   const errors: { key: string; message: string }[] = [];
   for (const [key, field] of Object.entries(collection.metadata)) {
@@ -123,7 +129,7 @@ export function applyForm(collection: Collection, metadata: MetadataObject, valu
       errors.push({ key, message: parsed.message });
       continue;
     }
-    if (field.required && isEmpty(parsed.value)) {
+    if (required && field.required && isEmpty(parsed.value)) {
       errors.push({ key, message: REQUIRED_MESSAGE });
       continue;
     }
@@ -134,6 +140,14 @@ export function applyForm(collection: Collection, metadata: MetadataObject, valu
     set(next, key, parsed.value);
   }
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value: next };
+}
+
+/**
+ * 브라우저 검사 결과가 이 입력 칸의 모드 전환을 막는지. 전환은 저장이 아니므로 비운 필수 칸은 그대로 넘기고 저장할 때 검사한다.
+ * 형식이 틀린 칸(날짜를 반만 입력하는 등)은 브라우저가 값을 빈 문자열로 내 넘길 값이 없으므로 막는다.
+ */
+export function blocksModeSwitch(validity: Pick<ValidityState, "valid" | "valueMissing" | "badInput">): boolean {
+  return !validity.valid && !(validity.valueMissing && !validity.badInput);
 }
 
 /**
