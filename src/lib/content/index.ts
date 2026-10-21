@@ -81,6 +81,15 @@ export {
   type TocInsertItem,
 } from "./insert-form";
 export {
+  formToSource,
+  MODE_SWITCH_MESSAGES,
+  sourceToForm,
+  type FormModeInput,
+  type ModeSwitchProblem,
+  type SourceModeInput,
+  type SwitchPost,
+} from "./mode-switch";
+export {
   fetchBlobTexts,
   fetchTree,
   listPosts,
@@ -98,17 +107,8 @@ export {
   type PreviewMessage,
   type PreviewUpload,
 } from "./preview";
-export {
-  editorKeys,
-  editorModes,
-  findCollection,
-  readPost,
-  sourceComponents,
-  type EditorMode,
-  type EditorModes,
-  type Post,
-  type PostImage,
-} from "./read";
+export { editorModes, type EditorMode, type EditorModes } from "./editor-modes";
+export { editorKeys, findCollection, readPost, sourceComponents, type Post, type PostImage } from "./read";
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
 export { saveEdit, type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
 export {
@@ -116,7 +116,6 @@ export {
   collectPostInput,
   createSaveFlow,
   docEditorKeys,
-  modeHasUnsaved,
   postActions,
   savedAreas,
   STATUS_PROBLEM_MESSAGES,

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 
 import { FormBlockedNotice, useFormFlow, useReportPreparing } from "@/app/_lib/unsaved";
+import type { DraftAttachment } from "@/lib/content/draft";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 업로드 정책과 세션만 가져온다.
 import { UPLOAD_IMAGE_TYPES, uploadImports, type UploadImage, type UploadPlan } from "@/lib/content/upload";
 import type { FormArea } from "@/lib/content/save-flow";
@@ -51,6 +52,7 @@ export function AttachedImagesNotice({ upload, children }: { upload: ImageUpload
  * `onAdded`가 대체 텍스트 폼을 열게 한다. 준비를 시작해 폼이 열릴 때까지 준비 중이고, 그 뒤는 열린 폼이 저장을 막는다.
  * @param area 이미지를 받는 편집 영역. 받은 이미지의 폼도 이 영역에 열린다.
  * @param used 편집 영역의 원문이 참조하는 첨부(`createUploadSession`).
+ * @param attachments 다른 모드에서 이어받은 첨부. `doc`은 그 import를 이미 담고 있다.
  * @param onAdded 첨부에 더한 이미지로 폼을 연다. 열지 못하면 false. `opener`는 이미지를 받을 때 초점이 있던 요소다.
  */
 export function useImageUpload({
@@ -58,31 +60,37 @@ export function useImageUpload({
   doc,
   files,
   used,
+  attachments,
   onAdded,
 }: {
   area: FormArea;
   doc: MdxDoc;
   files: string[];
   used?: (plan: UploadPlan, text: string) => UploadImage[];
+  attachments?: DraftAttachment[];
   onAdded: (image: AddedUpload, opener: HTMLElement | null) => boolean;
 }) {
   const forms = useFormFlow();
   // 세션이 준비 중 여부를 바꾸면 이 상태로 다시 그려 첨부 판정과 저장 버튼을 갱신한다.
   const [preparing, setPreparing] = useState(false);
   const [session] = useState(() =>
-    createUploadSession<File>({ doc, files, prepare: prepareImage, onPreparing: setPreparing, used }),
+    createUploadSession<File>({ doc, files, prepare: prepareImage, onPreparing: setPreparing, used, attachments }),
   );
   useReportPreparing(area, preparing);
   const [problem, setProblem] = useState<ImageProblem | null>(null);
-  const [attached, setAttached] = useState<{ file: string; size: number }[]>([]);
+  const attachedOf = () => session.plan.images.map(({ file, content }) => ({ file, size: content.byteLength }));
+  const [attached, setAttached] = useState(attachedOf);
   const [attachedDoc, setAttachedDoc] = useState(doc);
   // 넣은 이미지는 커밋 전이라 레포 주소가 없으므로 미리보기는 브라우저 안의 주소로 보여 준다.
-  const objectUrls = useRef(new Map<string, string>());
-  const [previewImages, setPreviewImages] = useState<PreviewImages>({});
-  useEffect(() => {
-    const urls = objectUrls.current;
-    return () => urls.forEach((url) => URL.revokeObjectURL(url));
-  }, []);
+  const [objectUrls] = useState(() => new Map<string, string>());
+  const previewOf = (): PreviewImages => {
+    for (const { name, image } of uploadImports(session.plan)) {
+      if (!objectUrls.has(name)) objectUrls.set(name, URL.createObjectURL(new Blob([new Uint8Array(image.content)])));
+    }
+    return Object.fromEntries(objectUrls);
+  };
+  const [previewImages, setPreviewImages] = useState(previewOf);
+  useEffect(() => () => objectUrls.forEach((url) => URL.revokeObjectURL(url)), [objectUrls]);
   // 준비가 끝난 뒤 지금 화면의 상태로 폼을 열도록 마지막으로 그린 `onAdded`를 쓴다.
   const latestOnAdded = useRef(onAdded);
   useEffect(() => {
@@ -100,14 +108,9 @@ export function useImageUpload({
     if (session.preparing) return setProblem({ kind: "blocked", message: IMAGE_ADD_BLOCKED.preparing });
     if (selected.length > 1) return setProblem({ kind: "blocked", message: IMAGE_ADD_BLOCKED.many });
     void session.add(selected, ({ images, problems }) => {
-      setAttached(session.plan.images.map(({ file, content }) => ({ file, size: content.byteLength })));
+      setAttached(attachedOf());
       setAttachedDoc(session.plan.doc);
-      for (const { name, image } of uploadImports(session.plan)) {
-        if (!objectUrls.current.has(name)) {
-          objectUrls.current.set(name, URL.createObjectURL(new Blob([new Uint8Array(image.content)])));
-        }
-      }
-      setPreviewImages(Object.fromEntries(objectUrls.current));
+      setPreviewImages(previewOf());
       setProblem(
         problems.length > 0
           ? { kind: "invalid", message: problems.map((p) => uploadMessage(p.name, p.problem)).join(" ") }
@@ -153,6 +156,12 @@ export function useImageUpload({
         data.append("image", new File([new Uint8Array(image.content)], image.file));
       }
       return data;
+    },
+    /** `text`가 쓰는 첨부와 그 크기. 모드를 바꿀 때 다른 모드로 넘긴다. 준비 중이면 null. */
+    attachments(text: string): DraftAttachment[] | null {
+      const submission = session.submission(text);
+      if (!submission.ok) return null;
+      return submission.images.map((image) => ({ ...image, ...session.sizes.get(image.file) }));
     },
     /** 파일 선택 창을 연다. 고른 이미지의 폼을 닫으면 `opener`로 초점을 돌린다. */
     pick(opener: HTMLElement | null) {

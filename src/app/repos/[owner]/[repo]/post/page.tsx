@@ -119,7 +119,15 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
   return (
     // 저장하면 새 커밋을 `saved`로 받아 다시 열리므로, 그 커밋으로 저장한 글 화면이 열렸는지 안다.
     <UnsavedProvider revision={commit}>
-      <PostEditorProvider initial={modes.initial}>
+      <PostEditorProvider
+        initial={modes.initial}
+        post={{
+          collection: post.collection,
+          syntax: config.syntax,
+          source: post.source,
+          files: post.images.map((image) => image.name),
+        }}
+      >
         {fields.ok ? (
           <MetadataForm version={editorKeys(post).metadata} fields={fields.fields}>
             {content}

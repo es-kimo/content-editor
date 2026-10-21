@@ -1,15 +1,6 @@
 import type { EditorConfig } from "@/lib/editor-config";
 import type { GitHubClient } from "@/lib/github";
-import {
-  addImageAs,
-  checkMdx,
-  findUnusedImageImports,
-  printMdx,
-  setBody,
-  type MdxDoc,
-  type MdxError,
-  type MetadataValue,
-} from "@/lib/mdx-doc";
+import { checkMdx, printMdx, type MdxDoc, type MdxError, type MetadataValue } from "@/lib/mdx-doc";
 import {
   applyForm,
   REQUIRED_MESSAGE,
@@ -22,7 +13,7 @@ import {
 import { savePost, type CommitResult } from "./commit";
 import { readPost, type Post } from "./read";
 import { BODY_FIELD } from "./save-flow";
-import { IMAGE_COMPONENT, type UploadCheck, type UploadImage } from "./upload";
+import { applyUploads, type UploadCheck, type UploadImage } from "./upload";
 
 export type EditablePost = Post & { doc: Extract<MdxDoc, { ok: true }> };
 
@@ -82,9 +73,8 @@ export function applyMetadataForm(post: EditablePost, values: FormValues): Metad
 }
 
 /**
- * `doc`의 본문을 `body`로 바꾸고 새 이미지의 import를 더한다. import·metadata는 `doc` 그대로 남는다.
- * 본문이 쓰지 않는 새 이미지는 커밋하지 않도록 실패로 돌려준다.
- * @param post 글 폴더에 이미 있는 이미지. 새 이미지 이름이 그 번호를 쓰지 않게 한다. 새 글은 `{ images: [] }`.
+ * 글 폴더의 지금 이미지를 피해 `applyUploads`를 한다.
+ * @param post 글 폴더에 이미 있는 이미지. 새 글은 `{ images: [] }`.
  */
 export function editBody(
   post: Pick<Post, "images">,
@@ -92,16 +82,12 @@ export function editBody(
   body: string,
   images: UploadImage[],
 ): { ok: true; doc: MdxDoc } | Exclude<UploadCheck, { ok: true }> {
-  const files = post.images.map((image) => image.name);
-  for (const { file } of images) {
-    const added = addImageAs(doc, file, { component: IMAGE_COMPONENT, files });
-    if (!added) return { ok: false, reason: "image", file, problem: "name" };
-    doc = added.doc;
-  }
-  const edited = setBody(doc, body);
-  const unused = findUnusedImageImports(edited).find((image) => images.some(({ file }) => image.path === `./${file}`));
-  if (unused) return { ok: false, reason: "image", file: unused.path.slice(2), problem: "unused" };
-  return { ok: true, doc: edited };
+  return applyUploads(
+    doc,
+    body,
+    images,
+    post.images.map((image) => image.name),
+  );
 }
 
 /**

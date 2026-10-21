@@ -28,7 +28,6 @@ const SaveFlowContext = createContext<SaveFlow | null>(null);
 
 /**
  * 화면의 편집 영역들이 알린 미저장 변경과 저장을 모으고, 미저장 입력을 잃는 이동 전에 묻는다.
- * 숨긴 편집기도 띄워 둔 채라 계속 알린다.
  * @param revision 저장한 글 화면이 열릴 때마다 바뀌는 값(`saved` 커밋). 바뀌면 저장 뒤 막아 둔 입력을 다시 받는다.
  */
 export function UnsavedProvider({ revision, children }: { revision?: string; children: ReactNode }) {

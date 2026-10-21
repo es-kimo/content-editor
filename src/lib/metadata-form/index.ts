@@ -7,6 +7,7 @@ export {
   REQUIRED_MESSAGE,
   splitTitleField,
   TITLE_FIELD,
+  withFormValues,
   type ApplyResult,
   type FormField,
   type FormValues,

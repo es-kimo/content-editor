@@ -1,6 +1,7 @@
 // 편집 화면이 브라우저에서 쓴다. GitHub 클라이언트를 import하지 않는다.
 import type { MdxDoc } from "@/lib/mdx-doc";
 
+import type { DraftAttachment } from "./draft";
 import { addUpload, usedUploads, type UploadImage, type UploadPlan, type UploadProblem } from "./upload";
 
 /** 올릴 바이트로 만든 이미지. 가로·세로는 올릴 이미지의 크기다. */
@@ -37,6 +38,7 @@ export type UploadSession<F extends { name: string }> = {
  * @param prepare 파일을 올릴 바이트로 만든다. 받지 않는 형식이거나 읽을 수 없으면 null을 돌려주거나 던진다.
  * @param onPreparing 준비 중 여부가 바뀔 때 부른다.
  * @param used 편집 영역의 원문이 참조하는 첨부. 일반 편집은 본문으로(`usedUploads`), 원문 편집은 파일 전체로 판정한다.
+ * @param attachments 다른 모드에서 이어받아 처음부터 든 첨부. `doc`은 이 첨부의 import를 이미 담고 있어야 한다.
  */
 export function createUploadSession<F extends { name: string }>({
   doc,
@@ -44,15 +46,20 @@ export function createUploadSession<F extends { name: string }>({
   prepare,
   onPreparing,
   used = usedUploads,
+  attachments = [],
 }: {
   doc: MdxDoc;
   files: string[];
   prepare: (file: F) => Promise<PreparedImage | null>;
   onPreparing?: (preparing: boolean) => void;
   used?: (plan: UploadPlan, text: string) => UploadImage[];
+  attachments?: DraftAttachment[];
 }): UploadSession<F> {
-  let plan: UploadPlan = { doc, images: [] };
+  let plan: UploadPlan = { doc, images: attachments.map(({ file, content }) => ({ file, content })) };
   const sizes = new Map<string, { width: number; height: number }>();
+  for (const { file, width, height } of attachments) {
+    if (width !== undefined && height !== undefined) sizes.set(file, { width, height });
+  }
   // 여러 번 넣은 작업이 겹칠 수 있어, 먼저 끝난 작업이 준비 중 상태를 풀지 않게 개수로 센다.
   let running = 0;
 

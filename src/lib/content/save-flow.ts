@@ -11,7 +11,7 @@ import {
   type StatusProblem,
 } from "@/lib/metadata-form";
 
-import type { EditorMode } from "./read";
+import type { EditorMode } from "./editor-modes";
 import type { EditArea } from "./unsaved";
 
 /** 저장하는 단위. 글 화면은 글 하나를 한 번에 저장하고, 새 글 만들기도 저장 하나로 본다. */
@@ -105,14 +105,6 @@ export function collectPostInput(collectors: PostInputCollectors, mode: EditorMo
       editor.unchanged();
     },
   };
-}
-
-/**
- * `mode`에서 다른 모드로 바꾸면 숨게 될 미저장 입력이 있는지. 다른 모드는 이 입력을 이어받지 못하고,
- * 숨은 입력은 다른 모드의 저장에 담기지 않으므로 전환을 막는다.
- */
-export function modeHasUnsaved(mode: EditorMode, changed: { [area in EditArea]?: boolean }): boolean {
-  return MODE_AREAS[mode].some((area) => changed[area]);
 }
 
 /** 상태 문제로 저장할 수 없을 때 기본 화면에 보일 이유와 할 일. 설정이나 원문을 확인하게 한다. */
@@ -229,7 +221,6 @@ const FAILED: SaveState = { status: "error", message: "저장하지 못했어요
 
 /**
  * 저장에 성공해 저장한 글 화면으로 갈 때 잃어도 되는 영역. 저장한 영역이고, 게시 내리기는 확인에서 버리기로 한 글 화면 전체다.
- * 저장에 담지 않은 다른 모드의 입력은 들지 않아 이탈 확인이 계속 지킨다.
  */
 const settledAreas = (request: SaveRequest): EditArea[] =>
   request.target === "post" && request.action === "unpublish" ? SCREEN_AREAS.post : savedAreas(request);

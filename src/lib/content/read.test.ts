@@ -6,7 +6,8 @@ import { printMdx } from "@/lib/mdx-doc";
 import { blogConfig, testConfig, yjshdConfig } from "@/test/config";
 import { blobSha, fakeGitHub, type FakeFile } from "@/test/fake-github";
 
-import { editorModes, readPost, sourceComponents } from "./read";
+import { editorModes } from "./editor-modes";
+import { readPost, sourceComponents } from "./read";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";

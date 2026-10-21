@@ -79,25 +79,6 @@ export async function readPost(
   };
 }
 
-export type EditorMode = Collection["editor"];
-
-export type EditorModes =
-  | { initial: EditorMode; sourceOnly: null }
-  /** `doc`: 구간으로 나눌 수 없는 글. `metadata`: metadata를 폼으로 읽을 수 없는 글 (`editable: false`). */
-  | { initial: "source"; sourceOnly: { reason: "doc" | "metadata"; message: string } };
-
-/**
- * 글 화면에서 처음 열 본문 편집 모드와, 원문 모드만 쓸 수 있는 글인지.
- * metadata를 폼으로 읽을 수 없는 글은 WYSIWYG로 본문을 저장할 수는 있어도 metadata를 고칠 곳이 원문뿐이라 원문 모드로만 연다.
- */
-export function editorModes(post: Post): EditorModes {
-  if (!post.doc.ok) return { initial: "source", sourceOnly: { reason: "doc", message: post.doc.message } };
-  if (post.metadata && !post.metadata.editable) {
-    return { initial: "source", sourceOnly: { reason: "metadata", message: post.metadata.reason } };
-  }
-  return { initial: post.collection.editor, sourceOnly: null };
-}
-
 /**
  * 원문 모드 삽입 버튼에 보일 컴포넌트. config `components` 순서를 따른다.
  * 이미지는 파일 업로드와 import까지 함께 넣어야 해서 템플릿만 넣는 버튼으로는 쓸 수 없으므로 뺀다.
