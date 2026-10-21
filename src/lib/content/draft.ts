@@ -120,6 +120,7 @@ export function collectDraft(
 /**
  * 이 탭의 보관본을 지금 내용으로 바꾼다. 첨부까지 담지 못하면 텍스트만 보관하고 빠진 첨부를 알린다.
  * 텍스트도 담지 못하면 실패이고, 이전 보관본은 그대로 둔다.
+ * @param missing 이미 빠져 있는 첨부 이름. 텍스트만 보관된 보관본을 복구하고 아직 다시 고르지 않은 이미지다.
  */
 export async function saveDraft(
   storage: DraftStorage,
@@ -127,14 +128,17 @@ export async function saveDraft(
   content: DraftContent,
   baseSha: string | null,
   now: Date,
+  missing: string[] = [],
 ): Promise<SaveDraftResult> {
   const id = draftStorageKey(key);
-  const draft: Draft = { ...content, key, baseSha, savedAt: now.getTime(), missing: [] };
-  if (await trySet(storage, id, draft)) return { ok: true, savedAt: draft.savedAt, missing: [] };
+  const draft: Draft = { ...content, key, baseSha, savedAt: now.getTime(), missing };
+  if (await trySet(storage, id, draft)) return { ok: true, savedAt: draft.savedAt, missing };
   if (content.attachments.length === 0) return { ok: false, reason: "storage" };
-  const missing = content.attachments.map((attachment) => attachment.file);
-  if (!(await trySet(storage, id, { ...draft, attachments: [], missing }))) return { ok: false, reason: "storage" };
-  return { ok: true, savedAt: draft.savedAt, missing };
+  const textOnly = [...missing, ...content.attachments.map((attachment) => attachment.file)];
+  if (!(await trySet(storage, id, { ...draft, attachments: [], missing: textOnly }))) {
+    return { ok: false, reason: "storage" };
+  }
+  return { ok: true, savedAt: draft.savedAt, missing: textOnly };
 }
 
 async function trySet(storage: DraftStorage, id: string, draft: Draft): Promise<boolean> {

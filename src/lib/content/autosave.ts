@@ -40,6 +40,7 @@ export type Autosave = {
   /**
    * 복구한 보관본을 이 탭의 보관본으로 옮긴다. 복구한 입력을 바로 이 탭의 키로 보관하고, 보관에 성공하면 원래 보관본을 지운다.
    * 원래 보관본의 키를 넘겨받지 않아, 그 보관본을 만든 탭이 아직 열려 있어도 두 탭이 같은 보관본을 덮어쓰지 않는다.
+   * 텍스트만 보관된 보관본이면 빠진 첨부를 다시 붙일 때까지 이후 보관본과 상태에 그 이름을 남긴다.
    */
   restore(draft: Draft): Promise<void>;
 };
@@ -69,6 +70,8 @@ export function createAutosave({
   let state: AutosaveState = { kind: "idle" };
   let cancel: (() => void) | null = null;
   let discarded = false;
+  /** 복구한 보관본에서 빠져 있던 첨부 중 아직 다시 붙이지 않은 이름. 다시 붙일 때까지 보관본과 상태에 남긴다. */
+  let unattached: string[] = [];
   let queue: Promise<void> = Promise.resolve();
   const listeners = new Set<() => void>();
 
@@ -85,9 +88,10 @@ export function createAutosave({
   /** 이 탭의 키로 보관하고 상태를 바꾼다. 보관했으면 true. */
   const write = async (content: DraftContent | null) => {
     if (!content || discarded) return false;
+    unattached = unattached.filter((file) => !content.attachments.some((attachment) => attachment.file === file));
     let result: SaveDraftResult;
     try {
-      result = await saveDraft(storage, key, content, base(), now());
+      result = await saveDraft(storage, key, content, base(), now(), unattached);
     } catch {
       result = { ok: false, reason: "storage" };
     }
@@ -139,10 +143,11 @@ export function createAutosave({
       unschedule();
       return enqueue(() => discardDraft(storage, key));
     },
-    restore({ input, form, attachments, key: original }) {
+    restore({ input, form, attachments, missing, key: original }) {
       // 복구한 입력이 이 탭의 지금 입력을 대신하므로 기다리던 보관은 버린다.
       unschedule();
       return enqueue(async () => {
+        unattached = missing;
         if (await write({ input, form, attachments })) await discardDraft(storage, original);
       });
     },

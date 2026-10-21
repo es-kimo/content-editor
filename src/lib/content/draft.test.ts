@@ -262,6 +262,18 @@ describe("보관 실패", () => {
     expect(await listDrafts(storage, OWNER, POST, NOW)).toHaveLength(1);
   });
 
+  test("이미 빠져 있던 첨부 이름을 넘기면 보관본과 결과에 그 이름을 남기고, 텍스트만 보관하면 새로 빠진 첨부와 합친다", async () => {
+    const { storage } = memoryStorage({ quota: 0 });
+    expect(await saveDraft(storage, key(), content("본문"), "s", NOW, ["2.jpg"])).toMatchObject({ missing: ["2.jpg"] });
+
+    const result = await saveDraft(storage, key(), content("본문", [{ file: "1.png", content: PNG }]), "s", NOW, [
+      "2.jpg",
+    ]);
+    expect(result).toMatchObject({ ok: true, missing: ["2.jpg", "1.png"] });
+    const [draft] = await listDrafts(storage, OWNER, POST, NOW);
+    expect(draft).toMatchObject({ attachments: [], missing: ["2.jpg", "1.png"] });
+  });
+
   test("첨부까지 담으면 빠진 첨부가 없다", async () => {
     const { storage } = memoryStorage();
     const result = await saveDraft(storage, key(), content("본문", [{ file: "1.png", content: PNG }]), "s", NOW);

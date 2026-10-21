@@ -323,6 +323,29 @@ describe("복구한 보관본 이어 쓰기", () => {
     ]);
   });
 
+  test("텍스트만 보관된 보관본을 복구하면 빠진 이미지를 다시 고를 때까지 상태와 보관본에 그 이름이 남는다", async () => {
+    const { autosave, clock, type, storage, drafts } = setup({ quota: JPEG.length - 1 });
+    const previous: DraftKey = { ...KEY, tab: "previous-tab" };
+    await saveDraft(storage, previous, content("지난번 입력", [{ file: "2.jpg", content: JPEG }]), "sha-1", NOW);
+    const [draft] = await drafts();
+    expect(draft.missing).toEqual(["2.jpg"]);
+
+    await autosave.restore(draft);
+    expect(autosave.getState()).toMatchObject({ kind: "saved", missing: ["2.jpg"] });
+    expect(autosaveNotice(autosave.getState(), false)?.tone).toBe("warning");
+    expect((await drafts()).map((d) => [d.key.tab, d.missing])).toEqual([["tab-1", ["2.jpg"]]]);
+
+    type("지난번 입력에 이어 쓴 입력");
+    await clock.advance(2000);
+    expect(autosave.getState()).toMatchObject({ kind: "saved", missing: ["2.jpg"] });
+    expect((await drafts()).map((d) => d.missing)).toEqual([["2.jpg"]]);
+
+    type("이미지를 다시 고른 입력", [{ file: "2.jpg", content: new Uint8Array(1) }]);
+    await clock.advance(2000);
+    expect(autosave.getState()).toMatchObject({ kind: "saved", missing: [] });
+    expect((await drafts()).map((d) => [d.missing, d.attachments.map((a) => a.file)])).toEqual([[[], ["2.jpg"]]]);
+  });
+
   test("아직 열려 있는 탭의 보관본을 다른 탭에서 복구해도 두 탭은 같은 보관본을 덮어쓰지 않는다", async () => {
     const clock = fakeClock();
     const { storage } = memoryStorage();
