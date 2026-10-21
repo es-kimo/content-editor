@@ -155,6 +155,13 @@ describe("본문 각주·출처", () => {
     expect(await actions("각주 3").innerText()).toContain("오후 휴진");
     // 고른 각주 하나에만 내용과 ‘수정’이 보인다.
     expect(await bodyEditor().getByRole("group").count()).toBe(1);
+    // 내용과 ‘수정’은 문장 안 번호 오른쪽이 아니라 바로 아래에 보이고, 번호는 문장 줄에 남는다.
+    const number = (await footnote(3).boundingBox())!;
+    const group = (await actions("각주 3").boundingBox())!;
+    expect(group.y).toBeGreaterThanOrEqual(number.y + number.height);
+    expect(Math.abs(group.x - number.x)).toBeLessThan(4);
+    const sentence = (await bodyEditor().getByText("진료를 쉬어요").boundingBox())!;
+    expect(Math.abs(number.y - sentence.y)).toBeLessThan(20);
 
     await editButton("각주 3").click();
     expect(await form("각주 3 수정").getByRole("textbox", { name: "각주 내용" }).inputValue()).toBe("오후 휴진");

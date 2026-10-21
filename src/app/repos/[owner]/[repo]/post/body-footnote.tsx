@@ -41,7 +41,7 @@ export function BodyFootnoteItem({
   );
 }
 
-/** 클릭·탭하거나 Enter·Space로 고르면 바로 뒤에 내용과 ‘수정’을 보인다. ‘수정’은 기존 수정 폼을 연다. */
+/** 클릭·탭하거나 Enter·Space로 고르면 바로 아래에 내용과 ‘수정’을 보인다. ‘수정’은 기존 수정 폼을 연다. */
 function Footnote({
   item,
   numbers,
@@ -76,9 +76,17 @@ function Footnote({
   const pressed =
     "aria-pressed:outline-2 aria-pressed:outline-offset-2 aria-pressed:outline-black dark:aria-pressed:outline-white";
 
-  // 위첨자(`sup`)는 줄 높이가 0이라 flex 항목으로 두면 높이가 없어 누를 수 없으므로 글자 흐름 안에 둔다.
+  // 위첨자(`sup`)는 줄 높이가 0이라 flex 항목으로 두면 높이가 없어 누를 수 없으므로 버튼 안 글자 흐름에 둔다.
+  // 문장 안 각주는 사진처럼 세로 inline-flex로 묶어 내용과 ‘수정’을 번호 아래에 두고, 번호는 문장 기준선에 맞춘다.
   return (
-    <Box ref={box} className={inline ? undefined : "flex flex-col items-start gap-1 text-sm"}>
+    <Box
+      ref={box}
+      className={
+        inline
+          ? "inline-flex max-w-full flex-col items-start gap-1 align-baseline"
+          : "flex flex-col items-start gap-1 text-sm"
+      }
+    >
       <ItemMark ref={mark} id={id} tag={tag} />
       {item.kind === "footnote" ? (
         <button {...select} aria-label={name} className={`px-0.5 ${pressed}`}>
@@ -90,11 +98,7 @@ function Footnote({
         </button>
       )}
       {selected && items && (
-        <span
-          role="group"
-          aria-label={`${name} 관리`}
-          className={`${inline ? "ml-2 " : ""}inline-flex flex-wrap items-center gap-2 text-sm`}
-        >
+        <span role="group" aria-label={`${name} 관리`} className="inline-flex flex-wrap items-center gap-2 text-sm">
           {item.kind === "footnote" && <span className="break-all">{item.text}</span>}
           <button
             type="button"
