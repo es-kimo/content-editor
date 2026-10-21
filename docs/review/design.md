@@ -1,7 +1,7 @@
 # 화면 기준
 
 디자이너가 없는 프로젝트라 이 문서가 디자인 기준이다. `ui-consistency-review` 스킬은 이 문서를 일반 기준보다 우선한다.
-지금 화면(처음, 글 목록, 글 화면)에서 뽑아낸 기준에 [v0.3 PRD](https://github.com/es-kimo/content-editor/wiki/v0.3-PRD) §4·§5의 화면 정책과 [v0.4 PRD](https://github.com/es-kimo/content-editor/wiki/v0.4-PRD) §3·§5의 글 단위 저장·게시 상태·휴지통·자동 보관 정책을 더했다. 사람이 고치는 문서다. 에이전트 PR은 수정할 수 없고, 새 패턴이 필요하면 PR 본문 `## 리뷰 포인트`에 기준 제안으로 적는다.
+지금 화면(처음, 글 목록, 글 화면)에서 뽑아낸 기준에 [v0.3 PRD](https://github.com/es-kimo/content-editor/wiki/v0.3-PRD) §4·§5의 화면 정책과 [v0.4 PRD](https://github.com/es-kimo/content-editor/wiki/v0.4-PRD) §3·§5의 글 단위 저장·게시 상태·휴지통·자동 보관 정책을 더했다. 사람과 에이전트가 같이 고친다. 이슈에 이 문서에 없는 새 기준이 필요하면 그 이슈의 PR에서 함께 고치고 PR 본문 `## 에이전트가 정한 것`에 적는다. 기준을 낮춰 이번 변경을 통과시키는 수정은 리뷰가 막는다.
 
 ## 원칙
 
