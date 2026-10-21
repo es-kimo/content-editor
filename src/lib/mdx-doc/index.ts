@@ -37,6 +37,7 @@ export {
   removeToc,
   replaceImage,
   setInsertText,
+  tocHeadings,
 } from "./inserts";
 export type {
   FootnoteRefChoice,
@@ -53,4 +54,6 @@ export type {
   LimitedInsert,
   MoveDirection,
   MoveLimit,
+  TocHeading,
+  TocHeadings,
 } from "./inserts";
