@@ -864,7 +864,19 @@ describe("이미지 이동", () => {
         '진료 시간이에요.\n\n<Image src={image1} alt="병원 입구" />',
       ),
       changed: true,
+      index: 0,
     });
+  });
+
+  test("이웃 블록이 이미지면 서로 자리를 바꾸고, 옮긴 이미지가 삽입 항목 목록에서 몇 번째가 됐는지 돌려준다", () => {
+    const moved = moveInsert(GALLERY, sourceImage(GALLERY, "시간표"), "after", syntax);
+    if (!moved.ok) throw new Error(moved.reason);
+    const list = readInserts(moved.source, syntax);
+    if (!list.ok) throw new Error("읽지 못함");
+
+    expect(moved.index).toBe(2);
+    expect(insertEntries(list)[moved.index]).toMatchObject({ kind: "image", alt: "시간표" });
+    expect(insertEntries(list)[1]).toMatchObject({ kind: "image", alt: "입구 다시" });
   });
 
   test("맨 앞 블록은 앞으로, 맨 뒤 블록은 뒤로 옮길 수 없는 상태를 돌려주고 버튼 옆 안내는 두지 않는다", () => {

@@ -98,8 +98,10 @@ export function useImageUpload({
   }, [onAdded]);
   const picker = useRef<HTMLInputElement>(null);
   const pickOpener = useRef<HTMLElement | null>(null);
+  const pickAdded = useRef<((image: AddedUpload) => boolean) | null>(null);
 
-  const add = (selected: File[], opener: HTMLElement | null) => {
+  /** @param added 이 파일로 열 폼. 없으면 `onAdded`로 새 이미지 폼을 연다. */
+  const add = (selected: File[], opener: HTMLElement | null, added?: ((image: AddedUpload) => boolean) | null) => {
     if (selected.length === 0) return;
     // 막은 기록은 폼을 닫을 때 흐름이 지우므로, 남은 이유가 열린 폼 안내와 겹치지 않게 비운다.
     if (forms.blocks("image")) return setProblem(null);
@@ -117,7 +119,8 @@ export function useImageUpload({
           : null,
       );
       const [image] = images;
-      if (image && !latestOnAdded.current(image, opener)) {
+      const open = added ?? ((found: AddedUpload) => latestOnAdded.current(found, opener));
+      if (image && !open(image)) {
         setProblem({ kind: "blocked", message: IMAGE_ADD_BLOCKED.unopened });
       }
     });
@@ -163,9 +166,13 @@ export function useImageUpload({
       if (!submission.ok) return null;
       return submission.images.map((image) => ({ ...image, ...session.sizes.get(image.file) }));
     },
-    /** 파일 선택 창을 연다. 고른 이미지의 폼을 닫으면 `opener`로 초점을 돌린다. */
-    pick(opener: HTMLElement | null) {
+    /**
+     * 파일 선택 창을 연다. 고른 이미지의 폼을 닫으면 `opener`로 초점을 돌린다.
+     * @param added 고른 파일을 첨부에 더한 뒤 열 폼. 이미지 교체처럼 새 이미지 폼이 아닌 폼을 열 때 준다.
+     */
+    pick(opener: HTMLElement | null, added?: (image: AddedUpload) => boolean) {
       pickOpener.current = opener;
+      pickAdded.current = added ?? null;
       picker.current?.click();
     },
     /** 이미지를 받는 편집기를 감싸는 요소에 붙인다. */
@@ -186,7 +193,7 @@ export function useImageUpload({
           const selected = [...(event.target.files ?? [])];
           // 같은 파일을 다시 골라도 change가 일어나게 비운다.
           event.target.value = "";
-          add(selected, pickOpener.current);
+          add(selected, pickOpener.current, pickAdded.current);
         }}
       />
     ),

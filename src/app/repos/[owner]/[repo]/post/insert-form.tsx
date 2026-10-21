@@ -8,25 +8,32 @@ import { useFormFlow } from "@/app/_lib/unsaved";
 import {
   formDirty,
   formInitialValue,
+  imageActionMessage,
+  imageMoveNotice,
   insertEntries,
+  insertFormDescription,
   insertFormLabels,
   insertFormMessage,
   insertFormNotice,
   insertItemName,
   insertLimitMessage,
+  isImageInsert,
   isTextInsert,
   isTocInsert,
   TOC_NEEDS_HEADING,
   tocRemoveMessage,
   type FootnoteChoice,
+  type ImageInsertItem,
+  type ImageMoveProblem,
+  type ImageMoves,
   type InsertFormInput,
   type InsertFormProblem,
   type InsertFormTarget,
+  type RemovableInsertItem,
   type TextInsertItem,
-  type TocInsertItem,
 } from "@/lib/content/insert-form";
 import type { FormArea } from "@/lib/content/save-flow";
-import type { InsertList } from "@/lib/mdx-doc";
+import type { InsertList, MoveDirection } from "@/lib/mdx-doc";
 
 import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
 
@@ -82,6 +89,7 @@ export function useInsertForm({
     panel: opened && (
       <InsertFormPanel
         {...insertFormLabels(opened.target)}
+        description={insertFormDescription(opened.target)}
         notice={insertFormNotice(opened.target)}
         choices={opened.target.kind === "footnote-ref" ? opened.target.choices : null}
         input={opened.input}
@@ -109,11 +117,13 @@ export function useInsertForm({
  * 입력 칸·선택 칸의 Enter는 영역 저장 대신 적용, Esc는 취소로 받는다. 열리면 첫 조작 요소로 초점이 간다.
  * @param field 입력 칸 이름. 목차처럼 입력이 없는 폼은 null이다.
  * @param choices 새 출처에 연결할 각주. 출처 넣기 폼에서만 있다.
+ * @param description 폼이 무엇을 바꾸는지 보일 설명.
  * @param notice 폼을 열 때부터 보일 안내. `blocking`이면 적용할 수 없다.
  */
 function InsertFormPanel({
   title,
   field,
+  description,
   notice,
   choices,
   input,
@@ -124,6 +134,7 @@ function InsertFormPanel({
 }: {
   title: string;
   field: string | null;
+  description: string | null;
   notice: { text: string; blocking: boolean } | null;
   choices: FootnoteChoice[] | null;
   input: InsertFormInput;
@@ -163,6 +174,7 @@ function InsertFormPanel({
       <h3 id={titleId} className="font-medium">
         {title}
       </h3>
+      {description && <p className="text-sm break-all text-zinc-500">{description}</p>}
       {notice && <p className="text-sm text-amber-600">{notice.text}</p>}
       {choices && choices.length > 0 && (
         <fieldset className="flex flex-col gap-1 text-sm">
@@ -205,11 +217,27 @@ function InsertFormPanel({
   );
 }
 
+/** 삽입 항목 목록에서 고른 이미지를 다루는 방법. 편집 영역이 그 영역의 편집기에 적용한다. */
+export type ImageEntryActions = {
+  /** 고른 이미지를 앞뒤로 옮길 수 있는지. */
+  moves: (item: ImageInsertItem) => ImageMoves;
+  /** 새 파일을 골라 교체 폼을 연다. 이미지를 넣을 수 없는 글이면 null. */
+  replace: ((item: ImageInsertItem, opener: HTMLElement) => void) | null;
+  /** 옮긴다. 옮기면 옮긴 이미지가 목록에서 몇 번째인지, 옮기지 못하면 이유를 돌려준다. */
+  move: (
+    item: ImageInsertItem,
+    direction: MoveDirection,
+  ) => { ok: true; index: number } | { ok: false; reason: ImageMoveProblem };
+};
+
+const MOVE_LABELS: { [direction in MoveDirection]: string } = { before: "앞으로", after: "뒤로" };
+
 /**
  * 본문의 이미지·각주·각주 출처·목차 목록. 고칠 값이 있는 항목은 ‘수정’으로 폼을 열고, 자동 목차는 ‘제거’로 지운다.
+ * 이미지는 ‘선택’하면 ‘교체’·‘제거’·‘앞으로’·‘뒤로’를 보인다. 옮길 수 없는 쪽의 버튼은 막고, 어느 쪽으로도 못 옮기는 이유는 함께 보인다.
  * 폼으로 고칠 수 없는 항목도 숨기지 않고 구체적인 이유와 원문에서 고치는 방법을 알린다.
  * @param tocHeading 목차를 채울 제목이 글에 있는지. 없으면 목차 옆에 제목을 추가하라고 안내한다.
- * @param onRemove 자동 목차를 지운다. 지우지 못하면 이유를 돌려준다.
+ * @param onRemove 자동 목차나 이미지 한 곳을 지운다. 지우지 못하면 이유를 돌려준다.
  */
 export function InsertEntryList({
   area,
@@ -218,29 +246,61 @@ export function InsertEntryList({
   disabled,
   onEdit,
   onRemove,
+  images,
 }: {
   area: FormArea;
   list: InsertList;
   tocHeading: boolean;
   disabled: boolean;
   onEdit: (item: TextInsertItem, opener: HTMLElement) => void;
-  onRemove: (item: TocInsertItem) => InsertFormProblem | null;
+  onRemove: (item: RemovableInsertItem) => InsertFormProblem | null;
+  images: ImageEntryActions;
 }) {
+  const details = useRef<HTMLDetailsElement>(null);
   const summary = useRef<HTMLElement>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const entries = list.ok ? insertEntries(list) : [];
-  const remove = (item: TocInsertItem) => {
+  const [selected, setSelected] = useState<number | null>(null);
+  const picked = selected === null ? undefined : entries[selected];
+  const image = picked && isImageInsert(picked) ? picked : null;
+  // 이동 가능 여부는 원문을 여러 번 읽으므로 모든 이미지가 아니라 고른 이미지 하나만 따진다.
+  const moves = image && images.moves(image);
+  // 옮기면 목록을 다시 그려 누른 버튼이 사라질 수 있어, 다시 그린 뒤 같은 쪽 버튼에 초점을 돌려준다.
+  // 그쪽으로 더 못 옮기면 반대쪽, 그것도 막히면 ‘선택’ 버튼으로 간다.
+  const refocus = useRef<MoveDirection | null>(null);
+  useEffect(() => {
+    const direction = refocus.current;
+    if (!direction) return;
+    refocus.current = null;
+    const order = [direction, direction === "before" ? "after" : "before", "select"];
+    const find = (name: string) =>
+      details.current?.querySelector<HTMLButtonElement>(`[data-image-action="${name}"]:enabled`);
+    order.map(find).find(Boolean)?.focus();
+  });
+
+  const remove = (item: RemovableInsertItem) => {
     const reason = onRemove(item);
     if (reason) {
-      setProblem(tocRemoveMessage(reason, area));
+      setProblem(item.kind === "toc" ? tocRemoveMessage(reason, area) : imageActionMessage(reason, area));
       return;
     }
     setProblem(null);
-    // 지운 목차의 제거 버튼이 사라지므로 초점을 목록 제목으로 옮긴다.
+    setSelected(null);
+    // 지운 항목의 제거 버튼이 사라지므로 초점을 목록 제목으로 옮긴다.
     summary.current?.focus();
   };
+  const move = (item: ImageInsertItem, direction: MoveDirection) => {
+    const result = images.move(item, direction);
+    if (!result.ok) {
+      setProblem(imageActionMessage(result.reason, area));
+      return;
+    }
+    setProblem(null);
+    setSelected(result.index);
+    refocus.current = direction;
+  };
   return (
-    <details className="text-sm">
+    <details ref={details} className="text-sm">
       <summary ref={summary} className="cursor-pointer">
         삽입 항목{list.ok && ` ${entries.length}개`}
       </summary>
@@ -271,6 +331,33 @@ export function InsertEntryList({
                   >
                     수정
                   </button>
+                  {isImageInsert(entry) && (
+                    <button
+                      type="button"
+                      aria-label={`${insertItemName(entry)} 선택`}
+                      aria-pressed={entry === image}
+                      data-image-action={entry === image ? "select" : undefined}
+                      disabled={disabled}
+                      onClick={() => {
+                        setProblem(null);
+                        setSelected(entry === image ? null : index);
+                      }}
+                      className={TOGGLE_BUTTON_CLASS}
+                    >
+                      선택
+                    </button>
+                  )}
+                  {entry === image && moves && (
+                    <ImageActions
+                      name={insertItemName(entry)}
+                      moves={moves}
+                      notice={imageMoveNotice(moves, area)}
+                      disabled={disabled}
+                      onReplace={images.replace && ((opener) => images.replace?.(entry, opener))}
+                      onRemove={() => remove(entry)}
+                      onMove={(direction) => move(entry, direction)}
+                    />
+                  )}
                 </>
               ) : isTocInsert(entry) ? (
                 <>
@@ -294,6 +381,60 @@ export function InsertEntryList({
         </ul>
       )}
     </details>
+  );
+}
+
+/**
+ * 고른 이미지 한 곳의 ‘교체’·‘제거’·‘앞으로’·‘뒤로’. 옮길 수 없는 쪽의 버튼은 막는다.
+ * @param notice 어느 쪽으로도 옮길 수 없는 이유와 원문으로 가는 방법.
+ * @param onReplace 이미지를 넣을 수 없는 글이면 null이고 ‘교체’를 두지 않는다.
+ */
+function ImageActions({
+  name,
+  moves,
+  notice,
+  disabled,
+  onReplace,
+  onRemove,
+  onMove,
+}: {
+  name: string;
+  moves: ImageMoves;
+  notice: string | null;
+  disabled: boolean;
+  onReplace: ((opener: HTMLElement) => void) | null;
+  onRemove: () => void;
+  onMove: (direction: MoveDirection) => void;
+}) {
+  return (
+    <div role="group" aria-label={`${name} 관리`} className="flex w-full flex-wrap items-center gap-2 pl-4">
+      {onReplace && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={(event) => onReplace(event.currentTarget)}
+          className={TOGGLE_BUTTON_CLASS}
+        >
+          교체
+        </button>
+      )}
+      <button type="button" disabled={disabled} onClick={onRemove} className={TOGGLE_BUTTON_CLASS}>
+        제거
+      </button>
+      {(["before", "after"] as const).map((direction) => (
+        <button
+          key={direction}
+          type="button"
+          data-image-action={direction}
+          disabled={disabled || moves[direction] !== null}
+          onClick={() => onMove(direction)}
+          className={TOGGLE_BUTTON_CLASS}
+        >
+          {MOVE_LABELS[direction]}
+        </button>
+      ))}
+      {notice && <span className="text-amber-600">{notice}</span>}
+    </div>
   );
 }
 

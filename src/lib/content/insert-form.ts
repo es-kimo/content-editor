@@ -210,7 +210,9 @@ export function removeInsert(source: string, item: RemovableInsertItem, syntax: 
 /** 이미지를 옮기지 못한 이유. 옮길 자리가 없거나(`MoveLimit`) 원문에서 이미지를 다시 찾지 못했다. */
 export type ImageMoveProblem = InsertFormProblem | MoveLimit;
 
-export type ImageMoveApply = InsertFormApply | { ok: false; reason: MoveLimit };
+/** 옮긴 결과. `index`는 옮긴 이미지가 삽입 항목 목록(`insertEntries`)에서 몇 번째인지다. */
+export type ImageMoveApply =
+  (Extract<InsertFormApply, { ok: true }> & { index: number }) | { ok: false; reason: ImageMoveProblem };
 
 /**
  * 이미지만 있는 블록을 인접한 본문 블록 앞이나 뒤로 한 칸 옮긴다. `cursor`는 옮긴 이미지 끝이다.
@@ -224,7 +226,9 @@ export function moveInsert(
 ): ImageMoveApply {
   const edit = moveImage(source, item, direction, syntax);
   if (!edit.ok) return edit;
-  return { ...edit, changed: edit.source !== source };
+  const list = readInserts(edit.source, syntax);
+  const index = list.ok ? insertEntries(list).findIndex((entry) => entry.to === edit.cursor) : -1;
+  return { ...edit, changed: edit.source !== source, index };
 }
 
 /** 이미지를 앞(`before`)·뒤(`after`)로 옮길 수 없는 이유. 옮길 수 있으면 null이다. */
@@ -323,15 +327,29 @@ export function removeBodyInsert(doc: MdxDoc, body: string, item: RemovableInser
   return editBody(doc, body, (source) => removeInsert(source, item, syntax), syntax);
 }
 
-/** 일반 편집에서 이미지를 앞뒤 본문 블록으로 옮긴다. `bodyInserts`로 읽은 이미지여야 한다. */
+/**
+ * 일반 편집에서 이미지를 앞뒤 본문 블록으로 옮긴다. `bodyInserts`로 읽은 이미지여야 한다.
+ * `index`는 옮긴 이미지가 `bodyInserts` 목록에서 몇 번째인지다.
+ */
 export function moveBodyInsert(
   doc: MdxDoc,
   body: string,
   item: ImageInsertItem,
   direction: MoveDirection,
   syntax: Syntax = {},
-): BodyEdit<ImageMoveProblem> {
-  return editBody(doc, body, (source) => moveInsert(source, item, direction, syntax), syntax);
+): (Extract<BodyEdit, { ok: true }> & { index: number }) | { ok: false; reason: ImageMoveProblem } {
+  let index = -1;
+  const result = editBody(
+    doc,
+    body,
+    (source) => {
+      const moved = moveInsert(source, item, direction, syntax);
+      if (moved.ok) index = moved.index;
+      return moved;
+    },
+    syntax,
+  );
+  return result.ok ? { ...result, index } : result;
 }
 
 /** 일반 편집에서 고른 이미지를 앞뒤로 옮길 수 있는지. */
