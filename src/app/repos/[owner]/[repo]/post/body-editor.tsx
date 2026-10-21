@@ -5,6 +5,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import { TechDetails } from "@/app/_lib/ui";
 import { useReportUnsaved, useSaveLocked } from "@/app/_lib/unsaved";
+import { bodyImagePhoto, type BodyImageSources } from "@/lib/content/body-image";
 import { draftAttachments } from "@/lib/content/draft";
 import {
   applyBodyInsertForm,
@@ -21,7 +22,7 @@ import {
 } from "@/lib/content/insert-form";
 import { uploadPreviewMessage } from "@/lib/content/preview";
 import { MAX_IMAGE_SIDE } from "@/lib/content/upload";
-import { editedBody, hasTocHeading, sameBodyStructure, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
+import { editedBody, hasTocHeading, sameBodyStructure, type JsxElement, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
 
 import { BodyPreview } from "./body-preview";
 import { useDraftInput, useDraftTouch } from "./drafts";
@@ -45,6 +46,8 @@ type BodyEditorProps = {
   syntax: Syntax;
   components: string[];
   upload: BodyImageUpload | null;
+  /** 본문의 저장된 이미지를 사진으로 읽어 올 글. 새 글은 null. */
+  post: BodyImageSources["post"];
   /** config `preview`. 있으면 사이트 미리보기를 띄운다. */
   preview?: string;
 };
@@ -73,6 +76,7 @@ function OpenedBodyEditor({
   syntax,
   components,
   upload,
+  post,
   preview,
 }: BodyEditorProps & {
   /** 글에 저장된 본문. 미저장 판정의 기준이다. */
@@ -152,6 +156,11 @@ function OpenedBodyEditor({
   const { doc: attachedDoc } = images;
   const inserts = useMemo(() => bodyInserts(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
   const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
+  const { previewImages } = images;
+  const photo = useCallback(
+    (element: JsxElement) => bodyImagePhoto(attachedDoc, element, { inserted: previewImages, post }, syntax),
+    [attachedDoc, previewImages, post, syntax],
+  );
   const imageMoves = useCallback(
     (item: ImageInsertItem) => bodyImageMoves(attachedDoc, current, item, syntax),
     [attachedDoc, current, syntax],
@@ -254,6 +263,7 @@ function OpenedBodyEditor({
             })
           }
           onPickImage={upload ? images.pick : undefined}
+          photo={photo}
         />
       </div>
       {upload && images.picker}
@@ -270,7 +280,7 @@ function OpenedBodyEditor({
       <BodyPreview
         markdown={current}
         syntax={syntax}
-        images={images.previewImages}
+        images={previewImages}
         site={
           preview
             ? {

@@ -1,4 +1,4 @@
-import { IMAGE_COMPONENT, sourceComponents } from "@/lib/content";
+import { IMAGE_COMPONENT, sourceComponents, type BodyImageSources } from "@/lib/content";
 import type { Collection } from "@/lib/editor-config";
 import type { MdxDoc, Syntax } from "@/lib/mdx-doc";
 
@@ -14,6 +14,7 @@ export function BodyModes({
   files,
   keys,
   syntax,
+  post,
   preview,
 }: {
   collection: Collection;
@@ -27,6 +28,8 @@ export function BodyModes({
    */
   keys: { source: string; body: string };
   syntax: Syntax;
+  /** 일반 편집 본문이 저장된 이미지를 사진으로 읽어 올 글. 새 글은 null. */
+  post: BodyImageSources["post"];
   preview?: string;
 }) {
   // 이미지는 글 분류 설정이 허용한 글에만 넣는다.
@@ -51,6 +54,7 @@ export function BodyModes({
           syntax={syntax}
           components={collection.components}
           upload={upload}
+          post={post}
           preview={preview}
         />
       }

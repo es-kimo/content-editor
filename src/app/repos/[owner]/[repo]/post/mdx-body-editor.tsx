@@ -29,12 +29,17 @@ import {
   useCellValue,
   usePublisher,
   type JsxComponentDescriptor,
+  type JsxEditorProps,
+  type MdastJsx,
   type MDXEditorMethods,
 } from "@mdxeditor/editor";
-import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, type RefObject } from "react";
 
-// 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 폼 모듈만 가져온다.
+// 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 폼·사진 모듈만 가져온다.
+import type { BodyImagePhoto } from "@/lib/content/body-image";
 import { advancedComponents } from "@/lib/content/insert-form";
+
+import { BodyPhoto } from "./body-photo";
 
 export type MdxBodyEditorProps = {
   markdown: string;
@@ -48,7 +53,11 @@ export type MdxBodyEditorProps = {
   readOnly?: boolean;
   /** 넣기·수정 폼이 본문을 읽고 적용한 결과를 쓰는 손잡이. 편집기가 만들어지면 채운다. */
   handleRef?: RefObject<BodyEditorHandle | null>;
+  /** 본문의 요소를 사진으로 그릴 주소. 없거나 null을 돌려주면 이름과 속성을 보인다. */
+  photo?: PhotoOf;
 };
+
+type PhotoOf = (element: MdastJsx) => BodyImagePhoto | null;
 
 export type BodyEditorHandle = {
   markdown(): string;
@@ -72,6 +81,7 @@ export default function MdxBodyEditor({
   onPickImage,
   readOnly = false,
   handleRef,
+  photo,
 }: MdxBodyEditorProps) {
   const editor = useRef<MDXEditorMethods>(null);
   const insertInRoot = useRef<RootInserts | null>(null);
@@ -136,17 +146,31 @@ export default function MdxBodyEditor({
   );
 
   return (
-    <MDXEditor
-      ref={editor}
-      markdown={markdown}
-      plugins={plugins}
-      readOnly={readOnly}
-      onChange={onChange}
-      onError={({ error }) => onError(error)}
-      className="rounded border"
-      contentEditableClassName="body-editor-content"
-    />
+    // 편집기는 처음 만든 플러그인으로 요소를 그리므로, 넣은 이미지가 늘어 바뀌는 사진 주소는 context로 넘긴다.
+    <PhotoContext value={photo ?? null}>
+      <MDXEditor
+        ref={editor}
+        markdown={markdown}
+        plugins={plugins}
+        readOnly={readOnly}
+        onChange={onChange}
+        onError={({ error }) => onError(error)}
+        className="rounded border"
+        contentEditableClassName="body-editor-content"
+      />
+    </PhotoContext>
   );
+}
+
+const PhotoContext = createContext<PhotoOf | null>(null);
+
+/** 사진 주소가 있는 이미지는 사진으로, 나머지 요소는 이름과 속성으로 그린다. 표현만 바꾸고 요소는 고치지 않는다. */
+function JsxEditor(props: JsxEditorProps) {
+  const photoOf = useContext(PhotoContext);
+  const { mdastNode, descriptor } = props;
+  const photo = useMemo(() => photoOf?.(mdastNode) ?? null, [photoOf, mdastNode]);
+  if (!photo) return <GenericJsxEditor {...props} />;
+  return <BodyPhoto key={photo.src} photo={photo} inline={descriptor.kind === "text"} />;
 }
 
 /**
@@ -154,7 +178,7 @@ export default function MdxBodyEditor({
  * 이름을 가리지 않는 descriptor(`*`)로 읽어 들인다.
  */
 function descriptors(components: string[]): JsxComponentDescriptor[] {
-  const generic = { props: [], hasChildren: true, Editor: GenericJsxEditor };
+  const generic = { props: [], hasChildren: true, Editor: JsxEditor };
   return [
     ...components.map((name): JsxComponentDescriptor => ({ name, kind: "flow", ...generic })),
     { name: "*", kind: "flow", ...generic },

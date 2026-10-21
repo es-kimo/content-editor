@@ -124,7 +124,7 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
 
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">본문</h2>
-        <BodyView post={post} syntax={config.syntax} preview={config.preview} />
+        <BodyView repo={repo} post={post} syntax={config.syntax} preview={config.preview} />
       </section>
 
       <section className="flex flex-col gap-2">
@@ -206,7 +206,7 @@ const SOURCE_ONLY = {
   metadata: "글 설정을 폼으로 읽을 수 없어요.",
 };
 
-function BodyView({ post, syntax, preview }: { post: Post; syntax: Syntax; preview?: string }) {
+function BodyView({ repo, post, syntax, preview }: { repo: string; post: Post; syntax: Syntax; preview?: string }) {
   const modes = editorModes(post);
   const files = post.images.map((image) => image.name);
   if (!modes.sourceOnly && post.doc.ok) {
@@ -218,6 +218,7 @@ function BodyView({ post, syntax, preview }: { post: Post; syntax: Syntax; previ
         files={files}
         keys={{ source: post.sha, body: editorKeys(post).body }}
         syntax={syntax}
+        post={{ repo, path: post.path }}
         preview={preview}
       />
     );
