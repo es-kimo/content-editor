@@ -2,7 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 
 import { createGitHubClient } from "@/lib/github";
 import { parseMdx, readMetadata } from "@/lib/mdx-doc";
-import { readStatus, type PostAction } from "@/lib/metadata-form";
+import type { Collection } from "@/lib/editor-config";
+import { FIELD_PREFIX, readStatus, type PostAction } from "@/lib/metadata-form";
 import { testConfig, yjshdConfig } from "@/test/config";
 import { fakeGitRepo } from "@/test/fake-git";
 import { PNG } from "@/test/upload-images";
@@ -10,7 +11,7 @@ import { PNG } from "@/test/upload-images";
 import { createPost } from "./create-post";
 import { editorModes } from "./editor-modes";
 import { formToSource, sourceToForm } from "./mode-switch";
-import { newPostFromSource, newPostSource, openNewPost } from "./new-post";
+import { newPostFromSource, newPostSource, openNewPost, readNewPostForm } from "./new-post";
 import { createSaveFlow, newPostActions, newPostRequest, savedAreas, type SaveState } from "./save-flow";
 
 const REPO = "es-kimo/yjshd";
@@ -19,6 +20,17 @@ const config = yjshdConfig();
 const [board, lecture] = config.collections;
 const IMAGE = { file: "1.png", content: PNG };
 const BODY = '# 첫 강좌\n\n<Image src={image1} alt="안내문" />\n';
+
+// 글 설정에 제목 필드가 없고 게시 상태만 있는 글 분류.
+const untitledConfig = testConfig([
+  {
+    name: "메모",
+    path: "notes/{slug}/page.mdx",
+    metadata: { "other.status": { type: "select", options: ["draft", "ready"] } },
+    components: [],
+  },
+]);
+const [untitled] = untitledConfig.collections as [Collection];
 
 const metadataOf = (source: string) => {
   const metadata = readMetadata(parseMdx(source, config.syntax));
@@ -53,6 +65,34 @@ describe("openNewPost", () => {
     });
     expect(opened.doc.body).toBe("");
     expect(opened.fields.find((f) => f.key === "title")).toMatchObject({ initial: "", required: true, locked: null });
+  });
+
+  test("글 설정에 제목 필드가 없는 글 분류에도 맨 앞에 비어 있는 필수 제목 칸을 둔다", () => {
+    const opened = openNewPost(untitled, untitledConfig.syntax, NOW);
+
+    expect(opened.fields.map((f) => f.key)).toEqual(["title"]);
+    expect(opened.fields[0]).toMatchObject({ label: "제목", initial: "", required: true, locked: null });
+  });
+});
+
+describe("readNewPostForm", () => {
+  test("글 설정에 제목 필드가 없는 글 분류에서도 제목 칸의 값을 읽어 그대로 새 글을 저장한다", async () => {
+    const data = new FormData();
+    data.set(FIELD_PREFIX + "title", "첫 글");
+    const repo = fakeGitRepo(REPO, "main", []);
+
+    const values = readNewPostForm(untitled, data);
+    const created = await createPost(
+      createGitHubClient("ghu_token", repo.fetch),
+      REPO,
+      untitledConfig,
+      { collection: untitled.name, action: "save-draft", values, body: "본문\n" },
+      NOW,
+    );
+
+    expect(values).toEqual({ title: "첫 글" });
+    expect(created).toMatchObject({ ok: true, path: "notes/첫 글/page.mdx" });
+    expect(metadataOf(new TextDecoder().decode(repo.file("notes/첫 글/page.mdx")))).toMatchObject({ title: "첫 글" });
   });
 });
 
@@ -150,6 +190,26 @@ describe("newPostFromSource", () => {
     expect(result.input.images).toEqual([IMAGE]);
     expect(created).toMatchObject({ ok: true, path: "content/3.강좌/AI/첫 강좌/page.mdx" });
     expect(repo.file("content/3.강좌/AI/첫 강좌/1.png")).toEqual(PNG);
+  });
+
+  test("글 설정에 제목 필드가 없는 글 분류에서도 원문 편집으로 쓴 제목으로 새 글을 저장한다", async () => {
+    const opened = openNewPost(untitled, untitledConfig.syntax, NOW);
+    const written = formToSource(opened.post, { values: { title: "첫 글" }, body: "본문\n", images: [] });
+    if (!written.ok) throw new Error(written.reason);
+    const repo = fakeGitRepo(REPO, "main", []);
+
+    const result = newPostFromSource(untitled, untitledConfig.syntax, written.input, NOW);
+    if (!result.ok) throw new Error(result.reason);
+    const created = await createPost(
+      createGitHubClient("ghu_token", repo.fetch),
+      REPO,
+      untitledConfig,
+      { collection: untitled.name, action: "save-draft", ...result.input },
+      NOW,
+    );
+
+    expect(result.input.values).toMatchObject({ title: "첫 글" });
+    expect(created).toMatchObject({ ok: true, path: "notes/첫 글/page.mdx" });
   });
 
   test("일반 편집이 담을 수 없는 원문은 모드 전환과 같은 이유로 바꾸지 않는다", () => {

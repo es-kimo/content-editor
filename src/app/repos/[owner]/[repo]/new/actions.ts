@@ -2,8 +2,7 @@
 
 import { runRepoAction } from "@/app/_lib/action";
 import { postHref } from "@/app/_lib/repo";
-import { createPost, newPostFromSource, type NewPostAction, type NewPostSubmenu } from "@/lib/content";
-import { readFormData } from "@/lib/metadata-form";
+import { createPost, newPostFromSource, readNewPostForm, type NewPostAction, type NewPostSubmenu } from "@/lib/content";
 
 import type { PostSaveInput } from "../post/actions";
 import { readImages } from "../post/form-images";
@@ -48,7 +47,7 @@ export async function createPostAction(
     const found = config.collections.find((c) => c.name === collection);
     const images = await readImages(data);
     const now = new Date();
-    let content = { values: found ? readFormData(found, data) : {}, body: input.text, images };
+    let content = { values: found ? readNewPostForm(found, data) : {}, body: input.text, images };
     if (found && input.mode === "source") {
       const converted = newPostFromSource(found, config.syntax, { source: input.text, images }, now);
       if (!converted.ok) return sourceProblemState(converted);
