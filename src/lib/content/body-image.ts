@@ -1,7 +1,16 @@
 // 편집 화면이 브라우저에서 쓴다. GitHub 클라이언트를 import하지 않는다.
-import { printJsxTag, type JsxElement, type MdxDoc, type PreviewImages, type Syntax } from "@/lib/mdx-doc";
+import {
+  addImageAs,
+  printJsxTag,
+  setBody,
+  type JsxElement,
+  type MdxDoc,
+  type PreviewImages,
+  type Syntax,
+} from "@/lib/mdx-doc";
 
 import { bodyInserts, type ImageInsertItem } from "./insert-form";
+import { IMAGE_COMPONENT } from "./upload";
 
 /** 일반 편집 본문의 이미지 사진을 받아 올 곳. */
 export type BodyImageSources = {
@@ -27,14 +36,45 @@ export function bodyImagePhoto(
   sources: BodyImageSources,
   syntax: Syntax = {},
 ): BodyImagePhoto | null {
-  const list = bodyInserts(doc, printJsxTag(element), syntax);
-  const image = list.ok ? list.items.find((item): item is ImageInsertItem => item.kind === "image") : undefined;
+  const image = imageItem(doc, printJsxTag(element), syntax);
   if (!image) return null;
   const { inserted, post } = sources;
   if (Object.hasOwn(inserted, image.name)) return { src: inserted[image.name]!, alt: image.alt };
   if (!post) return null;
   return { src: repoImageHref(post.repo, post.path, image.path), alt: image.alt };
 }
+
+function imageItem(doc: MdxDoc, tag: string, syntax: Syntax): ImageInsertItem | undefined {
+  const list = bodyInserts(doc, tag, syntax);
+  return list.ok ? list.items.find((item): item is ImageInsertItem => item.kind === "image") : undefined;
+}
+
+/** 복구한 보관본에 파일이 없어 사진을 그릴 수 없는 이미지. `missing`은 빠진 첨부 이름이다. */
+export type MissingBodyImage = { missing: string; alt: string };
+
+/**
+ * 일반 편집 본문의 이미지 한 곳이 복구한 보관본에서 파일이 빠진 첨부를 가리키면 그 첨부 이름과 대체 텍스트.
+ * 본문은 그 첨부를 넣을 때 정한 변수명(`imageN` ↔ `N.ext`)을 그대로 쓰지만 import가 없다. 그 import를 다시 더해 읽되,
+ * 본문이 이미 그 변수명을 써서 본문을 비운 doc에 더한다. `doc`에 이미 있는 import를 가리키면 빠진 첨부가 아니다.
+ * @param doc 넣은 이미지의 import까지 더한 doc(`UploadPlan.doc`). 빠진 첨부의 import는 없다.
+ * @param missing 복구한 보관본에서 빠진 첨부 이름(`N.ext`).
+ */
+export function missingBodyImage(
+  doc: MdxDoc,
+  element: JsxElement,
+  missing: string[],
+  syntax: Syntax = {},
+): MissingBodyImage | null {
+  if (missing.length === 0) return null;
+  let head = setBody(doc, "");
+  for (const file of missing) head = addImageAs(head, file, { component: IMAGE_COMPONENT })?.doc ?? head;
+  const image = imageItem(head, printJsxTag(element), syntax);
+  const file = image?.path.replace(/^\.\//, "");
+  return image && file && missing.includes(file) ? { missing: file, alt: image.alt } : null;
+}
+
+/** 복구한 보관본에 파일이 없는 이미지 자리에 사진 대신 보일 안내. */
+export const MISSING_DRAFT_IMAGE = "이 이미지는 보관하지 못했어요. 이미지를 다시 골라 주세요.";
 
 /** 편집 화면이 레포 이미지를 받아 갈 라우트 주소. */
 export const repoImageHref = (repo: string, postPath: string, importPath: string) =>

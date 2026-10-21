@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { NewPostSubmenu } from "@/lib/content/create-post";
-import type { DraftAttachment, DraftContent } from "@/lib/content/draft";
+import type { Draft, DraftAttachment } from "@/lib/content/draft";
 import { restoreDraft } from "@/lib/content/draft-restore";
 import type { EditorMode } from "@/lib/content/editor-modes";
 import {
@@ -53,8 +53,13 @@ type PostEditorValue = {
     source: CarriedSource | null;
     submenu: { key: string; value: NewPostSubmenu } | null;
   };
+  /**
+   * 복구한 보관본에 파일이 없어 다시 골라야 하는 첨부 이름. 본문이 그 첨부를 가리키는 자리에 사진 대신 안내를 보인다.
+   * 모드를 오가도 남고, 저장해 글을 다시 열면 사라진다.
+   */
+  missing: string[];
   /** 보관본을 보관한 모드의 편집기에 다시 연다. 저장하지 않으며, 다시 연 입력은 미저장 변경이 된다. */
-  restore: (draft: DraftContent) => void;
+  restore: (draft: Pick<Draft, "input" | "attachments" | "missing">) => void;
   /**
    * 이어받은 본문을 일반 편집기가 열어 보니 구조가 바뀌었다. 편집기가 열어 봐야 알 수 있어 바꾼 뒤에 알린다.
    * 원문 편집으로 되돌리고 일반 편집을 바꾸기 전 입력으로 다시 연다.
@@ -77,9 +82,17 @@ type Switched = PostEditorValue["carried"] & {
   /** 이어받은 일반 편집 입력을 열지 못하면 되돌릴, 바꾸기 전 일반 편집 입력. 글을 연 그대로였으면 null. */
   previous: Pick<CarriedForm, "input" | "doc"> | null;
   problem: ModeSwitchProblem | null;
+  missing: string[];
 };
 
-const NOT_SWITCHED: Switched = { wysiwyg: null, source: null, submenu: null, previous: null, problem: null };
+const NOT_SWITCHED: Switched = {
+  wysiwyg: null,
+  source: null,
+  submenu: null,
+  previous: null,
+  problem: null,
+  missing: [],
+};
 
 /**
  * 글 화면의 지금 편집 모드와, 글 하나를 한 번에 저장하려고 모드의 편집 영역들에서 입력을 모으는 곳.
@@ -133,15 +146,18 @@ export function PostEditorProvider({
       mode,
       problem: switched.problem,
       carried: { wysiwyg: switched.wysiwyg, source: switched.source, submenu: switched.submenu },
+      missing: switched.missing,
       restore(draft) {
         const restored = restoreDraft(post, draft);
         const submenu = restored.submenu ? { key: nextKey(), value: restored.submenu } : switched.submenu;
         // 다른 모드의 편집기는 글을 연 그대로 두었다가, 그 모드로 바꿀 때 복구한 입력을 이어받는다.
         if (restored.mode === "wysiwyg") {
-          const { input, doc } = restored;
-          update({ wysiwyg: { key: nextKey(), input, doc }, source: null, previous: null, submenu });
+          const { input, doc, missing } = restored;
+          update({ wysiwyg: { key: nextKey(), input, doc }, source: null, previous: null, submenu, missing });
         } else {
-          update({ source: { key: nextKey(), input: restored.input }, wysiwyg: null, previous: null, submenu });
+          const source = { key: nextKey(), input: restored.input };
+          // 원문 편집 보관본은 빠진 첨부의 import까지 원문에 있어 본문 이미지가 빠진 첨부를 가리키지 않는다.
+          update({ source, wysiwyg: null, previous: null, submenu, missing: [] });
         }
         setMode(restored.mode);
       },
