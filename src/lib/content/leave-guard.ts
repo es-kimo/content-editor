@@ -7,7 +7,7 @@ import type { EditArea } from "./unsaved";
  * 적용하지 않은 폼의 작성 중 입력은 그 폼을 연 영역의 입력으로 센다.
  */
 export function leavingAreas({ phase, changed, form }: Pick<SaveFlowState, "phase" | "changed" | "form">): EditArea[] {
-  const kept = phase.kind === "saved" ? phase.reopened : [];
+  const kept = phase.kind === "saved" ? phase.settled : [];
   const lost = (Object.keys(changed) as EditArea[]).filter((area) => changed[area] && !kept.includes(area));
   return form?.dirty && !lost.includes(form.area) ? [...lost, form.area] : lost;
 }

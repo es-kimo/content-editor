@@ -123,10 +123,10 @@ export type SavePhase =
   | { kind: "idle" }
   | { kind: "saving"; request: SaveRequest }
   /**
-   * 저장해 `href`(저장한 글 화면)로 가는 중. 이 이동으로 사라지는 입력은 저장했거나 버리기로 한 것이라 이탈을 확인하지 않는다.
+   * 저장해 `href`(저장한 글 화면)로 가는 중. `settled`는 저장했거나 버리기로 한 영역이라 이 이동에 이탈을 확인하지 않는다.
    * 화면이 열려 `settle`하기 전까지는 입력을 막아, 다시 열릴 영역에 새로 입력하고 잃지 않게 한다.
    */
-  | { kind: "saved"; request: SaveRequest; href: string; reopened: EditArea[] };
+  | { kind: "saved"; request: SaveRequest; href: string; settled: EditArea[] };
 
 /** 넣기·수정 폼을 여는 편집 영역. 폼을 적용하면 이 영역의 미저장 변경이 된다. */
 export type FormArea = Extract<EditArea, "body" | "source">;
@@ -223,7 +223,7 @@ export function createSaveFlow({ navigate }: { navigate: (href: string) => void 
       results: { ...state.results, [request.target]: result },
       phase:
         result.status === "saved"
-          ? { kind: "saved", request, href: result.href, reopened: settledAreas(request) }
+          ? { kind: "saved", request, href: result.href, settled: settledAreas(request) }
           : { kind: "idle" },
     });
     if (result.status === "saved") navigate(result.href);

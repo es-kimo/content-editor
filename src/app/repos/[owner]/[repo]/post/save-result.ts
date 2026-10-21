@@ -74,7 +74,7 @@ export function saveResultState(result: SaveEditResult, savedHref: (commit: stri
       return saveError(TRASHED_MESSAGE);
     case "trash-edit":
       return saveError(
-        "휴지통 표시(trashedAt)는 저장으로 더할 수 없어요. 원문 편집에서 그 줄을 지운 뒤 다시 저장해 주세요.",
+        "휴지통 표시는 저장으로 더할 수 없어요. 원문 편집에서 글 설정의 휴지통 표시를 지운 뒤 다시 저장해 주세요.",
       );
   }
 }
