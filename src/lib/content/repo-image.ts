@@ -8,7 +8,8 @@ import { findCollection } from "./read";
 /** 레포 이미지를 읽지 못한 이유. `outside-repo`는 import 경로가 레포 루트를 넘거나 글 폴더 기준 상대 경로가 아닌 것이다. */
 export type RepoImageProblem = "not-post" | "not-image" | "outside-repo" | "missing";
 
-export type RepoImage = { ok: true; bytes: Uint8Array; contentType: string } | { ok: false; reason: RepoImageProblem };
+export type RepoImage =
+  { ok: true; bytes: Uint8Array<ArrayBuffer>; contentType: string } | { ok: false; reason: RepoImageProblem };
 
 /**
  * 글이 import한 이미지(`./1.png`)를 `config.branch`에서 읽는다.
