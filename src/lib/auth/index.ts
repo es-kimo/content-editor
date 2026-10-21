@@ -1,6 +1,6 @@
 export { loadAccount, resolvePageSession, type Account, type PageSession } from "./account";
 export { readAuthConfig, type AuthConfig } from "./config";
-export { GitHubAuthError } from "./github";
+export { getUser, GitHubAuthError, type GitHubUser } from "./github";
 export {
   CALLBACK_PATH,
   handleCallback,

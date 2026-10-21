@@ -1,11 +1,13 @@
 import { LeaveLink } from "@/app/_lib/leave";
 import { CollectionTabs, newPostHref, openRepoPage, repoHref } from "@/app/_lib/repo";
+import { sessionLogin } from "@/app/_lib/repo-page";
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell } from "@/app/_lib/ui";
 import { UnsavedNotice, UnsavedProvider } from "@/app/_lib/unsaved";
 import { listSubmenus, needsSubmenu, newPostActions, openNewPost } from "@/lib/content";
 
 import { BodyModes } from "../post/body-modes";
+import { DraftsProvider } from "../post/drafts";
 import { MetadataForm } from "../post/metadata-form";
 import { PostEditorProvider } from "../post/post-editor";
 import { createPostAction } from "./actions";
@@ -32,13 +34,16 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
     newPostHref(repo, typeof selected === "string" ? selected : undefined),
     async ({ client, config }) => {
       const collection = config.collections.find((c) => c.name === selected) ?? config.collections[0];
-      const submenus = needsSubmenu(collection) ? await listSubmenus(client, repo, config, collection) : null;
-      return { collection, submenus };
+      const [submenus, login] = await Promise.all([
+        needsSubmenu(collection) ? listSubmenus(client, repo, config, collection) : null,
+        sessionLogin(client),
+      ]);
+      return { collection, submenus, login };
     },
   );
   if (!page.ok) return page.view;
   const { config } = page;
-  const { collection, submenus } = page.value;
+  const { collection, submenus, login } = page.value;
   const opened = openNewPost(collection, config.syntax, new Date());
 
   return (
@@ -57,25 +62,33 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
       <CollectionTabs config={config} current={collection} href={(c) => newPostHref(repo, c)} />
       {/* 컬렉션을 바꾸면 입력과 결과를 새로 시작한다. */}
       <PostEditorProvider key={collection.name} initial={collection.editor} post={opened.post}>
-        <MetadataForm version="new" fields={opened.fields} target="new" ownTitle>
-          <NewPostForm
-            collection={collection}
-            submenus={submenus}
-            actions={newPostActions(collection)}
-            save={createPostAction.bind(null, repo, collection.name)}
-            cancelHref={repoHref(repo, collection.name)}
-          >
-            <BodyModes
+        <DraftsProvider
+          owner={login === null ? null : { login, repo, branch: config.branch }}
+          query={{ kind: "new", collection: collection.name }}
+          base={null}
+          collection={opened.post.collection}
+        >
+          <MetadataForm version="new" fields={opened.fields} target="new" ownTitle>
+            <NewPostForm
               collection={collection}
-              source={opened.post.source}
-              doc={opened.doc}
-              files={opened.post.files}
-              keys={{ source: "new", body: "new" }}
               syntax={config.syntax}
-              preview={config.preview}
-            />
-          </NewPostForm>
-        </MetadataForm>
+              submenus={submenus}
+              actions={newPostActions(collection)}
+              save={createPostAction.bind(null, repo, collection.name)}
+              cancelHref={repoHref(repo, collection.name)}
+            >
+              <BodyModes
+                collection={collection}
+                source={opened.post.source}
+                doc={opened.doc}
+                files={opened.post.files}
+                keys={{ source: "new", body: "new" }}
+                syntax={config.syntax}
+                preview={config.preview}
+              />
+            </NewPostForm>
+          </MetadataForm>
+        </DraftsProvider>
       </PostEditorProvider>
     </UnsavedProvider>
   );

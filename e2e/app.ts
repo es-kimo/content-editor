@@ -15,6 +15,8 @@ import type { FakeFile } from "@/test/fake-github";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const GITHUB = "https://api.github.com";
+/** 가짜 GitHub가 돌려주는 로그인 사용자. */
+const E2E_LOGIN = "e2e-user";
 
 /**
  * 가짜 GitHub 서버. 읽기·쓰기와 브랜치 상태를 `fakeGitRepo`가 맡아, 글 목록(GraphQL)도 커밋한 뒤의 글을 읽는다.
@@ -31,6 +33,8 @@ async function startGitHub(repo: string, files: FakeFile[]) {
     let response: Response;
     try {
       if (url.pathname === `/repos/${repo}/contents/editor.config.json`) response = new Response(config);
+      // 편집 화면은 브라우저 보관본을 로그인 계정별로 나누려고 사용자를 읽는다.
+      else if (url.pathname === "/user") response = Response.json({ login: E2E_LOGIN, name: null });
       else response = await git.fetch(url, init);
     } catch (error) {
       response = Response.json({ message: String(error) }, { status: 500 });

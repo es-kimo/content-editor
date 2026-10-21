@@ -2,7 +2,9 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { DraftAttachment } from "@/lib/content/draft";
+import type { NewPostSubmenu } from "@/lib/content/create-post";
+import type { DraftAttachment, DraftContent } from "@/lib/content/draft";
+import { restoreDraft } from "@/lib/content/draft-restore";
 import type { EditorMode } from "@/lib/content/editor-modes";
 import {
   formToSource,
@@ -40,8 +42,17 @@ type PostEditorValue = {
   switchMode: (next: EditorMode) => void;
   /** 마지막 전환에 실패한 이유. 다음 전환에 성공하면 사라진다. */
   problem: ModeSwitchProblem | null;
-  /** 다른 모드에서 이어받아 다시 연 입력. 없으면 편집기는 글을 연 그대로다. */
-  carried: { wysiwyg: CarriedForm | null; source: CarriedSource | null };
+  /**
+   * 다른 모드에서 이어받거나 보관본에서 복구해 다시 연 입력. 없으면 편집기는 글을 연 그대로다.
+   * `submenu`는 복구한 새 글의 하위 메뉴다. `key`가 바뀌면 하위 메뉴 선택을 그 값으로 다시 연다.
+   */
+  carried: {
+    wysiwyg: CarriedForm | null;
+    source: CarriedSource | null;
+    submenu: { key: string; value: NewPostSubmenu } | null;
+  };
+  /** 보관본을 보관한 모드의 편집기에 다시 연다. 저장하지 않으며, 다시 연 입력은 미저장 변경이 된다. */
+  restore: (draft: DraftContent) => void;
   /**
    * 이어받은 본문을 일반 편집기가 열어 보니 구조가 바뀌었다. 편집기가 열어 봐야 알 수 있어 바꾼 뒤에 알린다.
    * 원문 편집으로 되돌리고 일반 편집을 바꾸기 전 입력으로 다시 연다.
@@ -66,7 +77,7 @@ type Switched = PostEditorValue["carried"] & {
   problem: ModeSwitchProblem | null;
 };
 
-const NOT_SWITCHED: Switched = { wysiwyg: null, source: null, previous: null, problem: null };
+const NOT_SWITCHED: Switched = { wysiwyg: null, source: null, submenu: null, previous: null, problem: null };
 
 /**
  * 글 화면의 지금 편집 모드와, 글 하나를 한 번에 저장하려고 모드의 편집 영역들에서 입력을 모으는 곳.
@@ -119,7 +130,19 @@ export function PostEditorProvider({
     return {
       mode,
       problem: switched.problem,
-      carried: { wysiwyg: switched.wysiwyg, source: switched.source },
+      carried: { wysiwyg: switched.wysiwyg, source: switched.source, submenu: switched.submenu },
+      restore(draft) {
+        const restored = restoreDraft(post, draft);
+        const submenu = restored.submenu ? { key: nextKey(), value: restored.submenu } : switched.submenu;
+        // 다른 모드의 편집기는 글을 연 그대로 두었다가, 그 모드로 바꿀 때 복구한 입력을 이어받는다.
+        if (restored.mode === "wysiwyg") {
+          const { input, doc } = restored;
+          update({ wysiwyg: { key: nextKey(), input, doc }, source: null, previous: null, submenu });
+        } else {
+          update({ source: { key: nextKey(), input: restored.input }, wysiwyg: null, previous: null, submenu });
+        }
+        setMode(restored.mode);
+      },
       switchMode(next) {
         if (next === mode) return;
         const problem = next === "source" ? toSource() : toForm();

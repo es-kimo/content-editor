@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { useReportUnsaved, useSaveLocked } from "@/app/_lib/unsaved";
-import type { DraftAttachment } from "@/lib/content/draft";
+import { draftAttachments, type DraftAttachment } from "@/lib/content/draft";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 미리보기 메시지와 넣기 메뉴만 가져온다.
 import {
   advancedComponents,
@@ -24,6 +24,7 @@ import { hasTocHeading, parseMdx, readInserts, type Syntax } from "@/lib/mdx-doc
 import type { BodyImageUpload } from "./body-editor";
 import { BodyPreview } from "./body-preview";
 import type { SourceEditorHandle } from "./codemirror-source-editor";
+import { useDraftInput, useDraftTouch } from "./drafts";
 import { AttachedImagesNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
 import { useModeInput, usePostEditor, usePostInput } from "./post-editor";
@@ -123,6 +124,8 @@ function OpenedSourceEditor({
     const used = images.attachments(next);
     return used && { source: next, images: used };
   });
+  useDraftInput("source", () => ({ source: edited.current, images: draftAttachments(images.session, edited.current) }));
+  const touch = useDraftTouch();
 
   return (
     <div className="flex flex-col gap-2">
@@ -171,6 +174,7 @@ function OpenedSourceEditor({
           onChange={(next) => {
             edited.current = next;
             setCurrent(next);
+            touch();
           }}
         />
       </div>

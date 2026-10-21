@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { LeaveLink } from "@/app/_lib/leave";
 import { openRepoPage, postHref, repoHref, trashHref } from "@/app/_lib/repo";
+import { sessionLogin } from "@/app/_lib/repo-page";
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell, TechDetails } from "@/app/_lib/ui";
 import { UnsavedNotice, UnsavedProvider } from "@/app/_lib/unsaved";
@@ -22,6 +23,7 @@ import { buildForm, optionLabel, STATUS_FIELD, type FormField } from "@/lib/meta
 
 import { restorePostAction, savePostAction, trashPostAction } from "./actions";
 import { BodyModes } from "./body-modes";
+import { DraftRestoreNotice, DraftsProvider, TrashedDraftNotice } from "./drafts";
 import { MetadataForm, MetadataSettings, MetadataTitleInput } from "./metadata-form";
 import { PostActionBar } from "./post-actions";
 import { PostEditorProvider } from "./post-editor";
@@ -45,12 +47,15 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
   const { path, saved, action } = await searchParams;
   if (typeof path !== "string") notFound();
 
-  const page = await openRepoPage(repo, searchParams, postHref(repo, path), ({ client, config }) =>
-    readPost(client, repo, config, path),
-  );
+  const page = await openRepoPage(repo, searchParams, postHref(repo, path), async ({ client, config }) => {
+    const [post, login] = await Promise.all([readPost(client, repo, config, path), sessionLogin(client)]);
+    return { post, login };
+  });
   if (!page.ok) return page.view;
-  const { config, value: post } = page;
+  const { config } = page;
+  const { post, login } = page.value;
   if (!post) notFound();
+  const draftOwner = login === null ? null : { login, repo, branch: config.branch };
 
   const commit = typeof saved === "string" ? saved : undefined;
   const fields = metadataFields(post);
@@ -93,6 +98,14 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
             휴지통 목록
           </LeaveLink>
         </section>
+        <TrashedDraftNotice
+          owner={draftOwner}
+          path={post.path}
+          sha={post.sha}
+          remote={post.source}
+          syntax={config.syntax}
+          collection={post.collection}
+        />
         {techDetails}
       </>
     );
@@ -106,6 +119,8 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
       </header>
 
       {fields.ok && <MetadataTitleInput />}
+
+      <DraftRestoreNotice current={post.sha} remote={post.source} syntax={config.syntax} collection={post.collection} />
 
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">본문</h2>
@@ -159,13 +174,20 @@ async function PostView({ params, searchParams }: { params: Params; searchParams
           files: post.images.map((image) => image.name),
         }}
       >
-        {fields.ok ? (
-          <MetadataForm version={editorKeys(post).metadata} fields={fields.fields}>
-            {content}
-          </MetadataForm>
-        ) : (
-          content
-        )}
+        <DraftsProvider
+          owner={draftOwner}
+          query={{ kind: "post", path: post.path }}
+          base={post.sha}
+          collection={post.collection}
+        >
+          {fields.ok ? (
+            <MetadataForm version={editorKeys(post).metadata} fields={fields.fields}>
+              {content}
+            </MetadataForm>
+          ) : (
+            content
+          )}
+        </DraftsProvider>
       </PostEditorProvider>
     </UnsavedProvider>
   );

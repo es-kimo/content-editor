@@ -1,10 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { REFRESH_PATH, type PageSession } from "@/lib/auth";
-import { GitHubApiError } from "@/lib/github";
+import { createGitHubClient, GitHubApiError } from "@/lib/github";
 import { json, mockFetch, type Route } from "@/test/mock-fetch";
 
-import { prepareRepoPage, type RepoContext } from "./repo-page";
+import { prepareRepoPage, sessionLogin, type RepoContext } from "./repo-page";
 
 const REPO = "es-kimo/yjshd";
 const RETURN_TO = "/repos/es-kimo/yjshd?collection=게시판";
@@ -89,5 +89,27 @@ describe("prepareRepoPage", () => {
       throw failure;
     });
     await expect(page).rejects.toBe(failure);
+  });
+});
+
+describe("sessionLogin", () => {
+  const login = (res: () => Response) =>
+    sessionLogin(
+      createGitHubClient(
+        "token",
+        mockFetch((url) => (url.pathname === "/user" ? res() : undefined)),
+      ),
+    );
+
+  test("세션의 토큰으로 읽은 GitHub 사용자 login을 돌려준다", async () => {
+    expect(await login(() => json({ login: "alice", name: null, avatar_url: "", html_url: "" }))).toBe("alice");
+  });
+
+  test("사용자를 읽다가 401 말고 오류가 나면 화면을 막지 않고 null을 돌려준다", async () => {
+    expect(await login(() => json({ message: "Server Error" }, 500))).toBeNull();
+  });
+
+  test("토큰이 거부되면 다시 로그인하게 던진다", async () => {
+    await expect(login(() => json({ message: "Bad credentials" }, 401))).rejects.toBeInstanceOf(GitHubApiError);
   });
 });

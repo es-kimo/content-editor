@@ -5,6 +5,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import { TechDetails } from "@/app/_lib/ui";
 import { useReportUnsaved, useSaveLocked } from "@/app/_lib/unsaved";
+import { draftAttachments } from "@/lib/content/draft";
 import {
   applyBodyInsertForm,
   bodyImageMoves,
@@ -23,6 +24,7 @@ import { MAX_IMAGE_SIDE } from "@/lib/content/upload";
 import { editedBody, hasTocHeading, sameBodyStructure, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
 
 import { BodyPreview } from "./body-preview";
+import { useDraftInput, useDraftTouch } from "./drafts";
 import { AttachedImagesNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
 import type { BodyEditorHandle } from "./mdx-body-editor";
@@ -99,8 +101,10 @@ function OpenedBodyEditor({
   // 서버가 변경 없음으로 답한 본문. 그 본문은 저장한 것과 같으므로 미저장 판정의 기준으로 삼는다.
   const [baseline, setBaseline] = useState(saved);
   const changed = draft !== baseline;
+  const touch = useDraftTouch();
 
   const edit = (markdown: string) => {
+    touch();
     setCurrent(markdown);
     edited.current = markdown;
     setDraft(editedBody(body, normalized.current, markdown));
@@ -167,6 +171,12 @@ function OpenedBodyEditor({
     const next = editedBody(body, normalized.current, edited.current);
     const attachments = images.attachments(next);
     return attachments && { body: next, images: attachments, doc: images.session.plan.doc };
+  });
+  // 보관할 본문과 준비가 끝난 첨부. 일반 편집으로 고칠 수 없게 된 글은 저장할 때처럼 본문을 연 그대로 낸다.
+  useDraftInput("wysiwyg", () => {
+    if (problem) return { body, images: [] };
+    const next = editedBody(body, normalized.current, edited.current);
+    return { body: next, images: draftAttachments(images.session, next) };
   });
   // 이미지는 넣을 수 있는 글에서만 메뉴에 둔다. 고르면 파일 선택 창을 열고, 고른 뒤 폼이 열린다.
   const menu = insertMenuItems(components).filter((item) => item.kind !== "image" || upload);
