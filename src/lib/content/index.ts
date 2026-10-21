@@ -113,6 +113,7 @@ export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
 export { saveEdit, type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
 export {
   BODY_FIELD,
+  collectPostInput,
   createSaveFlow,
   docEditorKeys,
   modeHasUnsaved,
@@ -125,6 +126,8 @@ export {
   type FormBlocked,
   type OpenForm,
   type PostActions,
+  type PostInput,
+  type PostInputCollectors,
   type SaveFlow,
   type SaveFlowState,
   type SavePhase,

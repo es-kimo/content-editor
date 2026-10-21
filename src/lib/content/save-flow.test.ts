@@ -8,6 +8,7 @@ import { PNG } from "@/test/upload-images";
 
 import { editorKeys, readPost } from "./read";
 import {
+  collectPostInput,
   createSaveFlow,
   modeHasUnsaved,
   postActions,
@@ -87,6 +88,79 @@ describe("savedAreas", () => {
     expect(after.metadata?.editable && after.metadata.value).toMatchObject({ description: "새 요약" });
     expect(editorKeys(after).body).toContain('<Image src={image2} alt="안내문" />');
     expect(repo.file("content/4.게시판/1.휴진/2.png")).toBeDefined();
+  });
+});
+
+/** 이름·값 쌍으로 만든 FormData. */
+const formData = (entries: [string, string | File][]) => {
+  const data = new FormData();
+  for (const [name, value] of entries) data.append(name, value);
+  return data;
+};
+
+describe("collectPostInput", () => {
+  const image = new File([PNG], "2.png", { type: "image/png" });
+  const settings = (unchanged = vi.fn()) => ({
+    data: formData([
+      ["title", "12월 휴진 안내"],
+      ["description", "새 요약"],
+    ]),
+    unchanged,
+  });
+  const wysiwyg = (unchanged = vi.fn()) => ({ text: "새 본문\n", data: formData([["image", image]]), unchanged });
+  const source = (unchanged = vi.fn()) => ({ text: SOURCE, data: formData([["image", image]]), unchanged });
+
+  test("일반 편집은 설정 폼 값과 본문·첨부 이미지를 한 요청에 함께 담는다", () => {
+    const input = collectPostInput(
+      { settings: () => settings(), wysiwyg: () => wysiwyg(), source: () => source() },
+      "wysiwyg",
+    );
+
+    expect(input?.text).toBe("새 본문\n");
+    expect(input?.data.get("title")).toBe("12월 휴진 안내");
+    expect(input?.data.get("description")).toBe("새 요약");
+    expect(input?.data.getAll("image")).toHaveLength(1);
+    expect((input?.data.get("image") as File).name).toBe("2.png");
+  });
+
+  test("일반 편집이 변경 없음으로 끝나면 설정 폼과 본문 모두 낸 입력을 저장 기준으로 삼는다", () => {
+    const settingsUnchanged = vi.fn();
+    const bodyUnchanged = vi.fn();
+    const input = collectPostInput(
+      { settings: () => settings(settingsUnchanged), wysiwyg: () => wysiwyg(bodyUnchanged) },
+      "wysiwyg",
+    );
+
+    input?.unchanged();
+
+    expect(settingsUnchanged).toHaveBeenCalledOnce();
+    expect(bodyUnchanged).toHaveBeenCalledOnce();
+  });
+
+  test("원문 편집은 원문과 그 첨부만 담고 설정 폼과 일반 편집 본문은 읽지 않는다", () => {
+    const readSettings = vi.fn(() => settings());
+    const readBody = vi.fn(() => wysiwyg());
+    const input = collectPostInput({ settings: readSettings, wysiwyg: readBody, source: () => source() }, "source");
+
+    expect(input?.text).toBe(SOURCE);
+    expect(input?.data.get("title")).toBeNull();
+    expect(input?.data.getAll("image")).toHaveLength(1);
+    expect(readSettings).not.toHaveBeenCalled();
+    expect(readBody).not.toHaveBeenCalled();
+  });
+
+  test("설정 폼이 입력을 낼 수 없으면 저장하지 않고 본문보다 먼저 설정 폼을 알린다", () => {
+    const readBody = vi.fn(() => wysiwyg());
+
+    expect(collectPostInput({ settings: () => null, wysiwyg: readBody }, "wysiwyg")).toBeNull();
+    expect(readBody).not.toHaveBeenCalled();
+  });
+
+  test("어느 영역이든 입력을 낼 수 없으면 저장하지 않는다", () => {
+    expect(collectPostInput({ settings: () => settings(), wysiwyg: () => null }, "wysiwyg")).toBeNull();
+    expect(collectPostInput({ settings: () => settings() }, "wysiwyg")).toBeNull();
+    expect(collectPostInput({ settings: () => settings(), source: () => null }, "source")).toBeNull();
+    expect(collectPostInput({ settings: () => settings(), wysiwyg: () => wysiwyg() }, "source")).toBeNull();
   });
 });
 
