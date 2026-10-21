@@ -14,7 +14,10 @@ const CONFIG = {
     {
       name: "게시판",
       path: "content/게시판/{slug}/page.mdx",
-      metadata: { title: { type: "string", label: "제목", required: true } },
+      metadata: {
+        title: { type: "string", label: "제목", required: true },
+        "other.status": { type: "select", label: "상태", options: ["ready", "draft"] },
+      },
       components: ["Footnote"],
       editor: "source",
     },
@@ -22,6 +25,7 @@ const CONFIG = {
 };
 const source = (title: string) => `export const metadata = {
   title: '${title}',
+  other: { status: 'draft' },
 };
 
 # ${title}
@@ -119,7 +123,7 @@ describe("넣기 메뉴", () => {
     expect(await page.getByText(/저장하지 않은 변경이 있어요/).count()).toBe(0);
   });
 
-  test("각주를 적용하면 커서 자리에 넣어 원문 편집의 미저장 변경이 되고, 원문을 저장하면 커밋된다", async () => {
+  test("각주를 적용하면 커서 자리에 넣어 원문 편집의 미저장 변경이 되고, 임시저장하면 커밋된다", async () => {
     await openPost(SAVED_POST);
     await cursorAtLastLine();
     await insertButton().click();
@@ -132,8 +136,8 @@ describe("넣기 메뉴", () => {
     expect(await sourceText()).toContain('<Footnote id="1">공휴일</Footnote>.<Footnote id="2">토요일 포함</Footnote>');
     await page.getByText(SOURCE_EDITED).waitFor();
 
-    await page.getByRole("button", { name: "원문 저장" }).click();
-    await page.getByText(/^저장했어요\./).waitFor();
+    await page.getByRole("button", { name: "임시저장" }).click();
+    await page.getByText(/^임시저장했어요\./).waitFor();
     expect(newCommits()).toBe(1);
     expect(app.file(SAVED_POST)).toContain('<Footnote id="2">토요일 포함</Footnote>');
   });
@@ -171,9 +175,9 @@ describe("삽입 항목 수정", () => {
     await editFootnote().click();
     await form("각주 1 수정").getByRole("textbox").fill("설 연휴");
 
-    await page.getByRole("button", { name: "원문 저장" }).click();
+    await page.getByRole("button", { name: "임시저장" }).click();
     await page.getByText(BLOCKED).waitFor();
-    await page.getByRole("button", { name: "글 설정 저장" }).click();
+    await page.getByRole("button", { name: "게시", exact: true }).click();
     await page.getByRole("button", { name: "일반 편집" }).click();
 
     // 막은 동작 옆마다 안내가 보이지만 한 번에 하나만 보인다.

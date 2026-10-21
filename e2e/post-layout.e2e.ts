@@ -11,9 +11,9 @@ const UNTITLED = "content/게시판/제목없음/page.mdx";
 const SOURCE_ONLY = "content/게시판/원문만/page.mdx";
 /** 저장해 보는 글. 다른 테스트가 여는 글의 내용을 바꾸지 않게 따로 둔다. */
 const SAVED_POST = "content/게시판/저장/page.mdx";
-/** 상태를 바꿔 저장해 보는 글. */
+/** 게시를 내리고 다시 게시해 보는 글. */
 const STATUS_POST = "content/게시판/상태/page.mdx";
-/** 상태가 선택지에 없는 값인 글. */
+/** 상태가 초안·게시 대상이 아닌 값인 글. */
 const HIDDEN_POST = "content/게시판/숨김/page.mdx";
 const CONFIG = {
   branch: "main",
@@ -88,14 +88,15 @@ const techDetails = () =>
   page.locator("main > details").filter({ has: page.locator("summary", { hasText: "기술 상세" }) });
 const isOpen = (locator: ReturnType<Page["locator"]>) => locator.evaluate((el) => (el as HTMLDetailsElement).open);
 const UNSAVED_SETTINGS = "저장하지 않은 변경이 있어요. 바뀐 곳: 글 설정";
-const SAVED = "저장했어요. 사이트에 반영되기까지 시간이 걸릴 수 있어요.";
+const PUBLISHED = "게시 대상으로 저장했어요. 사이트에 반영되기까지 시간이 걸릴 수 있어요.";
+const UNPUBLISHED = "초안으로 바꿨어요. 사이트에서 사라지기까지 시간이 걸릴 수 있어요.";
+const button = (name: string) => page.getByRole("button", { name, exact: true });
+const statusLine = () => page.locator("main > header").getByText(/^상태: /);
 /** 필드의 화면 이름. 라벨 안의 필수 표시(*)는 뺀다. */
 const fieldLabels = () =>
   settings()
     .locator("label > span:first-child")
     .evaluateAll((spans) => spans.map((span) => span.firstChild?.textContent ?? ""));
-const optionTexts = (key: string) =>
-  input(key).evaluate((select) => [...(select as HTMLSelectElement).options].map((option) => option.textContent));
 
 async function openPost(path: string) {
   await page.goto(postUrl(path));
@@ -103,15 +104,20 @@ async function openPost(path: string) {
 }
 
 describe("글 화면 구성", () => {
-  test("저장된 제목이 화면 제목이고, 제목 입력·본문·저장 버튼이 보이며 글 설정·기술 상세는 닫혀 있다", async () => {
+  test("저장된 제목과 글 상태가 화면 위에 있고, 제목 입력·본문·상태별 버튼이 보이며 글 설정·기술 상세는 닫혀 있다", async () => {
     await openPost(POST);
 
     expect(await heading().textContent()).toBe("구성 볼 글");
+    expect(await statusLine().textContent()).toBe("상태: 게시 대상");
     expect(await input("title").inputValue()).toBe("구성 볼 글");
     expect(await input("title").isVisible()).toBe(true);
     expect(await page.locator(".body-editor-content").getByText("본문 첫 문단.").isVisible()).toBe(true);
-    expect(await page.getByRole("button", { name: "글 설정 저장" }).isVisible()).toBe(true);
-    expect(await page.getByRole("button", { name: "본문 저장" }).isVisible()).toBe(true);
+    expect(await button("수정 반영").isVisible()).toBe(true);
+    expect(await button("게시 내리기").isVisible()).toBe(true);
+    // 영역마다 따로 저장하는 버튼은 없다.
+    expect(await page.getByRole("button", { name: /^(글 설정 저장|본문 저장|원문 저장|임시저장|게시)$/ }).count()).toBe(
+      0,
+    );
 
     expect(await isOpen(settings())).toBe(false);
     expect(await input("description").isVisible()).toBe(false);
@@ -175,8 +181,8 @@ describe("글 화면 구성", () => {
   });
 });
 
-describe("제목과 글 설정 저장", () => {
-  test("제목을 바꾸면 글 설정의 미저장 변경이고, 본문 저장 뒤에도 남으며, 글 설정 저장 뒤 다시 열면 바뀐 제목이다", async () => {
+describe("글 단위 저장과 상태별 버튼", () => {
+  test("제목과 본문을 바꾸면 ‘수정 반영’ 한 번에 커밋 하나로 함께 저장되고, 다시 열면 바뀐 제목·본문이다", async () => {
     await openPost(SAVED_POST);
     await input("title").fill("바뀐 제목");
     await page.getByText(UNSAVED_SETTINGS).waitFor();
@@ -187,48 +193,44 @@ describe("제목과 글 설정 저장", () => {
     await page.keyboard.press("Control+End");
     await page.keyboard.type(" 덧붙임");
     await page.getByText("저장하지 않은 변경이 있어요. 바뀐 곳: 글 설정, 본문").waitFor();
-    await page.getByRole("button", { name: "본문 저장" }).click();
-    await page.getByText(SAVED, { exact: true }).waitFor();
-    await page.getByText(UNSAVED_SETTINGS, { exact: true }).waitFor();
-    expect(newCommits()).toBe(1);
-    expect(await input("title").inputValue()).toBe("바뀐 제목");
-    expect(await heading().textContent()).toBe("저장해 볼 글");
-
-    await page.getByRole("button", { name: "글 설정 저장" }).click();
+    await button("수정 반영").click();
+    await page.getByText(PUBLISHED, { exact: true }).waitFor();
     await heading().filter({ hasText: "바뀐 제목" }).waitFor();
-    expect(newCommits()).toBe(2);
+    expect(newCommits()).toBe(1);
+    expect(app.file(SAVED_POST)).toContain("덧붙임");
+    expect(await page.getByText(/저장하지 않은 변경이 있/).count()).toBe(0);
 
     await openPost(SAVED_POST);
     expect(await heading().textContent()).toBe("바뀐 제목");
+    expect(await statusLine().textContent()).toBe("상태: 게시 대상");
     expect(await page.getByText(/저장하지 않은 변경이 있/).count()).toBe(0);
   });
 
-  test("바꾼 것 없이 글 설정을 저장하면 ‘변경된 내용이 없어요’로 알리고 커밋하지 않는다", async () => {
+  test("바꾼 것 없이 ‘수정 반영’을 누르면 ‘변경된 내용이 없어요’로 알리고 커밋하지 않는다", async () => {
     await openPost(POST);
 
-    await page.getByRole("button", { name: "글 설정 저장" }).click();
+    await button("수정 반영").click();
     await page.getByText("변경된 내용이 없어요.", { exact: true }).waitFor();
     expect(newCommits()).toBe(0);
-    expect(await page.getByText(SAVED).count()).toBe(0);
+    expect(await page.getByText(PUBLISHED).count()).toBe(0);
   });
 
-  test("필드 라벨은 사용자 라벨을 우선하고, 없으면 알려진 이름을, 알 수 없는 필드는 키를 보인다", async () => {
+  test("필드 라벨은 사용자 라벨을 우선하고, 없으면 알려진 이름을, 알 수 없는 필드는 키를 보인다. 상태는 폼에 없다", async () => {
     await openPost(POST);
     await settingsSummary().click();
 
-    expect(await fieldLabels()).toEqual(["한 줄 소개", "검색어", "작성일", "other.code", "상태"]);
+    expect(await fieldLabels()).toEqual(["한 줄 소개", "검색어", "작성일", "other.code"]);
+    expect(await input("other.status").count()).toBe(0);
     // 알려진 필드의 내부 키는 라벨 옆에 보이지 않는다.
-    expect(await settings().getByText("other.status").count()).toBe(0);
     expect(await settings().getByText("other.createdAt").count()).toBe(0);
   });
 
-  test("상태 선택지는 ‘게시 대상’·‘초안’으로 보이고, 알 수 없는 상태 값도 빼지 않고 보인다", async () => {
-    await openPost(POST);
-    expect(await optionTexts("other.status")).toEqual(["(없음)", "게시 대상", "초안"]);
-
+  test("상태를 다룰 수 없는 글은 저장 버튼 없이 원문을 확인하라고 안내하고, 목록은 그 값을 그대로 보인다", async () => {
     await openPost(HIDDEN_POST);
-    expect(await optionTexts("other.status")).toEqual(["(없음)", "hidden", "게시 대상", "초안"]);
-    expect(await input("other.status").inputValue()).toBe("hidden");
+
+    await page.getByText(/^글의 게시 상태를 알 수 없어 저장할 수 없어요\./).waitFor();
+    expect(await statusLine().count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^(수정 반영|게시 내리기|임시저장|게시)$/ }).count()).toBe(0);
 
     await page.goto(`${app.origin}/repos/${REPO}?${new URLSearchParams({ collection: "게시판" })}`);
     const row = (title: string) => page.getByRole("row").filter({ has: page.getByRole("link", { name: title }) });
@@ -237,25 +239,49 @@ describe("제목과 글 설정 저장", () => {
     expect(await row("구성 볼 글").getByRole("cell").nth(1).textContent()).toBe("게시 대상");
   });
 
-  test("‘초안’·‘게시 대상’을 골라 저장하면 상태 값은 draft·ready로 저장되고 제목·작성일은 그대로다", async () => {
+  test("게시 내리기는 확인한 뒤 초안으로 저장하고, 초안을 게시하면 게시 대상이 되며 제목·작성일은 그대로다", async () => {
     const status = () => /status: ['"](\w+)['"]/.exec(app.file(STATUS_POST) ?? "")?.[1];
+    const dialog = () => page.getByRole("dialog", { name: "‘상태 바꿀 글’의 게시를 내릴까요?" });
 
     await openPost(STATUS_POST);
-    await settingsSummary().click();
-    await input("other.status").selectOption({ label: "초안" });
-    await page.getByRole("button", { name: "글 설정 저장" }).click();
-    await page.getByText(SAVED, { exact: true }).waitFor();
+    await input("title").fill("버릴 제목");
+    await button("게시 내리기").click();
+    await dialog().waitFor();
+    // 처음 초점은 실행하지 않는 쪽이고, 저장하지 않은 변경이 버려진다고 먼저 알린다.
+    expect(
+      await dialog()
+        .getByRole("button", { name: "계속 편집" })
+        .evaluate((el) => el === document.activeElement),
+    ).toBe(true);
+    expect(await dialog().getByText("사이트에서 사라지기까지 시간이 걸릴 수 있어요").isVisible()).toBe(true);
+    expect(
+      await dialog()
+        .getByText(/저장하지 않은 변경은 버려져요\. 바뀐 곳: 글 설정/)
+        .isVisible(),
+    ).toBe(true);
+    await dialog().getByRole("button", { name: "계속 편집" }).click();
+    await dialog().waitFor({ state: "hidden" });
+    expect(await input("title").inputValue()).toBe("버릴 제목");
+    expect(newCommits()).toBe(0);
+
+    await button("게시 내리기").click();
+    await dialog().getByRole("button", { name: "게시 내리기" }).click();
+    await page.getByText(UNPUBLISHED, { exact: true }).waitFor();
     expect(newCommits()).toBe(1);
     expect(status()).toBe("draft");
     expect(app.file(STATUS_POST)).toContain("상태 바꿀 글");
     expect(app.file(STATUS_POST)).toContain("2020-11-20T00:00:00Z");
+    // 버리기로 한 입력은 저장한 글로 다시 열린다.
+    await vi.waitFor(async () => expect(await input("title").inputValue()).toBe("상태 바꿀 글"));
+    expect(await page.getByText(/저장하지 않은 변경이 있/).count()).toBe(0);
+    expect(await statusLine().textContent()).toBe("상태: 초안");
+    expect(await button("임시저장").isVisible()).toBe(true);
 
-    if (!(await isOpen(settings()))) await settingsSummary().click();
-    expect(await input("other.status").inputValue()).toBe("draft");
-    await input("other.status").selectOption({ label: "게시 대상" });
-    await page.getByRole("button", { name: "글 설정 저장" }).click();
-    await vi.waitFor(() => expect(newCommits()).toBe(2));
+    await button("게시").click();
+    await page.getByText(PUBLISHED, { exact: true }).waitFor();
+    expect(newCommits()).toBe(2);
     expect(status()).toBe("ready");
+    expect(await statusLine().textContent()).toBe("상태: 게시 대상");
   });
 
   test("글 설정을 접었다 펼쳐도 입력이 남고, 잠긴 필드와 라벨 없는 필드도 빠지지 않는다", async () => {
@@ -277,7 +303,6 @@ describe("제목과 글 설정 저장", () => {
     ).toBe(true);
     expect(await input("other.code").inputValue()).toBe("A-1");
     expect(await settings().getByText("other.code").count()).toBeGreaterThan(0);
-    expect(await input("other.status").inputValue()).toBe("ready");
   });
 
   test("접힌 필수 필드를 비운 채 저장하면 글 설정을 펼쳐 필드 옆에 오류를 보이고 커밋하지 않는다", async () => {
@@ -286,7 +311,7 @@ describe("제목과 글 설정 저장", () => {
     await input("description").fill("");
     await settingsSummary().click();
 
-    await page.getByRole("button", { name: "글 설정 저장" }).click();
+    await button("수정 반영").click();
     await settings().getByText("값을 입력해 주세요.").waitFor();
     expect(await isOpen(settings())).toBe(true);
 
@@ -298,17 +323,16 @@ describe("제목과 글 설정 저장", () => {
 
   test("서버가 숨긴 필드의 입력을 거절하면 저장 실패는 기본 화면에, 필드 오류는 펼친 글 설정에 보인다", async () => {
     await openPost(POST);
-    // 화면이 막는 값을 직접 보낸 경우처럼 선택지에 없는 값을 고른다.
-    await input("other.status").evaluate((select) => {
-      const option = Object.assign(document.createElement("option"), { value: "hidden", textContent: "hidden" });
-      select.append(option);
-      (select as HTMLSelectElement).value = "hidden";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+    // 화면이 막는 값을 직접 보낸 경우처럼 브라우저 검사를 풀고 필수 필드를 비운다.
+    await input("description").evaluate((textarea) => {
+      (textarea as HTMLTextAreaElement).required = false;
+      (textarea as HTMLTextAreaElement).value = "";
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(await isOpen(settings())).toBe(false);
 
-    await page.getByRole("button", { name: "글 설정 저장" }).click();
-    await settings().getByText("목록에 없는 값이에요. 목록에서 골라 주세요.").waitFor();
+    await button("수정 반영").click();
+    await settings().getByText("값을 입력해 주세요.").waitFor();
     expect(await isOpen(settings())).toBe(true);
     expect(
       await page.getByText("입력한 값을 확인해 주세요. 표시된 항목을 고친 뒤 다시 저장해 주세요.").isVisible(),
