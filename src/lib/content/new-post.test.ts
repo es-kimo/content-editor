@@ -101,6 +101,10 @@ describe("newPostActions", () => {
     expect(newPostActions(board)).toMatchObject({ ok: true, primary: "publish", secondary: ["save-draft"] });
   });
 
+  test("저장한 적 없는 새 글은 ‘삭제’ 대신 ‘작성 취소’를 둔다", () => {
+    expect(newPostActions(board)).toMatchObject({ ok: true, remove: "cancel" });
+  });
+
   test("설정에 초안·게시 상태가 없는 글 분류는 행동이 없고 편집 설정을 확인하라고 안내한다", () => {
     const [plain] = testConfig([{ name: "공지", path: "content/{slug}/page.mdx" }]).collections;
 

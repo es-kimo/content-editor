@@ -11,15 +11,17 @@ import { chromium, type Browser, type BrowserContext } from "playwright-core";
 import { parseKey } from "@/lib/auth/crypto";
 import { encodeSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { fakeGitRepo } from "@/test/fake-git";
-import { fakeGitHub, type FakeFile } from "@/test/fake-github";
+import type { FakeFile } from "@/test/fake-github";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const GITHUB = "https://api.github.com";
 
-/** 가짜 GitHub 서버. 쓰기와 브랜치 상태는 `fakeGitRepo`, 글 목록이 읽는 GraphQL은 처음 파일로 `fakeGitHub`가 답한다. */
+/**
+ * 가짜 GitHub 서버. 읽기·쓰기와 브랜치 상태를 `fakeGitRepo`가 맡아, 글 목록(GraphQL)도 커밋한 뒤의 글을 읽는다.
+ * 휴지통으로 옮긴 글이 목록에서 빠지는지 보려면 목록이 처음 파일이 아니라 지금 브랜치를 읽어야 한다.
+ */
 async function startGitHub(repo: string, files: FakeFile[]) {
   const git = fakeGitRepo(repo, "main", files);
-  const graphql = fakeGitHub(repo, "main", files);
   const config = String(files.find((f) => f.path === "editor.config.json")!.content);
   const server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
@@ -28,8 +30,7 @@ async function startGitHub(repo: string, files: FakeFile[]) {
     const init = { method: req.method, body: chunks.length > 0 ? Buffer.concat(chunks).toString() : undefined };
     let response: Response;
     try {
-      if (url.pathname === "/graphql") response = await graphql(url, init);
-      else if (url.pathname === `/repos/${repo}/contents/editor.config.json`) response = new Response(config);
+      if (url.pathname === `/repos/${repo}/contents/editor.config.json`) response = new Response(config);
       else response = await git.fetch(url, init);
     } catch (error) {
       response = Response.json({ message: String(error) }, { status: 500 });

@@ -36,6 +36,12 @@ export const SUBMENU_FIELD = "submenu";
 /** 저장한 적 없는 새 글을 처음 저장하는 행동. 초안으로 두거나 바로 게시한다. */
 export type NewPostAction = Extract<PostAction, "save-draft" | "publish">;
 
+/**
+ * 글을 없애는 행동. 저장된 글은 휴지통으로 옮기고(`trash`), 저장한 적 없는 새 글은 옮길 것이 없어 작성을 취소한다(`cancel`).
+ * 둘 다 확인한 뒤에 한다.
+ */
+export type RemoveAction = "trash" | "cancel";
+
 /** 편집 모드마다 저장할 때 함께 담는 영역. 제목 입력은 글 설정 폼이라 `metadata`에 든다. */
 const MODE_AREAS: { [mode in EditorMode]: EditArea[] } = {
   wysiwyg: ["metadata", "body", "images"],
@@ -62,12 +68,12 @@ export function docEditorKeys(source: string, doc: MdxDoc): EditorKeys {
 
 /**
  * 저장 하나. 글 저장은 행동과, 그 행동이 담을 입력을 정하는 편집 모드를 함께 받는다.
- * 게시 내리기는 상태만 바꾸므로 입력을 담지 않는다. 화면이 먼저 반영하거나 버리게 한다.
+ * 게시 내리기와 휴지통 이동은 상태만 바꾸므로 입력을 담지 않는다. 화면이 먼저 반영하거나 버리게 한다.
  * 새 글도 행동(`newPostRequest`)으로만 처음 저장한다. 입력·모드 전환·이미지 준비는 저장 요청을 만들지 않는다.
  */
 export type SaveRequest =
   | { target: "post"; action: Exclude<PostAction, "unpublish">; mode: EditorMode }
-  | { target: "post"; action: "unpublish" }
+  | { target: "post"; action: "unpublish" | "trash" }
   | { target: "new"; action: NewPostAction; mode: EditorMode };
 
 /**
@@ -76,7 +82,7 @@ export type SaveRequest =
  */
 export function savedAreas(request: SaveRequest): EditArea[] {
   if (request.target === "new") return [...NEW_POST_AREAS, ...MODE_AREAS[request.mode]];
-  if (request.action === "unpublish") return [];
+  if (!("mode" in request)) return [];
   return MODE_AREAS[request.mode];
 }
 
@@ -132,12 +138,14 @@ export const STATUS_PROBLEM_MESSAGES: { [problem in StatusProblem]: string } = {
 export const TRASHED_MESSAGE = "휴지통에 있는 글이에요. 복구한 뒤에 고칠 수 있어요.";
 
 /**
- * 글 화면에 보일 글 상태와 저장 행동. 한 상태에서 주 행동은 하나다.
- * 행동이 없으면 `status`는 보일 상태(휴지통)나 null이고, `notice`는 행동이 없는 이유와 할 일이다.
+ * 글 화면에 보일 글 상태와 행동. 한 상태에서 주 행동은 하나다. `remove`는 확인한 뒤에 하는 글 없애기다.
+ * 편집·저장 행동이 없으면 `ok`가 false이고 `notice`는 그 이유와 할 일이다.
+ * 휴지통 글은 편집 대신 ‘복구’만 하고, 상태를 다룰 수 없는 글은 아무 행동도 없다.
  */
 export type PostActions =
-  | { ok: true; status: PostStatus; primary: PostAction; secondary: PostAction[] }
-  | { ok: false; status: "trashed" | null; notice: string };
+  | { ok: true; status: PostStatus; primary: PostAction; secondary: PostAction[]; remove: RemoveAction }
+  | { ok: false; status: "trashed"; primary: "restore"; notice: string }
+  | { ok: false; status: null; notice: string };
 
 const STATUS_ACTIONS: { [status in PostStatus]: { primary: PostAction; secondary: PostAction[] } } = {
   draft: { primary: "publish", secondary: ["save-draft"] },
@@ -150,22 +158,24 @@ const STATUS_ACTIONS: { [status in PostStatus]: { primary: PostAction; secondary
  * @param metadata 폼으로 읽은 글 설정. 읽을 수 없으면 null.
  */
 export function postActions(collection: Collection, metadata: MetadataObject | null): PostActions {
-  if (metadata && readTrash(metadata).trashed) return { ok: false, status: "trashed", notice: TRASHED_MESSAGE };
+  if (metadata && readTrash(metadata).trashed) {
+    return { ok: false, status: "trashed", primary: "restore", notice: TRASHED_MESSAGE };
+  }
   const support = statusSupport(collection);
   if (!support.ok) return { ok: false, status: null, notice: STATUS_PROBLEM_MESSAGES[support.reason] };
   const status = metadata && readStatus(metadata);
   if (!status) return { ok: false, status: null, notice: STATUS_PROBLEM_MESSAGES["status-value"] };
-  return { ok: true, status, ...STATUS_ACTIONS[status] };
+  return { ok: true, status, ...STATUS_ACTIONS[status], remove: "trash" };
 }
 
 /**
  * 저장한 적 없는 새 글의 저장 행동. 새 글은 초안에서 시작하므로 ‘게시’가 주 행동이고 ‘임시저장’이 보조 행동이다.
- * 설정이 게시 상태를 다루지 못하면 행동을 두지 않는다.
+ * 휴지통에 옮길 글이 아직 없으니 ‘삭제’ 대신 ‘작성 취소’를 둔다. 설정이 게시 상태를 다루지 못하면 행동을 두지 않는다.
  */
 export function newPostActions(collection: Collection): PostActions {
   const support = statusSupport(collection);
   if (!support.ok) return { ok: false, status: null, notice: STATUS_PROBLEM_MESSAGES[support.reason] };
-  return { ok: true, status: "draft", ...STATUS_ACTIONS.draft };
+  return { ok: true, status: "draft", ...STATUS_ACTIONS.draft, remove: "cancel" };
 }
 
 /** 새 글 화면에서 누른 행동의 저장 요청. 새 글이 처음 할 수 없는 행동(수정 반영·게시 내리기)이면 null. */
@@ -185,8 +195,8 @@ export type SavePhase =
 /** 넣기·수정 폼을 여는 편집 영역. 폼을 적용하면 이 영역의 미저장 변경이 된다. */
 export type FormArea = Extract<EditArea, "body" | "source">;
 
-/** 폼이 열려 있어 막은 동작. 글·새 글 저장 행동, 모드 전환, 이미지 받기. */
-export type FormBlocked = PostAction | "mode" | "image";
+/** 폼이 열려 있어 막은 동작. 글·새 글 저장 행동, 휴지통 이동, 모드 전환, 이미지 받기. */
+export type FormBlocked = SaveRequest["action"] | "mode" | "image";
 
 /**
  * 적용하지 않은 넣기·수정 폼.
@@ -245,10 +255,11 @@ type Job = { request: SaveRequest; submit: () => Promise<SaveState>; onUnchanged
 const FAILED: SaveState = { status: "error", message: "저장하지 못했어요. 연결을 확인한 뒤 다시 저장해 주세요." };
 
 /**
- * 저장에 성공해 저장한 글 화면으로 갈 때 잃어도 되는 영역. 저장한 영역이고, 게시 내리기는 확인에서 버리기로 한 글 화면 전체다.
+ * 저장에 성공해 저장한 글 화면으로 갈 때 잃어도 되는 영역. 저장한 영역이고,
+ * 게시 내리기·휴지통 이동은 확인에서 버리기로 한 글 화면 전체다.
  */
 const settledAreas = (request: SaveRequest): EditArea[] =>
-  request.target === "post" && request.action === "unpublish" ? SCREEN_AREAS.post : savedAreas(request);
+  "mode" in request ? savedAreas(request) : SCREEN_AREAS[request.target];
 
 /** 한 화면의 저장들을 하나씩만 진행하게 묶는다. @param navigate 저장에 성공하면 저장한 글 화면으로 간다. */
 export function createSaveFlow({ navigate }: { navigate: (href: string) => void }): SaveFlow {

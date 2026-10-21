@@ -52,6 +52,11 @@ export type LeaveGuard = {
   stay(): void;
   /** `변경 버리고 나가기`. 요청한 목적지로 한 번 간다. 도착할 때까지 다른 확인과 브라우저 기본 경고를 하지 않는다. */
   leave(): void;
+  /**
+   * 화면이 입력을 버리기로 이미 확인받은 이동(작성 취소). 이탈 확인 없이 `leave`로 가고, `leave()`처럼 입력을 버리는 중으로 둔다.
+   * 확인 중이던 다른 이동은 버린다.
+   */
+  abandon(leave: Leave): void;
   /** 새로고침·탭 닫기·외부 이동에 브라우저 기본 경고를 요청할지. */
   warnsUnload(): boolean;
   /** `변경 버리고 나가기`를 골라 도착을 기다리는 중인지. 떠난 화면이 숨겨질 때 입력을 버릴지 정한다. */
@@ -98,6 +103,12 @@ export function createLeaveGuard({ areas, go }: { areas: () => EditArea[]; go: (
       if (!leave) return;
       leaving = true;
       update({ pending: null, areas: [] });
+      go(leave);
+    },
+    abandon(leave) {
+      if (leaving) return;
+      leaving = true;
+      if (state.pending) update({ pending: null, areas: [] });
       go(leave);
     },
     warnsUnload: () => !leaving && areas().length > 0,
