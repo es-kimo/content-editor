@@ -140,7 +140,14 @@ export {
 } from "./save-flow";
 export { saveSource, type SaveSourceInput, type SaveSourceResult } from "./save-source";
 export { saveMetadata, type SaveMetadataInput, type SaveMetadataResult } from "./save-metadata";
-export { checkSubmenuName, newPostPath, postSlug, type SubmenuNameCheck, type SubmenuNameProblem } from "./slug";
+export {
+  checkSubmenuName,
+  newPostPath,
+  newPostPreviewPath,
+  postSlug,
+  type SubmenuNameCheck,
+  type SubmenuNameProblem,
+} from "./slug";
 export { listTitle, postTitle, summarizePost, UNTITLED_POST, type PostSummary } from "./summary";
 export { timed } from "./timed";
 export { restorePost, trashPost, type TrashInput, type TrashResult } from "./trash";

@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
 import type { NewPostSubmenu } from "@/lib/content/create-post";
 import type { PostActions } from "@/lib/content/save-flow";
-import { newPostPath, postSlug } from "@/lib/content/slug";
+import { newPostPreviewPath } from "@/lib/content/slug";
 import { newPostChanges } from "@/lib/content/unsaved";
 import type { Collection } from "@/lib/editor-config";
 
@@ -47,12 +47,7 @@ export function NewPostForm({
   // 원문 편집에서는 제목도 원문이 담아, 제목 칸의 숨은 입력은 원문 편집으로 넘어간 것이다.
   useReportUnsaved("title", changes.title && mode === "wysiwyg");
   useReportUnsaved("submenu", submenus !== null && changes.submenu);
-  // 아직 입력하지 않은 자리는 자리 이름으로 채워, 만들 글이 어디에 생길지 처음부터 보여 준다.
-  const path = newPostPath(
-    collection,
-    postSlug(title) ?? "(제목)",
-    submenus ? submenu.name.trim() || "(하위 메뉴)" : undefined,
-  );
+  const path = newPostPreviewPath(collection, title, submenus ? submenu.name : undefined);
 
   return (
     <>
@@ -110,13 +105,15 @@ function SubmenuField({
   return (
     <div className="flex flex-col gap-1">
       {submenus.length === 0 ? (
-        <label className="flex flex-col gap-1">
-          {label}
-          {nameInput}
+        <>
+          <label className="flex flex-col gap-1">
+            {label}
+            {nameInput}
+          </label>
           <span className="text-xs text-zinc-500">
             아직 하위 메뉴가 없어요. 새 메뉴 이름을 입력하면 이 글을 저장할 때 함께 만들어요.
           </span>
-        </label>
+        </>
       ) : (
         <>
           <label className="flex flex-col gap-1">
@@ -145,11 +142,13 @@ function SubmenuField({
             </select>
           </label>
           {value.kind === "new" && (
-            <label className="flex flex-col gap-1">
-              <span className="text-sm">새 메뉴 이름</span>
-              {nameInput}
+            <>
+              <label className="flex flex-col gap-1">
+                <span className="text-sm">새 메뉴 이름</span>
+                {nameInput}
+              </label>
               <span className="text-xs text-zinc-500">새 메뉴는 이 글을 저장할 때 함께 만들어요.</span>
-            </label>
+            </>
           )}
         </>
       )}
