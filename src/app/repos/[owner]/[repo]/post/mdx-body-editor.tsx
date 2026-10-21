@@ -33,7 +33,15 @@ import {
   type MdastJsx,
   type MDXEditorMethods,
 } from "@mdxeditor/editor";
-import { createContext, useContext, useEffect, useMemo, useRef, type RefObject } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
+} from "react";
 
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 폼·사진 모듈만 가져온다.
 import type { BodyImagePhoto } from "@/lib/content/body-image";
@@ -148,21 +156,39 @@ export default function MdxBodyEditor({
   return (
     // 편집기는 처음 만든 플러그인으로 요소를 그리므로, 넣은 이미지가 늘어 바뀌는 사진 주소는 context로 넘긴다.
     <PhotoContext value={photo ?? null}>
-      <MDXEditor
-        ref={editor}
-        markdown={markdown}
-        plugins={plugins}
-        readOnly={readOnly}
-        onChange={onChange}
-        onError={({ error }) => onError(error)}
-        className="rounded border"
-        contentEditableClassName="body-editor-content"
-      />
+      <div onKeyDownCapture={leaveOnTab}>
+        <MDXEditor
+          ref={editor}
+          markdown={markdown}
+          plugins={plugins}
+          readOnly={readOnly}
+          onChange={onChange}
+          onError={({ error }) => onError(error)}
+          className="rounded border"
+          contentEditableClassName={CONTENT_CLASS}
+        />
+      </div>
     </PhotoContext>
   );
 }
 
 const PhotoContext = createContext<PhotoOf | null>(null);
+
+const CONTENT_CLASS = "body-editor-content";
+
+/**
+ * 목록 밖 본문에서 Tab을 누르면 편집기에 넘기지 않아 브라우저가 초점을 다음 조작 요소(본문 사진 등)로 옮기게 한다.
+ * 편집기는 목록 들여쓰기에 쓰려고 본문 어디서나 Tab을 막아, 키보드만으로는 본문을 벗어나거나 사진을 고를 수 없다.
+ */
+function leaveOnTab(event: ReactKeyboardEvent) {
+  if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey) return;
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || !target.classList.contains(CONTENT_CLASS)) return;
+  const anchor = document.getSelection()?.anchorNode;
+  const at = anchor instanceof Element ? anchor : anchor?.parentElement;
+  if (at?.closest("li")) return;
+  event.stopPropagation();
+}
 
 /** 사진 주소가 있는 이미지는 사진으로, 나머지 요소는 이름과 속성으로 그린다. 표현만 바꾸고 요소는 고치지 않는다. */
 function JsxEditor(props: JsxEditorProps) {
@@ -170,7 +196,7 @@ function JsxEditor(props: JsxEditorProps) {
   const { mdastNode, descriptor } = props;
   const photo = useMemo(() => photoOf?.(mdastNode) ?? null, [photoOf, mdastNode]);
   if (!photo) return <GenericJsxEditor {...props} />;
-  return <BodyPhoto key={photo.src} photo={photo} inline={descriptor.kind === "text"} />;
+  return <BodyPhoto key={photo.src} photo={photo} element={mdastNode} inline={descriptor.kind === "text"} />;
 }
 
 /**

@@ -17,8 +17,8 @@ export {
 } from "./images";
 export type { AddedImage, AddImageOptions, ImageImport } from "./images";
 export type { MetadataLookup, MetadataResult, MetadataValue } from "./metadata";
-export { printJsxTag } from "./jsx";
-export type { JsxElement } from "./jsx";
+export { printJsxTag, readJsxTags } from "./jsx";
+export type { JsxElement, JsxTag } from "./jsx";
 export { previewMdx } from "./preview";
 export type { MdxPreview, PreviewImages } from "./preview";
 export { checkMdx } from "./check";

@@ -9,12 +9,15 @@ import { bodyImagePhoto, type BodyImageSources } from "@/lib/content/body-image"
 import { draftAttachments } from "@/lib/content/draft";
 import {
   applyBodyInsertForm,
+  bodyEntryAt,
+  bodyEntryElementAt,
   bodyImageMoves,
   bodyImageReplace,
   bodyInsert,
   bodyInserts,
   imageFormTag,
   insertMenuItems,
+  isImageInsert,
   moveBodyInsert,
   newBodyInsertTarget,
   removeBodyInsert,
@@ -22,12 +25,21 @@ import {
 } from "@/lib/content/insert-form";
 import { uploadPreviewMessage } from "@/lib/content/preview";
 import { MAX_IMAGE_SIDE } from "@/lib/content/upload";
-import { editedBody, hasTocHeading, sameBodyStructure, type JsxElement, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
+import {
+  editedBody,
+  hasTocHeading,
+  sameBodyStructure,
+  type JsxElement,
+  type MdxDoc,
+  type MoveDirection,
+  type Syntax,
+} from "@/lib/mdx-doc";
 
+import { BodyPhotosContext, useBodyPhotos } from "./body-photo";
 import { BodyPreview } from "./body-preview";
 import { useDraftInput, useDraftTouch } from "./drafts";
 import { AttachedImagesNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
-import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
+import { InsertEntryList, InsertMenu, useInsertForm, type FormOpener } from "./insert-form";
 import type { BodyEditorHandle } from "./mdx-body-editor";
 import { useModeInput, usePostEditor, usePostInput, type CarriedForm } from "./post-editor";
 
@@ -166,6 +178,36 @@ function OpenedBodyEditor({
     [attachedDoc, current, syntax],
   );
   const formLocked = locked || !forms.canOpen || images.preparing;
+  // 삽입 항목 목록과 본문 사진이 같은 교체·이동을 쓴다.
+  const replaceImage = upload
+    ? (item: ImageInsertItem, button: HTMLElement, opener: FormOpener) => {
+        // 새 파일을 첨부에 더하면 import가 늘어 위치가 밀리므로, 고른 때의 원문을 함께 둔다.
+        const replace = bodyImageReplace(attachedDoc, current, item);
+        images.pick(button, (image) => forms.open({ kind: "replace", ...replace, image }, opener));
+      }
+    : null;
+  const moveImage = (item: ImageInsertItem, direction: MoveDirection) => {
+    const result = moveBodyInsert(attachedDoc, current, item, direction, syntax);
+    replaceBody(result);
+    return result;
+  };
+  const editorBox = useRef<HTMLDivElement>(null);
+  const photos = useBodyPhotos(editorBox, {
+    image: (element, nth) => {
+      const entry = bodyEntryAt(attachedDoc, current, element, nth, syntax);
+      return entry && isImageInsert(entry) ? entry : null;
+    },
+    moves: imageMoves,
+    disabled: formLocked,
+    edit: (item, opener) => forms.open({ kind: "edit", item }, opener),
+    replace: replaceImage,
+    remove: (item) => replaceBody(removeBodyInsert(attachedDoc, current, item, syntax)),
+    move: (item, direction) => {
+      const result = moveImage(item, direction);
+      if (!result.ok) return result;
+      return { ok: true, at: bodyEntryElementAt(attachedDoc, result.body, result.index, syntax) };
+    },
+  });
   // 본문과 본문에 넣은 이미지를 낸다. 일반 편집으로 고칠 수 없게 된 글도 제목·설정은 일반 편집에서 저장하므로,
   // 본문은 연 그대로 첨부 없이 낸다.
   usePostInput("wysiwyg", () => {
@@ -221,50 +263,46 @@ function OpenedBodyEditor({
         onRemove={(item) => replaceBody(removeBodyInsert(attachedDoc, current, item, syntax))}
         images={{
           moves: imageMoves,
-          replace: upload
-            ? (item, opener) => {
-                // 새 파일을 첨부에 더하면 import가 늘어 위치가 밀리므로, 고른 때의 원문을 함께 둔다.
-                const replace = bodyImageReplace(attachedDoc, current, item);
-                images.pick(opener, (image) => forms.open({ kind: "replace", ...replace, image }, opener));
-              }
-            : null,
-          move: (item, direction) => {
-            const result = moveBodyInsert(attachedDoc, current, item, direction, syntax);
-            replaceBody(result);
-            return result;
-          },
+          replace: replaceImage && ((item, opener) => replaceImage(item, opener, opener)),
+          move: moveImage,
         }}
       />
       {forms.panel}
-      <div {...(upload ? images.dropProps : {})}>
-        <MdxBodyEditor
-          markdown={body}
-          components={components}
-          readOnly={locked}
-          handleRef={editor}
-          onChange={(markdown, initialMarkdownNormalize) => {
-            if (!initialMarkdownNormalize) return edit(markdown);
-            setCurrent(markdown);
-            normalized.current = markdown;
-            setDraft(editedBody(body, normalized.current, edited.current));
-            // 렌더링 구조까지 바뀌는 글은 고치지 않은 곳까지 바꿔 저장하게 되므로 WYSIWYG로 고치지 않는다.
-            if (!sameBodyStructure(body, markdown, syntax)) {
+      <div ref={editorBox} {...(upload ? images.dropProps : {})}>
+        <BodyPhotosContext value={photos}>
+          <MdxBodyEditor
+            markdown={body}
+            components={components}
+            readOnly={locked}
+            handleRef={editor}
+            onChange={(markdown, initialMarkdownNormalize) => {
+              if (!initialMarkdownNormalize) {
+                // 고른 사진의 차례가 바뀌었을 수 있어 다른 이미지를 고치지 않게 선택을 푼다.
+                photos.select(null);
+                return edit(markdown);
+              }
+              setCurrent(markdown);
+              normalized.current = markdown;
+              setDraft(editedBody(body, normalized.current, edited.current));
+              // 렌더링 구조까지 바뀌는 글은 고치지 않은 곳까지 바꿔 저장하게 되므로 WYSIWYG로 고치지 않는다.
+              if (!sameBodyStructure(body, markdown, syntax)) {
+                unreadable({
+                  message:
+                    "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집으로 열면 글 구조가 바뀌어요.",
+                });
+              }
+            }}
+            onError={(message) =>
               unreadable({
                 message:
-                  "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집으로 열면 글 구조가 바뀌어요.",
-              });
+                  "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집이 읽을 수 없는 내용이 있어요.",
+                detail: message,
+              })
             }
-          }}
-          onError={(message) =>
-            unreadable({
-              message:
-                "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집이 읽을 수 없는 내용이 있어요.",
-              detail: message,
-            })
-          }
-          onPickImage={upload ? images.pick : undefined}
-          photo={photo}
-        />
+            onPickImage={upload ? images.pick : undefined}
+            photo={photo}
+          />
+        </BodyPhotosContext>
       </div>
       {upload && images.picker}
       {upload && (
