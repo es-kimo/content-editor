@@ -4,7 +4,7 @@ import { createGitHubClient } from "@/lib/github";
 import { testConfig } from "@/test/config";
 import { fakeGitHub, type FakeFile } from "@/test/fake-github";
 
-import { readRepoImage, repoImageHref } from "./repo-image";
+import { readRepoImage } from "./repo-image";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/게시판/일반/page.mdx";
@@ -71,14 +71,5 @@ describe("readRepoImage", () => {
         : fake(input, init),
     );
     expect(await readRepoImage(client, REPO, config, POST, "./1.png")).toEqual({ ok: false, reason: "missing" });
-  });
-});
-
-describe("repoImageHref", () => {
-  test("레포 이미지 라우트 주소에 글 경로와 import 경로를 담는다", () => {
-    const href = new URL(repoImageHref(REPO, POST, "./1.png"), "https://editor.test");
-    expect(href.pathname).toBe(`/repos/${REPO}/image`);
-    expect(href.searchParams.get("post")).toBe(POST);
-    expect(href.searchParams.get("src")).toBe("./1.png");
   });
 });

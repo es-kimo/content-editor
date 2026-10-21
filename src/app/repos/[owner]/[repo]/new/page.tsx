@@ -84,6 +84,7 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
                 files={opened.post.files}
                 keys={{ source: "new", body: "new" }}
                 syntax={config.syntax}
+                post={null}
                 preview={config.preview}
               />
             </NewPostForm>

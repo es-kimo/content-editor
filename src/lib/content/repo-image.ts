@@ -48,7 +48,3 @@ function resolveImportPath(postPath: string, importPath: string): string | null 
   }
   return parts.join("/");
 }
-
-/** 편집 화면이 레포 이미지를 받아 갈 라우트 주소. */
-export const repoImageHref = (repo: string, postPath: string, importPath: string) =>
-  `/repos/${repo}/image?${new URLSearchParams({ post: postPath, src: importPath })}`;
