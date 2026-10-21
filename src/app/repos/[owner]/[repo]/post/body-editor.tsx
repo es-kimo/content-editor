@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useRef, useState } from "react";
 
 import { TechDetails } from "@/app/_lib/ui";
-import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
+import { useReportUnsaved, useSaveLocked } from "@/app/_lib/unsaved";
 import {
   applyBodyInsertForm,
   bodyInsert,
@@ -15,15 +15,14 @@ import {
   removeBodyInsert,
 } from "@/lib/content/insert-form";
 import { uploadPreviewMessage } from "@/lib/content/preview";
-import type { SaveState } from "@/lib/content/save-flow";
 import { MAX_IMAGE_SIDE } from "@/lib/content/upload";
 import { editedBody, hasTocHeading, sameBodyStructure, type MdxDoc, type Syntax } from "@/lib/mdx-doc";
 
 import { BodyPreview } from "./body-preview";
-import { AttachedImagesNotice, ImagePreparingNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
+import { AttachedImagesNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
 import type { BodyEditorHandle } from "./mdx-body-editor";
-import { SaveRow } from "./save-row";
+import { usePostInput } from "./post-editor";
 
 const MdxBodyEditor = dynamic(() => import("./mdx-body-editor"), {
   ssr: false,
@@ -40,7 +39,6 @@ export function BodyEditor({
   components,
   upload,
   preview,
-  action,
 }: {
   /** 글을 연 시점의 doc. 넣은 이미지의 import와 사이트 미리보기의 파일 전체를 이 doc에서 만든다. */
   doc: MdxDoc;
@@ -50,10 +48,8 @@ export function BodyEditor({
   upload: BodyImageUpload | null;
   /** config `preview`. 있으면 사이트 미리보기를 띄운다. */
   preview?: string;
-  /** 본문과, 넣은 이미지를 파일 이름이 `N.ext`인 `image` 파일로 담은 FormData를 보낸다. */
-  action: (body: string, images: FormData) => Promise<SaveState>;
 }) {
-  const save = useSave("body");
+  const locked = useSaveLocked();
   /** 일반 편집으로 고칠 수 없게 된 이유. `detail`은 기술 상세에 둘 오류 원문이다. */
   const [problem, setProblem] = useState<{ message: string; detail?: string } | null>(null);
   const normalized = useRef<string | null>(null);
@@ -113,7 +109,14 @@ export function BodyEditor({
   const { doc: attachedDoc } = images;
   const inserts = useMemo(() => bodyInserts(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
   const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
-  const formLocked = save.locked || !forms.canOpen || images.preparing;
+  const formLocked = locked || !forms.canOpen || images.preparing;
+  // 일반 편집으로 고칠 수 없게 된 글은 원문 편집으로 저장하게 하고, 본문과 본문에 넣은 이미지를 낸다.
+  usePostInput("wysiwyg", () => {
+    if (problem) return null;
+    const next = editedBody(body, normalized.current, edited.current);
+    const data = images.upload(next);
+    return data && { text: next, data, unchanged: () => setBaseline(next) };
+  });
   // 이미지는 넣을 수 있는 글에서만 메뉴에 둔다. 고르면 파일 선택 창을 열고, 고른 뒤 폼이 열린다.
   const menu = insertMenuItems(components).filter((item) => item.kind !== "image" || upload);
 
@@ -128,20 +131,7 @@ export function BodyEditor({
   }
 
   return (
-    <form
-      className="flex flex-col gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const next = editedBody(body, normalized.current, edited.current);
-        const data = images.upload(next);
-        if (!data) return;
-        save.request(
-          { target: "body" },
-          () => action(next, data),
-          () => setBaseline(next),
-        );
-      }}
-    >
+    <div className="flex flex-col gap-2">
       <InsertMenu
         disabled={formLocked}
         items={menu.map(({ kind, label }) => ({
@@ -165,7 +155,7 @@ export function BodyEditor({
         <MdxBodyEditor
           markdown={body}
           components={components}
-          readOnly={save.locked}
+          readOnly={locked}
           handleRef={editor}
           onChange={(markdown, initialMarkdownNormalize) => {
             if (!initialMarkdownNormalize) return edit(markdown);
@@ -198,7 +188,7 @@ export function BodyEditor({
         </p>
       )}
       <AttachedImagesNotice upload={images}>
-        본문을 저장할 때 글 폴더에 함께 저장하고, 본문에서 지웠거나 넣지 않은 이미지는 올리지 않아요.
+        글을 저장할 때 글 폴더에 함께 저장하고, 본문에서 지웠거나 넣지 않은 이미지는 올리지 않아요.
       </AttachedImagesNotice>
       <ImageProblemNotice upload={images} />
       <BodyPreview
@@ -220,8 +210,6 @@ export function BodyEditor({
             : undefined
         }
       />
-      <ImagePreparingNotice upload={images} />
-      <SaveRow label="본문 저장" save={save} disabled={images.preparing} />
-    </form>
+    </div>
   );
 }

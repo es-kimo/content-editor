@@ -46,12 +46,6 @@ export function AttachedImagesNotice({ upload, children }: { upload: ImageUpload
   );
 }
 
-/** 이미지를 준비하는 동안 저장 버튼 옆에 저장할 수 없는 이유를 보인다. */
-export function ImagePreparingNotice({ upload }: { upload: ImageUpload }) {
-  if (!upload.preparing) return null;
-  return <p className="text-sm text-zinc-500">이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 저장해 주세요.</p>;
-}
-
 /**
  * 일반 편집과 원문 편집이 같이 쓰는 이미지 받기. 파일 선택·붙여넣기·끌어 놓기로 받은 이미지를 하나 준비해 첨부에 더하고,
  * `onAdded`가 대체 텍스트 폼을 열게 한다. 준비를 시작해 폼이 열릴 때까지 준비 중이고, 그 뒤는 열린 폼이 저장을 막는다.
@@ -101,7 +95,7 @@ export function useImageUpload({
     if (selected.length === 0) return;
     // 막은 기록은 폼을 닫을 때 흐름이 지우므로, 남은 이유가 열린 폼 안내와 겹치지 않게 비운다.
     if (forms.blocks("image")) return setProblem(null);
-    // 저장 중이거나 다른 영역 입력을 버릴지 묻는 중에는 입력을 받지 않는다.
+    // 저장 중에는 입력을 받지 않는다.
     if (!forms.canOpen) return;
     if (session.preparing) return setProblem({ kind: "blocked", message: IMAGE_ADD_BLOCKED.preparing });
     if (selected.length > 1) return setProblem({ kind: "blocked", message: IMAGE_ADD_BLOCKED.many });

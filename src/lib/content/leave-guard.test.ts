@@ -177,7 +177,7 @@ describe("저장 뒤 이동", () => {
   test("저장하는 동안은 입력이 아직 저장되지 않았으니 이탈을 확인한다", () => {
     const { flow, guard } = setup();
     flow.report("metadata", true);
-    flow.request({ target: "metadata" }, () => new Promise<SaveState>(() => {}));
+    flow.request({ target: "post", action: "update", mode: "wysiwyg" }, () => new Promise<SaveState>(() => {}));
 
     expect(flow.getState().phase.kind).toBe("saving");
     expect(guard.request(LIST)).toBe(false);
@@ -195,19 +195,39 @@ describe("저장 뒤 이동", () => {
     expect(guard.request(LIST)).toBe(true);
   });
 
-  test("본문을 저장해 다시 열리는 동안에도 다시 열리지 않는 metadata 입력은 계속 지킨다", async () => {
+  test("일반 편집으로 글을 저장해 다시 열리는 동안에도 저장에 담지 않은 원문 편집 입력은 계속 지킨다", async () => {
     const { flow, guard, navigate } = setup();
     flow.report("body", true);
     flow.report("metadata", true);
+    flow.report("source", true);
 
-    flow.request({ target: "body" }, async () => ({ status: "saved", href: "/repos/es-kimo/yjshd/post?saved=c" }));
+    flow.request({ target: "post", action: "update", mode: "wysiwyg" }, async () => ({
+      status: "saved",
+      href: "/repos/es-kimo/yjshd/post?saved=c",
+    }));
     await vi.waitFor(() => expect(navigate).toHaveBeenCalled());
 
     expect(guard.request(LIST)).toBe(false);
-    expect(guard.getState().areas).toEqual(["metadata"]);
+    expect(guard.getState().areas).toEqual(["source"]);
     flow.settle();
     flow.report("body", false);
+    flow.report("metadata", false);
     expect(guard.warnsUnload()).toBe(true);
+  });
+
+  test("게시 내리기는 확인에서 버리기로 한 입력이라 저장한 글 화면으로 가는 동안 경고하지 않는다", async () => {
+    const { flow, guard, navigate } = setup();
+    flow.report("body", true);
+    flow.report("source", true);
+
+    flow.request({ target: "post", action: "unpublish" }, async () => ({
+      status: "saved",
+      href: "/repos/es-kimo/yjshd/post?saved=c",
+    }));
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalled());
+
+    expect(guard.warnsUnload()).toBe(false);
+    expect(guard.request(LIST)).toBe(true);
   });
 });
 

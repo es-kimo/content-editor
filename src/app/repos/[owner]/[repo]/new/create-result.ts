@@ -1,4 +1,4 @@
-import type { CreatePostResult, SaveState } from "@/lib/content";
+import { STATUS_PROBLEM_MESSAGES, type CreatePostResult, type SaveState } from "@/lib/content";
 
 import { uploadMessage } from "../post/upload-message";
 
@@ -46,8 +46,6 @@ export function createResultState(
     case "status-options":
     case "status-value":
     case "action":
-      return createError(
-        "이 글 분류는 편집 설정에 초안·게시 상태가 없어 저장할 수 없어요. 레포 관리자에게 편집 설정을 확인해 달라고 해 주세요.",
-      );
+      return createError(STATUS_PROBLEM_MESSAGES["status-field"]);
   }
 }

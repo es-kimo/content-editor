@@ -21,6 +21,7 @@ import {
 
 import { savePost, type CommitResult } from "./commit";
 import { readPost, type Post } from "./read";
+import { BODY_FIELD } from "./save-flow";
 import { IMAGE_COMPONENT, type UploadCheck, type UploadImage } from "./upload";
 
 export type EditablePost = Post & { doc: Extract<MdxDoc, { ok: true }> };
@@ -102,9 +103,6 @@ export function editBody(
   if (unused) return { ok: false, reason: "image", file: unused.path.slice(2), problem: "unused" };
   return { ok: true, doc: edited };
 }
-
-/** 본문 필드 오류의 키. 설정 폼의 키와 겹치지 않는다. */
-export const BODY_FIELD = "body";
 
 /**
  * 폼 해석 오류에 필수 값 오류를 더한다. 제목은 내용을 저장하는 행동에 모두 필요하다.

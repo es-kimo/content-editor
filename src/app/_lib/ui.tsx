@@ -4,6 +4,9 @@ import { Suspense, type ReactNode } from "react";
 export const PRIMARY_BUTTON_CLASS =
   "w-fit rounded bg-black px-4 py-2 text-white disabled:opacity-60 dark:bg-white dark:text-black";
 
+/** 보조 버튼. 테두리만 둔다. */
+export const SECONDARY_BUTTON_CLASS = "w-fit rounded border px-4 py-2 disabled:opacity-60";
+
 /**
  * 기본으로 접어 두는 기술 상세. 파일 경로·SHA·커밋 식별자·API 측정처럼 사용자의 작업에 필요하지 않은 정보를 모은다.
  * 사용자가 알아야 할 결과는 기본 화면에 두고 여기에는 그 기술 원문만 덧붙인다.

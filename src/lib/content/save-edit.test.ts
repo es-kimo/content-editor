@@ -10,7 +10,7 @@ import { loadFixtures } from "@/test/fixtures";
 import { GIF, PNG } from "@/test/upload-images";
 
 import { findCollection } from "./read";
-import { BODY_FIELD } from "./edit-post";
+import { BODY_FIELD } from "./save-flow";
 import { saveEdit, type EditContent, type SaveEditInput } from "./save-edit";
 
 const REPO = "es-kimo/yjshd";

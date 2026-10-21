@@ -13,7 +13,6 @@ import {
 } from "react";
 
 import { useReportUnsaved, useSave } from "@/app/_lib/unsaved";
-import type { SaveState } from "@/lib/content/save-flow";
 import { TechDetails } from "@/app/_lib/ui";
 import {
   FIELD_PREFIX,
@@ -24,7 +23,7 @@ import {
   type FormField,
 } from "@/lib/metadata-form";
 
-import { SaveRow } from "./save-row";
+import { usePostEditor, usePostInput } from "./post-editor";
 
 const inputClass = "rounded border px-2 py-1 text-sm disabled:opacity-60";
 
@@ -44,9 +43,8 @@ type MetadataFormValue = {
   errors: FieldErrors;
   /** 입력이 바뀌었을 때 미저장 여부를 다시 판정하고 그 필드의 브라우저 검사 오류를 거둔다. */
   inputChanged: (input: EventTarget) => void;
-  /** 제출할 때 브라우저 검사에 걸린 필드. 오류 문구를 필드 옆에 남긴다. */
+  /** 저장할 때 브라우저 검사에 걸린 필드. 오류 문구를 필드 옆에 남긴다. */
   invalid: (field: FormField, input: FieldElement) => void;
-  submit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
 const MetadataFormContext = createContext<MetadataFormValue | null>(null);
@@ -59,29 +57,37 @@ function useMetadataForm(): MetadataFormValue {
 
 /**
  * 글 설정 폼 하나를 화면 위의 제목 입력(`MetadataTitleInput`)과 본문 다음의 글 설정(`MetadataSettings`)으로 나눠 보인다.
- * 둘 사이에 본문 편집기의 form이 있어 한 form으로 감쌀 수 없으므로, 제목 입력은 `form` 속성으로 같은 form에 속하게 한다.
- * 본문을 저장해도 고치던 입력이 남도록 입력은 sha가 아닌 metadata 원본(`version`)이 바뀔 때만 다시 연다.
+ * 둘 사이에 본문 편집기가 있어 한 form으로 감쌀 수 없으므로, 제목 입력은 `form` 속성으로 같은 form에 속하게 한다.
+ * 일반 편집으로 글을 저장할 때 이 폼의 값을 본문과 함께 낸다. 원문 편집에서는 원문이 글 설정을 담으므로 숨긴다.
+ * 입력은 sha가 아닌 metadata 원본(`version`)이 바뀔 때만 다시 연다.
  */
 export function MetadataForm({
   version,
   fields,
-  action,
   children,
 }: {
   version: string;
   fields: FormField[];
-  action: (data: FormData) => Promise<SaveState>;
   children: ReactNode;
 }) {
   const formId = useId();
   const form = useRef<HTMLFormElement>(null);
-  const save = useSave("metadata");
+  const save = useSave("post");
   // 다시 연 입력은 처음 값이라, 판정과 브라우저 검사 오류를 그때의 version과 함께 두고 version이 바뀌면 버린다.
   const [changedAt, setChanged] = useState({ version, changed: false });
   const [invalidAt, setInvalid] = useState<{ version: string; errors: FieldErrors }>({ version, errors: {} });
   const changed = changedAt.version === version && changedAt.changed;
   const invalidErrors = invalidAt.version === version ? invalidAt.errors : {};
   useReportUnsaved("metadata", changed);
+  usePostInput("settings", () => {
+    const element = form.current;
+    if (!element) return null;
+    setInvalid({ version, errors: {} });
+    // 검사에 걸린 칸은 `invalid`가 오류를 남기고 접힌 글 설정을 펼친다.
+    if (!element.reportValidity()) return null;
+    // 변경 없음은 저장해도 지금 값과 같다는 뜻이라, 지금 입력을 저장한 값으로 본다.
+    return { data: new FormData(element), unchanged: () => setChanged({ version, changed: false }) };
+  });
 
   const value: MetadataFormValue = {
     formId,
@@ -105,52 +111,44 @@ export function MetadataForm({
         errors: { ...(current.version === version ? current.errors : {}), [field.key]: message },
       }));
     },
-    // form action은 제출 뒤 입력을 초기화한다. 저장이 실패해도 입력이 남게 직접 보낸다.
-    submit: (event) => {
-      event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      setInvalid({ version, errors: {} });
-      // 변경 없음은 저장해도 지금 값과 같다는 뜻이라, 이 폼만 지금 입력을 저장한 값으로 본다.
-      save.request(
-        { target: "metadata" },
-        () => action(data),
-        () => setChanged({ version, changed: false }),
-      );
-    },
   };
   return <MetadataFormContext value={value}>{children}</MetadataFormContext>;
 }
 
-/** 화면 위의 제목 입력. config에 제목 필드가 없으면 그리지 않는다. 글 설정과 함께 '글 설정 저장'으로 저장한다. */
+/** 화면 위의 제목 입력. config에 제목 필드가 없으면 그리지 않는다. 일반 편집에서 글 설정·본문과 함께 저장한다. */
 export function MetadataTitleInput() {
   const { formId, version, fields, save, errors, inputChanged, invalid } = useMetadataForm();
+  const { mode } = usePostEditor();
   const { title } = splitTitleField(fields);
   if (!title) return null;
   return (
-    <FieldRow
-      key={version}
-      field={title}
-      error={errors[title.key]}
-      input={
-        <FieldInput
-          field={title}
-          // 저장 중에는 입력을 막는다. 막힌 입력은 제출되지 않지만 제출할 값은 막기 전에 읽어 두었다.
-          disabled={save.locked}
-          form={formId}
-          onChange={inputChanged}
-          onInvalid={(input) => invalid(title, input)}
-        />
-      }
-    />
+    <div hidden={mode === "source"}>
+      <FieldRow
+        key={version}
+        field={title}
+        error={errors[title.key]}
+        input={
+          <FieldInput
+            field={title}
+            // 저장 중에는 입력을 막는다. 막힌 입력은 제출되지 않지만 저장할 값은 막기 전에 읽어 두었다.
+            disabled={save.locked}
+            form={formId}
+            onChange={inputChanged}
+            onInvalid={(input) => invalid(title, input)}
+          />
+        }
+      />
+    </div>
   );
 }
 
 /**
- * 제목을 뺀 글 설정 필드를 기본으로 접어 두고, 그 아래에 '글 설정 저장'을 둔다.
+ * 제목을 뺀 글 설정 필드를 기본으로 접어 둔다.
  * 접힌 동안에도 요약 줄에 오류와 미저장 변경을 보이고, 숨긴 필드에 오류가 나면 펼친다.
  */
 export function MetadataSettings() {
-  const { formId, form, version, fields, save, changed, errors, inputChanged, invalid, submit } = useMetadataForm();
+  const { formId, form, version, fields, save, changed, errors, inputChanged, invalid } = useMetadataForm();
+  const { mode } = usePostEditor();
   const { settings } = splitTitleField(fields);
   const details = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
@@ -164,45 +162,54 @@ export function MetadataSettings() {
   }
 
   return (
-    <form
-      id={formId}
-      ref={form}
-      onChange={(event) => inputChanged(event.target)}
-      onSubmit={submit}
-      className="flex flex-col gap-2"
-    >
-      {settings.length > 0 && (
-        <details ref={details} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-          <summary className="cursor-pointer">
-            <span className="font-medium">글 설정</span>
-            {settingsError && <span className="ml-2 text-sm text-red-600">확인할 항목이 있어요</span>}
-            {changed && <span className="ml-2 text-sm text-amber-600">저장하지 않은 변경이 있어요</span>}
-          </summary>
-          <fieldset key={version} disabled={save.locked} className="mt-2 flex flex-col gap-4">
-            {settings.map((field) => (
-              <FieldRow
-                key={field.key}
-                field={field}
-                error={errors[field.key]}
-                input={
-                  <FieldInput
-                    field={field}
-                    onInvalid={(input) => {
-                      // 브라우저는 검사에 걸린 칸으로 초점을 옮기는데, 접힌 칸에는 옮기지 못하므로 그 전에 바로 펼친다.
-                      if (details.current) details.current.open = true;
-                      setOpen(true);
-                      invalid(field, input);
-                    }}
-                  />
-                }
-              />
-            ))}
-          </fieldset>
-        </details>
+    <>
+      {mode === "source" && (
+        <>
+          <h2 className="font-medium">글 설정</h2>
+          <p className="text-sm text-zinc-500">원문 편집에서는 글 설정을 원문에서 고쳐요.</p>
+        </>
       )}
-      {settings.length === 0 && changed && <p className="text-sm text-amber-600">저장하지 않은 변경이 있어요</p>}
-      <SaveRow label="글 설정 저장" save={save} />
-    </form>
+      <form
+        id={formId}
+        ref={form}
+        hidden={mode === "source"}
+        onChange={(event) => inputChanged(event.target)}
+        // 입력 칸에서 Enter를 눌러도 저장하지 않는다. 저장은 상태별 버튼으로만 한다.
+        onSubmit={(event) => event.preventDefault()}
+        className="flex flex-col gap-2"
+      >
+        {settings.length > 0 && (
+          <details ref={details} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+            <summary className="cursor-pointer">
+              <span className="font-medium">글 설정</span>
+              {settingsError && <span className="ml-2 text-sm text-red-600">확인할 항목이 있어요</span>}
+              {changed && <span className="ml-2 text-sm text-amber-600">저장하지 않은 변경이 있어요</span>}
+            </summary>
+            <fieldset key={version} disabled={save.locked} className="mt-2 flex flex-col gap-4">
+              {settings.map((field) => (
+                <FieldRow
+                  key={field.key}
+                  field={field}
+                  error={errors[field.key]}
+                  input={
+                    <FieldInput
+                      field={field}
+                      onInvalid={(input) => {
+                        // 브라우저는 검사에 걸린 칸으로 초점을 옮기는데, 접힌 칸에는 옮기지 못하므로 그 전에 바로 펼친다.
+                        if (details.current) details.current.open = true;
+                        setOpen(true);
+                        invalid(field, input);
+                      }}
+                    />
+                  }
+                />
+              ))}
+            </fieldset>
+          </details>
+        )}
+        {settings.length === 0 && changed && <p className="text-sm text-amber-600">저장하지 않은 변경이 있어요</p>}
+      </form>
+    </>
   );
 }
 

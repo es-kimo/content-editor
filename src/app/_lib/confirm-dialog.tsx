@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
-import { PRIMARY_BUTTON_CLASS } from "@/app/_lib/ui";
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/app/_lib/ui";
 
 /**
  * 입력을 잃을 수 있는 조작 전에 묻는다. `계속 편집`이 기본 선택이고, Esc로 닫아도 계속 편집과 같다.
@@ -62,7 +62,7 @@ export function ConfirmDialog({
             <button ref={keep} type="button" onClick={onKeep} className={PRIMARY_BUTTON_CLASS}>
               계속 편집
             </button>
-            <button type="button" onClick={onConfirm} className="rounded border px-4 py-2">
+            <button type="button" onClick={onConfirm} className={SECONDARY_BUTTON_CLASS}>
               {confirmLabel}
             </button>
           </div>

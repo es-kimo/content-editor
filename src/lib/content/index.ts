@@ -110,17 +110,21 @@ export {
   type PostImage,
 } from "./read";
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
-export { BODY_FIELD } from "./edit-post";
 export { saveEdit, type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
 export {
+  BODY_FIELD,
   createSaveFlow,
-  discardedAreas,
   docEditorKeys,
-  reopenedAreas,
+  modeHasUnsaved,
+  postActions,
+  savedAreas,
+  STATUS_PROBLEM_MESSAGES,
+  TRASHED_MESSAGE,
   type EditorKeys,
   type FormArea,
   type FormBlocked,
   type OpenForm,
+  type PostActions,
   type SaveFlow,
   type SaveFlowState,
   type SavePhase,
