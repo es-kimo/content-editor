@@ -1,27 +1,32 @@
 "use client";
 
-import { createContext, useEffect, useState, type RefObject } from "react";
+import { createContext, useEffect, useState, type ReactNode, type RefObject } from "react";
 import { flushSync } from "react-dom";
 
-import type {
-  BodyElementAt,
-  ImageInsertItem,
-  ImageMoveProblem,
-  ImageMoves,
-  InsertFormProblem,
-  TextInsertItem,
+import {
+  insertLimitMessage,
+  type BodyElementAt,
+  type ImageInsertItem,
+  type ImageMoveProblem,
+  type ImageMoves,
+  type InsertFormProblem,
+  type RemovableInsertItem,
+  type TextInsertItem,
+  type TocInsertItem,
 } from "@/lib/content/insert-form";
-import type { JsxElement, MoveDirection } from "@/lib/mdx-doc";
+import type { InsertLimit, JsxElement, MoveDirection } from "@/lib/mdx-doc";
 
 import { focusImageAction, type FormOpener } from "./insert-form";
 
 /**
- * 본문 안 항목(사진·각주·출처)을 골라 하는 조작. 일반 편집 본문이 그 편집기에 적용한다.
- * 편집기는 요소의 원문 위치를 주지 않아 사진을 본문에서 태그가 같은 요소 중 몇 번째인지(`nth`)로 가리킨다.
+ * 본문 안 항목(사진·각주·출처·목차)을 골라 하는 조작. 일반 편집 본문이 그 편집기에 적용한다.
+ * 편집기는 요소의 원문 위치를 주지 않아 사진·목차를 본문에서 태그가 같은 요소 중 몇 번째인지(`nth`)로 가리킨다.
  */
 export type BodyItemActions = {
   /** 그 요소가 교체·제거·이동할 수 있는 이미지면 그 항목. */
   image: (element: JsxElement, nth: number) => ImageInsertItem | null;
+  /** 그 요소가 지울 수 있는 자동 목차면 그 항목. */
+  toc: (element: JsxElement, nth: number) => TocInsertItem | null;
   moves: (item: ImageInsertItem) => ImageMoves;
   /** 저장 중이거나 폼이 열려 있으면 조작을 막는다. */
   disabled: boolean;
@@ -30,7 +35,7 @@ export type BodyItemActions = {
   /** 누른 버튼으로 파일 선택 창을 열고, 고르면 교체 폼을 연다. 이미지를 넣을 수 없는 글이면 null. */
   replace: ((item: ImageInsertItem, button: HTMLElement, opener: FormOpener) => void) | null;
   /** 지우지 못하면 이유를 돌려준다. */
-  remove: (item: ImageInsertItem) => InsertFormProblem | null;
+  remove: (item: RemovableInsertItem) => InsertFormProblem | null;
   /** 옮기면 옮긴 이미지가 본문의 어느 요소가 됐는지 돌려준다. */
   move: (
     item: ImageInsertItem,
@@ -73,6 +78,32 @@ export function ItemMark({ ref, id, tag }: { ref: RefObject<HTMLSpanElement | nu
   return <span ref={ref} {...{ [MARK]: id, [TAG]: tag }} hidden />;
 }
 
+/** 항목을 고르는 버튼이 눌린 동안의 테두리. */
+export const SELECTED_ITEM_CLASS =
+  "aria-pressed:outline-2 aria-pressed:outline-offset-2 aria-pressed:outline-black dark:aria-pressed:outline-white";
+
+/**
+ * 폼으로 고칠 수 없는 본문 항목. 편집기가 그린 이름과 속성(`children`)을 그대로 두고 이유와 원문 편집 안내를 붙인다.
+ * @param inline 문장 안의 요소. 문단 안에 블록 요소를 둘 수 없어 span으로 그린다.
+ */
+export function LimitedBodyItem({
+  limit,
+  inline,
+  children,
+}: {
+  limit: InsertLimit;
+  inline: boolean;
+  children: ReactNode;
+}) {
+  const Box = inline ? "span" : "div";
+  return (
+    <Box className={inline ? undefined : "flex flex-col gap-1"}>
+      {children}
+      <span className="text-sm text-amber-600">{insertLimitMessage(limit, "body")}</span>
+    </Box>
+  );
+}
+
 // 편집기는 처음 만든 플러그인으로 요소를 그리므로, 본문이 바뀔 때마다 달라지는 조작은 context로 넘긴다.
 export const BodyItemsContext = createContext<BodyItems | null>(null);
 
@@ -81,7 +112,7 @@ const afterRedraw = (run: () => void) => requestAnimationFrame(run);
 
 /**
  * 일반 편집 본문의 항목 선택과 초점 복귀. 한 번에 한 항목만 고른다. 폼을 닫거나 사진을 옮기면 다시 그린 본문에서
- * 그 항목을 다시 고르고, 사진을 지우면 바로 앞 블록으로, 앞 블록이 없으면 본문 처음으로 초점을 옮긴다.
+ * 그 항목을 다시 고르고, 사진·목차를 지우면 바로 앞 블록으로, 앞 블록이 없으면 본문 처음으로 초점을 옮긴다.
  * @param box 편집기를 감싼 요소. 도구 막대 다음의 첫 편집 영역이 본문이다.
  */
 export function useBodyItems(box: RefObject<HTMLElement | null>, actions: BodyItemActions): BodyItems {
