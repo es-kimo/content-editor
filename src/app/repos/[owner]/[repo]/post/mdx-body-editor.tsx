@@ -44,11 +44,11 @@ import {
 } from "react";
 
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 폼·사진 모듈만 가져온다.
-import type { BodyImagePhoto } from "@/lib/content/body-image";
+import type { BodyImagePhoto, MissingBodyImage } from "@/lib/content/body-image";
 import { advancedComponents, type BodyFootnote, type BodyToc } from "@/lib/content/insert-form";
 
 import { BodyFootnoteItem } from "./body-footnote";
-import { BodyPhoto } from "./body-photo";
+import { BodyPhoto, MissingBodyPhoto } from "./body-photo";
 import { BodyTocItem } from "./body-toc";
 
 export type MdxBodyEditorProps = {
@@ -63,7 +63,10 @@ export type MdxBodyEditorProps = {
   readOnly?: boolean;
   /** 넣기·수정 폼이 본문을 읽고 적용한 결과를 쓰는 손잡이. 편집기가 만들어지면 채운다. */
   handleRef?: RefObject<BodyEditorHandle | null>;
-  /** 본문의 요소를 사진으로 그릴 주소. 없거나 null을 돌려주면 이름과 속성을 보인다. */
+  /**
+   * 본문의 요소를 사진으로 그릴 주소. 복구한 보관본에서 빠진 첨부면 다시 고르라는 안내를 보인다.
+   * 없거나 null을 돌려주면 이름과 속성을 보인다.
+   */
   photo?: PhotoOf;
   /** 본문의 요소가 각주·출처면 번호와 내용으로 그릴 값. 없거나 null을 돌려주면 이름과 속성을 보인다. */
   footnote?: FootnoteOf;
@@ -71,7 +74,7 @@ export type MdxBodyEditorProps = {
   toc?: TocOf;
 };
 
-type PhotoOf = (element: MdastJsx) => BodyImagePhoto | null;
+type PhotoOf = (element: MdastJsx) => BodyImagePhoto | MissingBodyImage | null;
 type FootnoteOf = (element: MdastJsx) => BodyFootnote | null;
 type TocOf = (element: MdastJsx) => BodyToc | null;
 
@@ -224,6 +227,7 @@ function JsxEditor(props: JsxEditorProps) {
     () => (photo || footnote ? null : (tocOf?.(mdastNode) ?? null)),
     [photo, footnote, tocOf, mdastNode],
   );
+  if (photo && "missing" in photo) return <MissingBodyPhoto image={photo} inline={inline} />;
   if (photo) return <BodyPhoto key={photo.src} photo={photo} element={mdastNode} inline={inline} />;
   if (toc) {
     return (

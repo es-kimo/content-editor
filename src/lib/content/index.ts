@@ -158,6 +158,8 @@ export { readRepoImage, type RepoImage, type RepoImageProblem } from "./repo-ima
 export {
   bodyImagePhoto,
   missingBodyImage,
+  missingImagesInBody,
+  missingImagesSaveMessage,
   MISSING_DRAFT_IMAGE,
   repoImageHref,
   type BodyImagePhoto,

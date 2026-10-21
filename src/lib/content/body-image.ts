@@ -54,8 +54,7 @@ export type MissingBodyImage = { missing: string; alt: string };
 
 /**
  * 일반 편집 본문의 이미지 한 곳이 복구한 보관본에서 파일이 빠진 첨부를 가리키면 그 첨부 이름과 대체 텍스트.
- * 본문은 그 첨부를 넣을 때 정한 변수명(`imageN` ↔ `N.ext`)을 그대로 쓰지만 import가 없다. 그 import를 다시 더해 읽되,
- * 본문이 이미 그 변수명을 써서 본문을 비운 doc에 더한다. `doc`에 이미 있는 import를 가리키면 빠진 첨부가 아니다.
+ * `doc`에 이미 있는 import를 가리키면 빠진 첨부가 아니다.
  * @param doc 넣은 이미지의 import까지 더한 doc(`UploadPlan.doc`). 빠진 첨부의 import는 없다.
  * @param missing 복구한 보관본에서 빠진 첨부 이름(`N.ext`).
  */
@@ -65,16 +64,60 @@ export function missingBodyImage(
   missing: string[],
   syntax: Syntax = {},
 ): MissingBodyImage | null {
-  if (missing.length === 0) return null;
+  const head = withMissingImports(doc, missing);
+  if (head.added.length === 0) return null;
+  const image = imageItem(head.doc, printJsxTag(element), syntax);
+  const file = image && missingFile(image, head.added);
+  return file ? { missing: file, alt: image.alt } : null;
+}
+
+/**
+ * 본문이 아직 가리키는 빠진 첨부 이름. 하나라도 있으면 저장하지 않는다. 그대로 저장하면 import 없는 변수를 쓰는 글이 되어
+ * 컴파일 검사는 통과해도 사이트가 글을 만들 수 없다.
+ * @param doc 넣은 이미지의 import까지 더한 doc(`UploadPlan.doc`).
+ * @param body 저장할 본문.
+ */
+export function missingImagesInBody(doc: MdxDoc, body: string, missing: string[], syntax: Syntax = {}): string[] {
+  const head = withMissingImports(doc, missing);
+  if (head.added.length === 0) return [];
+  const list = bodyInserts(head.doc, body, syntax);
+  if (!list.ok) return [];
+  const files = list.items.flatMap((item) => (item.kind === "image" ? [missingFile(item, head.added)] : []));
+  return [...new Set(files.filter((file) => file !== null))];
+}
+
+/**
+ * 빠진 첨부의 import를 더한 doc과 더한 첨부 이름. 본문은 그 첨부를 넣을 때 정한 변수명(`imageN` ↔ `N.ext`)을 그대로 쓰지만
+ * import가 없어 다시 더해 읽는다. 본문이 이미 그 변수명을 써서 본문을 비운 doc에 더한다. 읽는 데만 쓰고 저장하지 않는다.
+ * 다시 고른 이미지가 같은 이름을 받아 import가 이미 있으면 빠진 첨부가 아니므로 더하지 않는다.
+ */
+function withMissingImports(doc: MdxDoc, missing: string[]): { doc: MdxDoc; added: string[] } {
   let head = setBody(doc, "");
-  for (const file of missing) head = addImageAs(head, file, { component: IMAGE_COMPONENT })?.doc ?? head;
-  const image = imageItem(head, printJsxTag(element), syntax);
-  const file = image?.path.replace(/^\.\//, "");
-  return image && file && missing.includes(file) ? { missing: file, alt: image.alt } : null;
+  const added: string[] = [];
+  for (const file of missing) {
+    const next = addImageAs(head, file, { component: IMAGE_COMPONENT });
+    if (!next) continue;
+    head = next.doc;
+    added.push(file);
+  }
+  return { doc: head, added };
+}
+
+function missingFile(image: ImageInsertItem, added: string[]): string | null {
+  const file = image.path.replace(/^\.\//, "");
+  return added.includes(file) ? file : null;
 }
 
 /** 복구한 보관본에 파일이 없는 이미지 자리에 사진 대신 보일 안내. */
 export const MISSING_DRAFT_IMAGE = "이 이미지는 보관하지 못했어요. 이미지를 다시 골라 주세요.";
+
+/** 본문이 빠진 첨부(`missingImagesInBody`)를 가리켜 저장하지 않았을 때 본문 옆에 보일 이유와 할 일. */
+export function missingImagesSaveMessage(files: string[]): string {
+  return (
+    `보관하지 못한 이미지(${files.join(", ")})가 본문에 남아 있어 저장하지 않았어요. ` +
+    "이미지를 다시 넣고, 다시 고르라는 안내가 보이는 자리는 지워 주세요."
+  );
+}
 
 /** 편집 화면이 레포 이미지를 받아 갈 라우트 주소. */
 export const repoImageHref = (repo: string, postPath: string, importPath: string) =>
