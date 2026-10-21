@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { useReportUnsaved, useSaveLocked } from "@/app/_lib/unsaved";
 import type { DraftAttachment } from "@/lib/content/draft";
@@ -9,9 +9,12 @@ import type { DraftAttachment } from "@/lib/content/draft";
 import {
   advancedComponents,
   applyInsertForm,
+  imageMoves as imageMovesIn,
   insertMenuItems,
+  moveInsert,
   newInsertTarget,
   removeInsert,
+  type ImageInsertItem,
 } from "@/lib/content/insert-form";
 import { previewMessage, previewUploads } from "@/lib/content/preview";
 import { sourceChanged } from "@/lib/content/unsaved";
@@ -79,14 +82,17 @@ function OpenedSourceEditor({
   const [baseline, setBaseline] = useState(saved);
   useReportUnsaved("source", sourceChanged(baseline, current) && visible);
   const editor = useRef<SourceEditorHandle | null>(null);
+  /** 폼이나 목차·이미지 제거, 이미지 이동으로 고친 원문을 편집기에 쓴다. */
+  const replaceSource = <R,>(
+    result: { ok: true; source: string; cursor: number; changed: boolean } | { ok: false; reason: R },
+  ) => {
+    if (!result.ok) return result.reason;
+    if (result.changed) editor.current?.replace(result.source, result.cursor);
+    return null;
+  };
   const forms = useInsertForm({
     area: "source",
-    apply: (target, input) => {
-      const result = applyInsertForm(edited.current, target, input, syntax);
-      if (!result.ok) return result.reason;
-      if (result.changed) editor.current?.replace(result.source, result.cursor);
-      return null;
-    },
+    apply: (target, input) => replaceSource(applyInsertForm(edited.current, target, input, syntax)),
   });
   const [opened] = useState(() => parseMdx(source, syntax));
   const images = useImageUpload({
@@ -104,6 +110,7 @@ function OpenedSourceEditor({
   useReportUnsaved("sourceImages", images.session.unsaved(current) && visible);
   const inserts = useMemo(() => readInserts(current, syntax), [current, syntax]);
   const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
+  const imageMoves = useCallback((item: ImageInsertItem) => imageMovesIn(current, item, syntax), [current, syntax]);
   const formLocked = locked || !forms.canOpen || images.preparing;
   const menu = insertMenuItems(upload ? [IMAGE_COMPONENT, ...components] : components);
   usePostInput("source", () => {
@@ -137,11 +144,20 @@ function OpenedSourceEditor({
         tocHeading={tocHeading}
         disabled={formLocked}
         onEdit={(item, opener) => forms.open({ kind: "edit", item }, opener)}
-        onRemove={(item) => {
-          const result = removeInsert(edited.current, item, syntax);
-          if (!result.ok) return result.reason;
-          if (result.changed) editor.current?.replace(result.source, result.cursor);
-          return null;
+        onRemove={(item) => replaceSource(removeInsert(edited.current, item, syntax))}
+        images={{
+          moves: imageMoves,
+          replace: upload
+            ? (item, opener) => {
+                const replace = { item, opened: edited.current };
+                images.pick(opener, (image) => forms.open({ kind: "replace", ...replace, image }, opener));
+              }
+            : null,
+          move: (item, direction) => {
+            const result = moveInsert(edited.current, item, direction, syntax);
+            replaceSource(result);
+            return result;
+          },
         }}
       />
       {forms.panel}

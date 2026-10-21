@@ -12,6 +12,7 @@ export {
   imageTag,
   isImageFile,
   readImageImports,
+  removeUnusedImageImport,
 } from "./images";
 export type { AddedImage, AddImageOptions, ImageImport } from "./images";
 export type { MetadataLookup, MetadataResult, MetadataValue } from "./metadata";

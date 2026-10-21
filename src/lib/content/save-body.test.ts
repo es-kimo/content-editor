@@ -10,10 +10,11 @@ import { fakeGitRepo } from "@/test/fake-git";
 import { blobSha, type FakeFile } from "@/test/fake-github";
 import { loadFixtures } from "@/test/fixtures";
 
+import { applyBodyInsertForm, bodyImageReplace, bodyInserts, isImageInsert, removeBodyInsert } from "./insert-form";
 import { editorKeys, findCollection, readPost } from "./read";
 import { saveBody } from "./save-body";
 import { addUpload, IMAGE_COMPONENT, MAX_UPLOAD_BYTES, usedUploads, type UploadPlan } from "./upload";
-import { createUploadSession } from "./upload-session";
+import { createUploadSession, type AddedUpload } from "./upload-session";
 
 const REPO = "es-kimo/yjshd";
 const POST = "content/4.게시판/1.휴진/page.mdx";
@@ -329,6 +330,87 @@ describe("saveBody 이미지", () => {
     expect(saved).toContain('import image2 from "./2.png";');
     expect(saved).not.toContain("./3.jpg");
     expect(saved).toContain('<Image src={image2} alt="진료 &quot;시간&quot; 안내" />');
+  });
+
+  test("이미지를 교체·제거해 본문이 쓰지 않게 된 새 첨부는 커밋하지 않고, 교체한 기존 이미지 파일은 그대로다", async () => {
+    const { repo, client } = setup([
+      { path: POST, content: SOURCE },
+      { path: `${DIR}/1.png`, content: OLD_IMAGE },
+    ]);
+    const before = repo.head();
+    const post = (await readPost(client, REPO, config, POST))!;
+    const session = createUploadSession({
+      doc: post.doc,
+      files: post.images.map((image) => image.name),
+      prepare: async (file: { name: string; content: Uint8Array }) => ({
+        extension: file.name.split(".")[1]!,
+        content: file.content,
+        width: 1,
+        height: 1,
+      }),
+    });
+    const attach = async (name: string, content: Uint8Array) => {
+      let added: AddedUpload | undefined;
+      await session.add([{ name, content }], ({ images }) => (added = images[0]));
+      return added!;
+    };
+    const imageOf = (body: string, name: string) => {
+      const list = bodyInserts(session.plan.doc, body, config.syntax);
+      const found = list.ok && list.items.find((item) => isImageInsert(item) && item.name === name);
+      if (!found || !isImageInsert(found)) throw new Error(`이미지 없음: ${name}`);
+      return found;
+    };
+    /** 편집 화면처럼 이미지를 고른 뒤 새 파일을 첨부에 더하고 교체 폼을 적용한다. */
+    const replace = async (body: string, name: string, file: string, content: Uint8Array) => {
+      const target = bodyImageReplace(session.plan.doc, body, imageOf(body, name));
+      const image = await attach(file, content);
+      const result = applyBodyInsertForm(
+        session.plan.doc,
+        body,
+        { kind: "replace", ...target, image },
+        { text: "교체한 사진", ids: [] },
+        config.syntax,
+      );
+      if (!result.ok) throw new Error(result.reason);
+      return result.body;
+    };
+
+    // 새로 넣은 2.png를 4.png로 바꾸고, 기존 1.png를 쓰던 자리는 3.jpg로 바꾸고, 새로 넣은 5.png는 지운다.
+    const inserted = await attach("a.png", PNG);
+    let body = `${EDITED}\n${imageTag(IMAGE_COMPONENT, inserted.name, "새 사진")}\n`;
+    body = await replace(body, "image1", "b.jpg", JPEG);
+    body = await replace(body, "image2", "c.png", PNG);
+    const dropped = await attach("d.png", PNG);
+    body = `${body}\n${imageTag(IMAGE_COMPONENT, dropped.name, "지울 사진")}\n`;
+    const removed = removeBodyInsert(session.plan.doc, body, imageOf(body, "image5"), config.syntax);
+    if (!removed.ok) throw new Error(removed.reason);
+    body = removed.body;
+    const submission = session.submission(body);
+    if (!submission.ok) throw new Error(submission.reason);
+
+    expect(submission.images.map(({ file }) => file)).toEqual(["3.jpg", "4.png"]);
+    const result = await saveBody(client, REPO, config, {
+      path: POST,
+      baseSha: post.sha,
+      body,
+      images: submission.images,
+    });
+
+    expect(result).toEqual({ ok: true, commit: repo.head(), parent: before });
+    expect(repo.log()).toHaveLength(2);
+    expect(repo.paths().filter((p) => p.startsWith(`${DIR}/`))).toEqual([
+      `${DIR}/1.png`,
+      `${DIR}/3.jpg`,
+      `${DIR}/4.png`,
+      POST,
+    ]);
+    expect(repo.file(`${DIR}/1.png`)).toEqual(OLD_IMAGE);
+    const saved = text(repo.file(POST));
+    expect(saved).toContain('<Image src={image3} alt="교체한 사진" />');
+    expect(saved).toContain('<Image src={image4} alt="교체한 사진" />');
+    expect(saved).not.toContain("./2.png");
+    expect(saved).not.toContain("./5.png");
+    expect((await checkMdx(saved, config.syntax)).ok).toBe(true);
   });
 
   test("본문에서 쓰지 않는 이미지를 보내면 커밋하지 않는다", async () => {

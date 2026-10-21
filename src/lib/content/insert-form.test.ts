@@ -2,37 +2,51 @@ import { describe, expect, test, vi } from "vitest";
 
 import { parseMdx, readInserts, type InsertItem } from "@/lib/mdx-doc";
 import { yjshdConfig } from "@/test/config";
+import { fixtureSources, loadFixtures } from "@/test/fixtures";
+import { PNG } from "@/test/upload-images";
 
 import {
   advancedComponents,
   applyBodyInsertForm,
   applyInsertForm,
+  bodyImageMoves,
+  bodyImageReplace,
   bodyInsert,
   bodyInserts,
   formDirty,
   formInitialValue,
+  imageActionMessage,
   imageFormTag,
+  imageMoveNotice,
+  imageMoves,
   insertEntries,
+  insertFormDescription,
   insertFormLabels,
   insertFormMessage,
   insertFormNotice,
   insertItemName,
   insertLimitMessage,
   insertMenuItems,
+  isImageInsert,
   isTextInsert,
   isTocInsert,
+  moveBodyInsert,
+  moveInsert,
   newBodyInsertTarget,
   newInsertTarget,
   removeBodyInsert,
   removeInsert,
   TOC_NEEDS_HEADING,
   tocRemoveMessage,
+  type ImageInsertItem,
   type InsertFormInput,
   type InsertFormTarget,
 } from "./insert-form";
 import { leavingAreas } from "./leave-guard";
 import { createSaveFlow } from "./save-flow";
 import { sourceChanged } from "./unsaved";
+import { sourceUploads } from "./upload";
+import { createUploadSession, type AddedUpload } from "./upload-session";
 
 const syntax = yjshdConfig().syntax;
 const text = (value: string): InsertFormInput => ({ text: value, ids: [] });
@@ -541,3 +555,416 @@ describe("삽입 항목 목록", () => {
     });
   });
 });
+
+const GALLERY = `import image1 from "./1.png";
+import image2 from "./2.png";
+
+export const metadata = {
+  title: '진료 안내',
+};
+
+<Image src={image1} alt="병원 입구" />
+
+진료 시간이에요.
+
+<Image src={image2} alt="시간표" />
+
+<Image src={image1} alt="입구 다시" />
+
+문단 안 <Image src={image2} alt="문단 안" /> 이미지예요.
+`;
+
+const galleryDoc = parseMdx(GALLERY, syntax);
+const GALLERY_BODY = galleryDoc.ok ? galleryDoc.body : "";
+
+/** 읽은 삽입 항목(일반 편집은 `bodyInserts`)에서 대체 텍스트가 `alt`인 이미지. */
+const imageIn = (list: ReturnType<typeof readInserts>, alt: string): ImageInsertItem => {
+  if (!list.ok) throw new Error("읽지 못함");
+  const found = list.items.find((item): item is ImageInsertItem => isImageInsert(item) && item.alt === alt);
+  if (!found) throw new Error(`이미지 없음: ${alt}`);
+  return found;
+};
+const sourceImage = (source: string, alt: string) => imageIn(readInserts(source, syntax), alt);
+
+/** 편집 화면처럼 첨부를 바로 준비하는 세션. 교체할 새 파일도 이 세션으로 받는다. */
+const uploadSession = (source: string, area: "body" | "source") =>
+  createUploadSession({
+    doc: parseMdx(source, syntax),
+    files: [],
+    prepare: async () => ({ extension: "png", content: PNG, width: 1, height: 1 }),
+    used: area === "source" ? sourceUploads : undefined,
+  });
+
+/** 세션에 파일 하나를 더하고 더한 이미지를 돌려준다. 편집 화면은 이 이미지로 폼을 연다. */
+const attach = async (session: ReturnType<typeof uploadSession>): Promise<AddedUpload> => {
+  let added: AddedUpload | undefined;
+  await session.add([{ name: "새.png" }], ({ images }) => (added = images[0]));
+  return added!;
+};
+
+describe("이미지 교체 폼", () => {
+  test("원문 편집에서 교체하면 고른 이미지 한 곳만 새 파일을 가리키고, 같은 파일을 쓰는 다른 곳과 그 import는 그대로다", () => {
+    const target: InsertFormTarget = {
+      kind: "replace",
+      item: sourceImage(GALLERY, "병원 입구"),
+      opened: GALLERY,
+      image: { file: "3.png", name: "image3" },
+    };
+
+    expect(formInitialValue(target)).toEqual(text("병원 입구"));
+    expect(applyInsertForm(GALLERY, target, text("병원 입구"), syntax)).toMatchObject({
+      ok: true,
+      changed: true,
+      source: GALLERY.replace('"./2.png";\n', '"./2.png";\nimport image3 from "./3.png";\n').replace(
+        '<Image src={image1} alt="병원 입구"',
+        '<Image src={image3} alt="병원 입구"',
+      ),
+    });
+  });
+
+  test("대체 텍스트도 바꾸면 함께 고치고, 그 이미지만 쓰던 import는 빠진다", () => {
+    const target: InsertFormTarget = {
+      kind: "replace",
+      item: sourceImage(SOURCE, "병원 입구"),
+      opened: SOURCE,
+      image: { file: "2.png", name: "image2" },
+    };
+
+    const result = applyInsertForm(SOURCE, target, text("새 입구"), syntax);
+
+    expect(result).toMatchObject({
+      ok: true,
+      source: SOURCE.replace('import image1 from "./1.png";', 'import image2 from "./2.png";').replace(
+        '<Image src={image1} alt="병원 입구" />',
+        '<Image src={image2} alt="새 입구" />',
+      ),
+    });
+  });
+
+  test("일반 편집의 교체 폼은 기존 대체 텍스트로 열고, 취소하면 본문과 저장할 첨부가 그대로다", async () => {
+    const session = uploadSession(GALLERY, "body");
+    const item = imageIn(bodyInserts(session.plan.doc, GALLERY_BODY, syntax), "병원 입구");
+    const replace = bodyImageReplace(session.plan.doc, GALLERY_BODY, item);
+    const image = await attach(session);
+    const target: InsertFormTarget = { kind: "replace", ...replace, image };
+
+    expect(formInitialValue(target)).toEqual(text("병원 입구"));
+    // 취소는 폼을 닫을 뿐 본문에 적용하지 않는다. 새 파일은 첨부에 남지만 본문이 쓰지 않아 저장하지 않는다.
+    expect(session.unsaved(GALLERY_BODY)).toBe(false);
+    expect(session.submission(GALLERY_BODY)).toEqual({ ok: true, images: [] });
+  });
+
+  test("일반 편집에서 교체하면 첨부할 때 더한 새 이미지를 그 자리만 가리키고, 그 새 이미지만 저장할 첨부가 된다", async () => {
+    const session = uploadSession(GALLERY, "body");
+    const item = imageIn(bodyInserts(session.plan.doc, GALLERY_BODY, syntax), "병원 입구");
+    const replace = bodyImageReplace(session.plan.doc, GALLERY_BODY, item);
+    const image = await attach(session);
+
+    const result = applyBodyInsertForm(
+      session.plan.doc,
+      GALLERY_BODY,
+      { kind: "replace", ...replace, image },
+      text("새 입구"),
+      syntax,
+    );
+
+    expect(image).toEqual({ file: "3.png", name: "image3" });
+    const body = GALLERY_BODY.replace('<Image src={image1} alt="병원 입구" />', '<Image src={image3} alt="새 입구" />');
+    expect(result).toEqual({ ok: true, body, changed: true });
+    expect(session.submission(body)).toMatchObject({ ok: true, images: [{ file: "3.png" }] });
+  });
+
+  test("교체 폼은 바꿀 이미지와 새 파일을 보이고, 바꾸지 않는 것을 알린다", () => {
+    const target: InsertFormTarget = {
+      kind: "replace",
+      item: sourceImage(GALLERY, "시간표"),
+      opened: GALLERY,
+      image: { file: "3.png", name: "image3" },
+    };
+
+    expect(insertFormLabels(target)).toEqual({ title: "이미지 교체", field: "대체 텍스트" });
+    expect(insertFormDescription(target)).toBe(
+      "이 자리의 이미지(2.png)만 새 이미지(3.png)로 바꿔요. 같은 이미지를 쓰는 다른 곳과 레포에 있는 기존 파일은 그대로 둬요.",
+    );
+    expect(insertFormDescription({ kind: "edit", item: target.item })).toBeNull();
+  });
+
+  test("적용하지 않은 교체 폼은 입력 전에도 떠날 때 묻고, 저장과 모드 전환을 막아 적용하거나 취소하라는 상태가 된다", () => {
+    const area = setup(GALLERY);
+    const target: InsertFormTarget = {
+      kind: "replace",
+      item: sourceImage(GALLERY, "병원 입구"),
+      opened: GALLERY,
+      image: { file: "3.png", name: "image3" },
+    };
+    area.open(target);
+    area.input("병원 입구");
+
+    expect(leavingAreas(area.flow.getState())).toEqual(["source"]);
+    expect(area.flow.blocks({ target: "post", action: "update", mode: "source" })).toBe(true);
+    expect(area.flow.getState().form?.blocked).toBe("update");
+    expect(area.flow.blockedByForm("mode")).toBe(true);
+    expect(area.flow.getState().form?.blocked).toBe("mode");
+
+    area.cancel();
+
+    expect(area.source()).toBe(GALLERY);
+    expect(area.flow.blocks({ target: "post", action: "update", mode: "source" })).toBe(false);
+    expect(leavingAreas(area.flow.getState())).toEqual([]);
+  });
+
+  test("폼을 연 뒤 이미지보다 앞에 import가 늘어도 고른 그 이미지를 교체한다", () => {
+    const target: InsertFormTarget = {
+      kind: "replace",
+      item: sourceImage(GALLERY, "입구 다시"),
+      opened: GALLERY,
+      image: { file: "3.png", name: "image3" },
+    };
+    const added = GALLERY.replace('"./2.png";\n', '"./2.png";\nimport image9 from "./9.png";\n');
+
+    const result = applyInsertForm(added, target, text("입구 다시"), syntax);
+
+    expect(result).toMatchObject({
+      ok: true,
+      source: added
+        .replace('"./9.png";\n', '"./9.png";\nimport image3 from "./3.png";\n')
+        .replace('<Image src={image1} alt="입구 다시"', '<Image src={image3} alt="입구 다시"'),
+    });
+  });
+
+  test("폼을 연 뒤 이미지가 바뀌었으면 교체하지 않고 다시 선택하라고 안내한다", () => {
+    const target: InsertFormTarget = {
+      kind: "replace",
+      item: sourceImage(GALLERY, "병원 입구"),
+      opened: GALLERY,
+      image: { file: "3.png", name: "image3" },
+    };
+    const changed = GALLERY.replace('alt="병원 입구"', 'alt="정문"');
+
+    const result = applyInsertForm(changed, target, text("병원 입구"), syntax);
+
+    expect(result).toEqual({ ok: false, reason: "target-changed" });
+    expect(insertFormMessage(target, "target-changed")).toBe(
+      "고치려던 항목이 바뀌었거나 없어졌어요. 폼을 취소하고 삽입 항목에서 다시 선택해 주세요.",
+    );
+  });
+});
+
+describe("이미지 제거", () => {
+  test("원문 편집에서 제거하면 고른 태그 한 곳만 빠지고 다른 곳에서 쓰는 import는 남는다", () => {
+    const result = removeInsert(GALLERY, sourceImage(GALLERY, "병원 입구"), syntax);
+
+    expect(result).toMatchObject({
+      ok: true,
+      changed: true,
+      source: GALLERY.replace('<Image src={image1} alt="병원 입구" />\n\n', ""),
+    });
+  });
+
+  test("일반 편집에서 제거하면 본문에서 그 태그만 빠진다", () => {
+    if (!galleryDoc.ok) throw new Error("나눌 수 없음");
+    const item = imageIn(bodyInserts(galleryDoc, GALLERY_BODY, syntax), "시간표");
+
+    expect(removeBodyInsert(galleryDoc, GALLERY_BODY, item, syntax)).toEqual({
+      ok: true,
+      body: GALLERY_BODY.replace('<Image src={image2} alt="시간표" />\n\n', ""),
+      changed: true,
+    });
+  });
+
+  test("원문을 읽은 뒤 이미지가 바뀌었으면 지우지 않고 이유를 사용자 문구로 돌려준다", () => {
+    const changed = GALLERY.replace('alt="병원 입구"', 'alt="정문"');
+
+    const result = removeInsert(changed, sourceImage(GALLERY, "병원 입구"), syntax);
+
+    expect(result).toEqual({ ok: false, reason: "target-changed" });
+    expect(imageActionMessage("target-changed", "source")).toBe(
+      "이미지가 바뀌었거나 없어졌어요. 삽입 항목을 다시 확인해 주세요.",
+    );
+  });
+});
+
+describe("새로 넣은 이미지의 교체·제거와 저장할 첨부", () => {
+  test("일반 편집에서 넣은 새 이미지를 교체하면 이전 새 이미지는 저장할 첨부에서 빠지고, 제거하면 첨부가 남지 않는다", async () => {
+    const session = uploadSession(GALLERY, "body");
+    const first = await attach(session);
+    let body = `${GALLERY_BODY}\n${imageFormTag({ kind: "image", image: first, place: null }, "새 사진")}\n`;
+    expect(session.submission(body)).toMatchObject({ ok: true, images: [{ file: "3.png" }] });
+
+    const item = imageIn(bodyInserts(session.plan.doc, body, syntax), "새 사진");
+    const replace = bodyImageReplace(session.plan.doc, body, item);
+    const second = await attach(session);
+    const replaced = applyBodyInsertForm(
+      session.plan.doc,
+      body,
+      { kind: "replace", ...replace, image: second },
+      text("새 사진"),
+      syntax,
+    );
+    if (!replaced.ok) throw new Error(replaced.reason);
+    body = replaced.body;
+
+    expect(body).toContain('<Image src={image4} alt="새 사진" />');
+    expect(session.submission(body)).toMatchObject({ ok: true, images: [{ file: "4.png" }] });
+
+    const removed = removeBodyInsert(
+      session.plan.doc,
+      body,
+      imageIn(bodyInserts(session.plan.doc, body, syntax), "새 사진"),
+      syntax,
+    );
+    if (!removed.ok) throw new Error(removed.reason);
+
+    expect(removed.body).toBe(GALLERY_BODY);
+    expect(session.submission(removed.body)).toEqual({ ok: true, images: [] });
+    expect(session.unsaved(removed.body)).toBe(false);
+  });
+
+  test("원문 편집에서 넣은 새 이미지를 교체하면 이전 새 이미지의 import까지 빠져 저장할 첨부에서 빠진다", async () => {
+    const session = uploadSession(GALLERY, "source");
+    const first = await attach(session);
+    const at = GALLERY.indexOf("진료 시간이에요.");
+    const inserted = applyInsertForm(
+      GALLERY,
+      { kind: "image", image: first, place: { at: { from: at, to: at }, opened: GALLERY } },
+      text("새 사진"),
+      syntax,
+    );
+    if (!inserted.ok) throw new Error(inserted.reason);
+    let source = inserted.source;
+    expect(session.submission(source)).toMatchObject({ ok: true, images: [{ file: "3.png" }] });
+
+    const second = await attach(session);
+    const replaced = applyInsertForm(
+      source,
+      { kind: "replace", item: sourceImage(source, "새 사진"), opened: source, image: second },
+      text("새 사진"),
+      syntax,
+    );
+    if (!replaced.ok) throw new Error(replaced.reason);
+    source = replaced.source;
+
+    expect(source).not.toContain("./3.png");
+    expect(session.submission(source)).toMatchObject({ ok: true, images: [{ file: "4.png" }] });
+
+    const removed = removeInsert(source, sourceImage(source, "새 사진"), syntax);
+    if (!removed.ok) throw new Error(removed.reason);
+
+    expect(removed.source).toBe(GALLERY);
+    expect(session.submission(removed.source)).toEqual({ ok: true, images: [] });
+  });
+});
+
+describe("이미지 이동", () => {
+  test("원문 편집에서 앞으로 옮기면 그 이미지 블록만 앞 블록과 자리를 바꾸고, 뒤로 옮기면 되돌아온다", () => {
+    const moved = moveInsert(GALLERY, sourceImage(GALLERY, "시간표"), "before", syntax);
+    if (!moved.ok) throw new Error(moved.reason);
+
+    expect(moved.source).toBe(
+      GALLERY.replace(
+        '진료 시간이에요.\n\n<Image src={image2} alt="시간표" />',
+        '<Image src={image2} alt="시간표" />\n\n진료 시간이에요.',
+      ),
+    );
+    expect(moveInsert(moved.source, sourceImage(moved.source, "시간표"), "after", syntax)).toMatchObject({
+      ok: true,
+      source: GALLERY,
+    });
+  });
+
+  test("일반 편집에서 뒤로 옮기면 본문에서 그 이미지 블록만 뒤 블록과 자리를 바꾼다", () => {
+    if (!galleryDoc.ok) throw new Error("나눌 수 없음");
+    const item = imageIn(bodyInserts(galleryDoc, GALLERY_BODY, syntax), "병원 입구");
+
+    expect(moveBodyInsert(galleryDoc, GALLERY_BODY, item, "after", syntax)).toEqual({
+      ok: true,
+      body: GALLERY_BODY.replace(
+        '<Image src={image1} alt="병원 입구" />\n\n진료 시간이에요.',
+        '진료 시간이에요.\n\n<Image src={image1} alt="병원 입구" />',
+      ),
+      changed: true,
+      index: 0,
+    });
+  });
+
+  test("이웃 블록이 이미지면 서로 자리를 바꾸고, 옮긴 이미지가 삽입 항목 목록에서 몇 번째가 됐는지 돌려준다", () => {
+    const moved = moveInsert(GALLERY, sourceImage(GALLERY, "시간표"), "after", syntax);
+    if (!moved.ok) throw new Error(moved.reason);
+    const list = readInserts(moved.source, syntax);
+    if (!list.ok) throw new Error("읽지 못함");
+
+    expect(moved.index).toBe(2);
+    expect(insertEntries(list)[moved.index]).toMatchObject({ kind: "image", alt: "시간표" });
+    expect(insertEntries(list)[1]).toMatchObject({ kind: "image", alt: "입구 다시" });
+  });
+
+  test("맨 앞 블록은 앞으로, 맨 뒤 블록은 뒤로 옮길 수 없는 상태를 돌려주고 버튼 옆 안내는 두지 않는다", () => {
+    if (!galleryDoc.ok) throw new Error("나눌 수 없음");
+    const first = imageIn(bodyInserts(galleryDoc, GALLERY_BODY, syntax), "병원 입구");
+    const last = sourceImage(SOURCE, "병원 입구");
+
+    const firstMoves = bodyImageMoves(galleryDoc, GALLERY_BODY, first, syntax);
+    const lastMoves = imageMoves(SOURCE, last, syntax);
+
+    expect(firstMoves).toEqual({ before: "first-block", after: null });
+    expect(lastMoves).toEqual({ before: null, after: "last-block" });
+    expect(imageMoves(GALLERY, sourceImage(GALLERY, "시간표"), syntax)).toEqual({ before: null, after: null });
+    expect(imageMoveNotice(firstMoves, "body")).toBeNull();
+    expect(imageMoveNotice(lastMoves, "source")).toBeNull();
+    expect(moveInsert(SOURCE, last, "after", syntax)).toEqual({ ok: false, reason: "last-block" });
+  });
+
+  test("문단 안 이미지는 어느 쪽으로도 옮길 수 없고, 그 이유와 원문으로 가는 방법을 돌려준다", () => {
+    if (!galleryDoc.ok) throw new Error("나눌 수 없음");
+    const inline = imageIn(bodyInserts(galleryDoc, GALLERY_BODY, syntax), "문단 안");
+
+    const moves = bodyImageMoves(galleryDoc, GALLERY_BODY, inline, syntax);
+
+    expect(moves).toEqual({ before: "in-paragraph", after: "in-paragraph" });
+    expect(imageMoveNotice(moves, "body")).toBe(
+      "옮길 수 없어요. 문단 안에 글자와 함께 있는 이미지예요. 원문 편집에서 직접 옮겨 주세요.",
+    );
+    expect(moveBodyInsert(galleryDoc, GALLERY_BODY, inline, "before", syntax)).toEqual({
+      ok: false,
+      reason: "in-paragraph",
+    });
+    expect(imageActionMessage("in-container", "source")).toBe(
+      "옮길 수 없어요. 목록이나 인용 안에 있는 이미지예요. 원문에서 직접 옮겨 주세요.",
+    );
+  });
+});
+
+describe.each(fixtureSources.map((source) => [source.name, source.syntax, loadFixtures(source.name)] as const))(
+  "%s 픽스처 전체의 일반 편집 이미지",
+  (_, fixtureSyntax, fixtures) => {
+    const key = ({ name, alt }: ImageInsertItem) => `${name}:${alt}`;
+
+    // 이미지를 지우면 import도 빠질 수 있어, 본문을 다시 나눠 얻은 본문이 그 태그만 뺀 본문인지 본다.
+    test.skipIf(!fixtures)(
+      "본문 이미지를 하나씩 지우면 그 이미지만 목록에서 빠지고 나머지 본문은 그대로다",
+      { timeout: 60_000 },
+      () => {
+        const failures: string[] = [];
+        let removed = 0;
+        for (const fixture of fixtures ?? []) {
+          const doc = parseMdx(fixture.source, fixtureSyntax);
+          const list = bodyInserts(doc, doc.ok ? doc.body : "", fixtureSyntax);
+          if (!doc.ok || !list.ok) continue;
+          const bodyStart = fixture.source.length - doc.body.length;
+          const images = list.items.filter(isImageInsert);
+          for (const [index, image] of images.entries()) {
+            const result = removeBodyInsert(doc, doc.body, image, fixtureSyntax);
+            const after = result.ok ? bodyInserts(doc, result.body, fixtureSyntax) : null;
+            const rest = after?.ok ? after.items.filter(isImageInsert).map(key) : null;
+            const expected = images.filter((_, other) => other !== index).map(key);
+            const kept = result.ok && result.body.startsWith(doc.body.slice(0, image.from - bodyStart).trimEnd());
+            if (!kept || JSON.stringify(rest) !== JSON.stringify(expected)) failures.push(`${fixture.path} ${index}`);
+            removed += 1;
+          }
+        }
+        expect(failures).toEqual([]);
+        expect(removed).toBeGreaterThan(0);
+      },
+    );
+  },
+);

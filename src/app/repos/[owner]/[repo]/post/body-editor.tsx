@@ -1,18 +1,22 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { TechDetails } from "@/app/_lib/ui";
 import { useReportUnsaved, useSaveLocked } from "@/app/_lib/unsaved";
 import {
   applyBodyInsertForm,
+  bodyImageMoves,
+  bodyImageReplace,
   bodyInsert,
   bodyInserts,
   imageFormTag,
   insertMenuItems,
+  moveBodyInsert,
   newBodyInsertTarget,
   removeBodyInsert,
+  type ImageInsertItem,
 } from "@/lib/content/insert-form";
 import { uploadPreviewMessage } from "@/lib/content/preview";
 import { MAX_IMAGE_SIDE } from "@/lib/content/upload";
@@ -101,8 +105,8 @@ function OpenedBodyEditor({
     edited.current = markdown;
     setDraft(editedBody(body, normalized.current, markdown));
   };
-  /** 폼이나 목차 제거로 고친 본문을 편집기에 쓴다. */
-  const replaceBody = (result: ReturnType<typeof applyBodyInsertForm>) => {
+  /** 폼이나 목차·이미지 제거, 이미지 이동으로 고친 본문을 편집기에 쓴다. */
+  const replaceBody = <R,>(result: { ok: true; body: string; changed: boolean } | { ok: false; reason: R }) => {
     if (!result.ok) return result.reason;
     if (result.changed) {
       // 편집기는 코드로 바꾼 본문을 변경으로 알리지 않으므로 사용자가 고친 것처럼 직접 반영한다.
@@ -120,7 +124,7 @@ function OpenedBodyEditor({
         handle.insert(imageFormTag(target, input.text));
         return null;
       }
-      if (target.kind !== "edit") {
+      if (target.kind !== "edit" && target.kind !== "replace") {
         const result = bodyInsert(attachedDoc, current, target, input, syntax);
         if (!result.ok) return result.reason;
         const { insert } = result;
@@ -144,6 +148,10 @@ function OpenedBodyEditor({
   const { doc: attachedDoc } = images;
   const inserts = useMemo(() => bodyInserts(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
   const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
+  const imageMoves = useCallback(
+    (item: ImageInsertItem) => bodyImageMoves(attachedDoc, current, item, syntax),
+    [attachedDoc, current, syntax],
+  );
   const formLocked = locked || !forms.canOpen || images.preparing;
   // 본문과 본문에 넣은 이미지를 낸다. 일반 편집으로 고칠 수 없게 된 글도 제목·설정은 일반 편집에서 저장하므로,
   // 본문은 연 그대로 첨부 없이 낸다.
@@ -192,6 +200,21 @@ function OpenedBodyEditor({
         disabled={formLocked}
         onEdit={(item, opener) => forms.open({ kind: "edit", item }, opener)}
         onRemove={(item) => replaceBody(removeBodyInsert(attachedDoc, current, item, syntax))}
+        images={{
+          moves: imageMoves,
+          replace: upload
+            ? (item, opener) => {
+                // 새 파일을 첨부에 더하면 import가 늘어 위치가 밀리므로, 고른 때의 원문을 함께 둔다.
+                const replace = bodyImageReplace(attachedDoc, current, item);
+                images.pick(opener, (image) => forms.open({ kind: "replace", ...replace, image }, opener));
+              }
+            : null,
+          move: (item, direction) => {
+            const result = moveBodyInsert(attachedDoc, current, item, direction, syntax);
+            replaceBody(result);
+            return result;
+          },
+        }}
       />
       {forms.panel}
       <div {...(upload ? images.dropProps : {})}>
