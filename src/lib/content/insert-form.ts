@@ -20,6 +20,7 @@ import {
   replaceImage,
   setBody,
   setInsertText,
+  tocHeadings,
   type FootnoteRefChoice,
   type InsertEdit,
   type InsertItem,
@@ -33,6 +34,7 @@ import {
   type MoveDirection,
   type MoveLimit,
   type Syntax,
+  type TocHeading,
 } from "@/lib/mdx-doc";
 
 import type { FormArea } from "./save-flow";
@@ -432,7 +434,52 @@ export function bodyFootnotes(
 }
 
 function footnotesByTag(doc: MdxDoc, body: string, syntax: Syntax): Map<string, BodyFootnote> {
-  const byTag = new Map<string, BodyFootnote>();
+  return viewsByTag(doc, body, syntax, (entry): BodyFootnote | null => {
+    if (entry.kind !== "footnote" && entry.kind !== "footnote-ref") return null;
+    if ("reason" in entry) return { limit: entry.reason };
+    return { item: entry, numbers: (entry.kind === "footnote" ? [entry.id] : entry.ids).map(String) };
+  });
+}
+
+/**
+ * 일반 편집 본문에 보일 목차. 자동 목차는 지금 본문의 소제목(`tocHeadings`)을, 사용자 정의 목차는 폼으로 고칠 수 없는
+ * 이유(`limit`)만 있다. 소제목을 읽을 수 없으면 소제목이 없는 것으로 본다.
+ */
+export type BodyToc = { headings: TocHeading[] } | { limit: InsertLimit };
+
+/**
+ * 일반 편집기가 그린 요소가 목차면 보일 값을 찾는 함수를 만든다. 목차가 아닌 요소는 null이다.
+ * 자동 목차는 태그가 모두 같고 같은 소제목을 보이므로 태그만으로 정해진다. 지울 항목은 `bodyEntryAt`으로 차례까지 찾는다.
+ */
+export function bodyTocs(doc: MdxDoc, body: string, syntax: Syntax = {}): (element: JsxElement) => BodyToc | null {
+  let byTag: Map<string, BodyToc> | undefined;
+  return (element) => {
+    byTag ??= tocsByTag(doc, body, syntax);
+    return byTag.get(printJsxTag(element)) ?? null;
+  };
+}
+
+function tocsByTag(doc: MdxDoc, body: string, syntax: Syntax): Map<string, BodyToc> {
+  let headings: TocHeading[] | undefined;
+  return viewsByTag(doc, body, syntax, (entry): BodyToc | null => {
+    if (entry.kind !== "toc") return null;
+    if ("reason" in entry) return { limit: entry.reason };
+    if (!headings) {
+      const read = tocHeadings(body, syntax);
+      headings = read.ok ? read.headings : [];
+    }
+    return { headings };
+  });
+}
+
+/** 본문의 태그마다 그 태그로 처음 나오는 삽입 항목을 `view`로 바꾼 값. `view`가 null이면 두지 않는다. 원문을 읽을 수 없으면 비어 있다. */
+function viewsByTag<V>(
+  doc: MdxDoc,
+  body: string,
+  syntax: Syntax,
+  view: (entry: InsertItem | LimitedInsert) => V | null,
+): Map<string, V> {
+  const byTag = new Map<string, V>();
   if (!doc.ok) return byTag;
   const source = bodySource(doc, body);
   const list = readInserts(source, syntax);
@@ -441,9 +488,8 @@ function footnotesByTag(doc: MdxDoc, body: string, syntax: Syntax): Map<string, 
   const at = new Map(insertEntries(list).map((entry) => [`${entry.from}-${entry.to}`, entry]));
   for (const { from, to, tag } of tags) {
     const entry = at.get(`${from}-${to}`);
-    if (byTag.has(tag) || (entry?.kind !== "footnote" && entry?.kind !== "footnote-ref")) continue;
-    if ("reason" in entry) byTag.set(tag, { limit: entry.reason });
-    else byTag.set(tag, { item: entry, numbers: (entry.kind === "footnote" ? [entry.id] : entry.ids).map(String) });
+    const found = entry && !byTag.has(tag) ? view(entry) : null;
+    if (found !== null) byTag.set(tag, found);
   }
   return byTag;
 }

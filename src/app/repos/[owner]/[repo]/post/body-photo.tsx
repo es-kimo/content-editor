@@ -7,7 +7,7 @@ import type { BodyImagePhoto } from "@/lib/content/body-image";
 import { imageActionMessage, imageMoveNotice, insertItemName, type ImageInsertItem } from "@/lib/content/insert-form";
 import { printJsxTag, type JsxElement } from "@/lib/mdx-doc";
 
-import { BodyItemsContext, ItemMark, reopener, useKeepKeys, type BodyItems } from "./body-items";
+import { BodyItemsContext, ItemMark, reopener, SELECTED_ITEM_CLASS, useKeepKeys, type BodyItems } from "./body-items";
 import { ImageActions } from "./insert-form";
 
 /**
@@ -89,7 +89,7 @@ export function BodyPhoto({ photo, element, inline }: { photo: BodyImagePhoto; e
         aria-pressed={selected !== null}
         aria-label={`사진, ${alt}`}
         onClick={toggle}
-        className="inline-flex max-w-full flex-col text-left aria-pressed:outline-2 aria-pressed:outline-offset-2 aria-pressed:outline-black dark:aria-pressed:outline-white"
+        className={`inline-flex max-w-full flex-col text-left ${SELECTED_ITEM_CLASS}`}
       >
         {state !== "failed" && (
           // eslint-disable-next-line @next/next/no-img-element -- 세션 쿠키로 읽는 라우트와 blob 주소라 이미지 최적화를 거칠 수 없다

@@ -16,9 +16,11 @@ import {
   bodyImageReplace,
   bodyInsert,
   bodyInserts,
+  bodyTocs,
   imageFormTag,
   insertMenuItems,
   isImageInsert,
+  isTocInsert,
   moveBodyInsert,
   newBodyInsertTarget,
   removeBodyInsert,
@@ -175,6 +177,7 @@ function OpenedBodyEditor({
     [attachedDoc, previewImages, post, syntax],
   );
   const footnote = useMemo(() => bodyFootnotes(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
+  const toc = useMemo(() => bodyTocs(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
   const imageMoves = useCallback(
     (item: ImageInsertItem) => bodyImageMoves(attachedDoc, current, item, syntax),
     [attachedDoc, current, syntax],
@@ -198,6 +201,10 @@ function OpenedBodyEditor({
     image: (element, nth) => {
       const entry = bodyEntryAt(attachedDoc, current, element, nth, syntax);
       return entry && isImageInsert(entry) ? entry : null;
+    },
+    toc: (element, nth) => {
+      const entry = bodyEntryAt(attachedDoc, current, element, nth, syntax);
+      return entry && isTocInsert(entry) ? entry : null;
     },
     moves: imageMoves,
     disabled: formLocked,
@@ -304,6 +311,7 @@ function OpenedBodyEditor({
             onPickImage={upload ? images.pick : undefined}
             photo={photo}
             footnote={footnote}
+            toc={toc}
           />
         </BodyItemsContext>
       </div>

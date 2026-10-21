@@ -45,10 +45,11 @@ import {
 
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 폼·사진 모듈만 가져온다.
 import type { BodyImagePhoto } from "@/lib/content/body-image";
-import { advancedComponents, type BodyFootnote } from "@/lib/content/insert-form";
+import { advancedComponents, type BodyFootnote, type BodyToc } from "@/lib/content/insert-form";
 
 import { BodyFootnoteItem } from "./body-footnote";
 import { BodyPhoto } from "./body-photo";
+import { BodyTocItem } from "./body-toc";
 
 export type MdxBodyEditorProps = {
   markdown: string;
@@ -66,10 +67,13 @@ export type MdxBodyEditorProps = {
   photo?: PhotoOf;
   /** 본문의 요소가 각주·출처면 번호와 내용으로 그릴 값. 없거나 null을 돌려주면 이름과 속성을 보인다. */
   footnote?: FootnoteOf;
+  /** 본문의 요소가 목차면 제목 목록으로 그릴 값. 없거나 null을 돌려주면 이름과 속성을 보인다. */
+  toc?: TocOf;
 };
 
 type PhotoOf = (element: MdastJsx) => BodyImagePhoto | null;
 type FootnoteOf = (element: MdastJsx) => BodyFootnote | null;
+type TocOf = (element: MdastJsx) => BodyToc | null;
 
 export type BodyEditorHandle = {
   markdown(): string;
@@ -95,6 +99,7 @@ export default function MdxBodyEditor({
   handleRef,
   photo,
   footnote,
+  toc,
 }: MdxBodyEditorProps) {
   const editor = useRef<MDXEditorMethods>(null);
   const insertInRoot = useRef<RootInserts | null>(null);
@@ -159,22 +164,24 @@ export default function MdxBodyEditor({
   );
 
   return (
-    // 편집기는 처음 만든 플러그인으로 요소를 그리므로, 넣은 이미지가 늘어 바뀌는 사진 주소와 본문마다 바뀌는 각주는
+    // 편집기는 처음 만든 플러그인으로 요소를 그리므로, 넣은 이미지가 늘어 바뀌는 사진 주소와 본문마다 바뀌는 각주·목차는
     // context로 넘긴다.
     <PhotoContext value={photo ?? null}>
       <FootnoteContext value={footnote ?? null}>
-        <div onKeyDownCapture={leaveOnTab}>
-          <MDXEditor
-            ref={editor}
-            markdown={markdown}
-            plugins={plugins}
-            readOnly={readOnly}
-            onChange={onChange}
-            onError={({ error }) => onError(error)}
-            className="rounded border"
-            contentEditableClassName={CONTENT_CLASS}
-          />
-        </div>
+        <TocContext value={toc ?? null}>
+          <div onKeyDownCapture={leaveOnTab}>
+            <MDXEditor
+              ref={editor}
+              markdown={markdown}
+              plugins={plugins}
+              readOnly={readOnly}
+              onChange={onChange}
+              onError={({ error }) => onError(error)}
+              className="rounded border"
+              contentEditableClassName={CONTENT_CLASS}
+            />
+          </div>
+        </TocContext>
       </FootnoteContext>
     </PhotoContext>
   );
@@ -182,6 +189,7 @@ export default function MdxBodyEditor({
 
 const PhotoContext = createContext<PhotoOf | null>(null);
 const FootnoteContext = createContext<FootnoteOf | null>(null);
+const TocContext = createContext<TocOf | null>(null);
 
 const CONTENT_CLASS = "body-editor-content";
 
@@ -200,18 +208,30 @@ function leaveOnTab(event: ReactKeyboardEvent) {
 }
 
 /**
- * 사진 주소가 있는 이미지는 사진으로, 각주·출처는 번호와 내용으로, 나머지 요소는 이름과 속성으로 그린다.
- * 표현만 바꾸고 요소는 고치지 않는다.
+ * 사진 주소가 있는 이미지는 사진으로, 각주·출처는 번호와 내용으로, 목차는 제목 목록으로, 나머지 요소는 이름과 속성으로
+ * 그린다. 표현만 바꾸고 요소는 고치지 않는다.
  */
 function JsxEditor(props: JsxEditorProps) {
   const photoOf = useContext(PhotoContext);
   const footnoteOf = useContext(FootnoteContext);
+  const tocOf = useContext(TocContext);
   const { mdastNode } = props;
   // 편집기는 이름이 같은 descriptor를 종류와 상관없이 쓰므로, 설정에 있는 컴포넌트는 문장 안에 있어도 flow descriptor로 온다.
   const inline = mdastNode.type === "mdxJsxTextElement";
   const photo = useMemo(() => photoOf?.(mdastNode) ?? null, [photoOf, mdastNode]);
   const footnote = useMemo(() => (photo ? null : (footnoteOf?.(mdastNode) ?? null)), [photo, footnoteOf, mdastNode]);
+  const toc = useMemo(
+    () => (photo || footnote ? null : (tocOf?.(mdastNode) ?? null)),
+    [photo, footnote, tocOf, mdastNode],
+  );
   if (photo) return <BodyPhoto key={photo.src} photo={photo} element={mdastNode} inline={inline} />;
+  if (toc) {
+    return (
+      <BodyTocItem toc={toc} element={mdastNode} inline={inline}>
+        <GenericJsxEditor {...props} />
+      </BodyTocItem>
+    );
+  }
   if (!footnote) return <GenericJsxEditor {...props} />;
   return (
     <BodyFootnoteItem footnote={footnote} element={mdastNode} inline={inline}>

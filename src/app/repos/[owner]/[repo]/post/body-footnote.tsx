@@ -2,15 +2,10 @@
 
 import { useContext, useId, useMemo, useRef, type ReactNode } from "react";
 
-import {
-  insertItemName,
-  insertLimitMessage,
-  type BodyFootnote,
-  type FootnoteInsertItem,
-} from "@/lib/content/insert-form";
+import { insertItemName, type BodyFootnote, type FootnoteInsertItem } from "@/lib/content/insert-form";
 import { printJsxTag, type JsxElement } from "@/lib/mdx-doc";
 
-import { BodyItemsContext, ItemMark, reopener, useKeepKeys } from "./body-items";
+import { BodyItemsContext, ItemMark, LimitedBodyItem, reopener, SELECTED_ITEM_CLASS, useKeepKeys } from "./body-items";
 import { TOGGLE_BUTTON_CLASS } from "./editor-mode-switch";
 
 /**
@@ -31,13 +26,11 @@ export function BodyFootnoteItem({
   inline: boolean;
   children: ReactNode;
 }) {
-  const Box = inline ? "span" : "div";
   if ("item" in footnote) return <Footnote {...footnote} element={element} inline={inline} />;
   return (
-    <Box className={inline ? undefined : "flex flex-col gap-1"}>
+    <LimitedBodyItem limit={footnote.limit} inline={inline}>
       {children}
-      <span className="text-sm text-amber-600">{insertLimitMessage(footnote.limit, "body")}</span>
-    </Box>
+    </LimitedBodyItem>
   );
 }
 
@@ -73,8 +66,6 @@ function Footnote({
     "aria-pressed": selected,
     onClick: toggle,
   } as const;
-  const pressed =
-    "aria-pressed:outline-2 aria-pressed:outline-offset-2 aria-pressed:outline-black dark:aria-pressed:outline-white";
 
   // 위첨자(`sup`)는 줄 높이가 0이라 flex 항목으로 두면 높이가 없어 누를 수 없으므로 버튼 안 글자 흐름에 둔다.
   // 문장 안 각주는 사진처럼 세로 inline-flex로 묶어 내용과 ‘수정’을 번호 아래에 두고, 번호는 문장 기준선에 맞춘다.
@@ -89,11 +80,15 @@ function Footnote({
     >
       <ItemMark ref={mark} id={id} tag={tag} />
       {item.kind === "footnote" ? (
-        <button {...select} aria-label={name} className={`px-0.5 ${pressed}`}>
+        <button {...select} aria-label={name} className={`px-0.5 ${SELECTED_ITEM_CLASS}`}>
           <sup>{numbers[0]}</sup>
         </button>
       ) : (
-        <button {...select} aria-label={`${name}, ${item.text}`} className={`text-left break-all ${pressed}`}>
+        <button
+          {...select}
+          aria-label={`${name}, ${item.text}`}
+          className={`text-left break-all ${SELECTED_ITEM_CLASS}`}
+        >
           <span className="font-medium">출처</span> <sup>{numbers.join(", ")}</sup> {item.text}
         </button>
       )}
