@@ -1,5 +1,5 @@
 import type { ApiIssue, ApiLabel, ApiMilestone, ApiPull } from "./github.mts";
-import { conversation, type Job, type People, type PlanningIssue } from "./plan.mts";
+import { conversation, type IssueJob, type People, type PlanningIssue } from "./plan.mts";
 
 export type RepoState = {
   repo: string;
@@ -67,17 +67,13 @@ export function renderReleaseNotes(version: string, repo: string, items: Release
   return parts.join("\n\n") + "\n";
 }
 
-export function renderHeader(job: Job, s: RepoState): string {
-  const target =
-    job.mode === "converse" || job.mode === "breakdown"
-      ? `이 이슈의 버전: ${job.version} (제목에 버전이 없으면 다음 버전)`
-      : `다음 버전: ${job.version}`;
+export function renderHeader(job: IssueJob, s: RepoState): string {
   return [
     `# 이번 실행`,
     "",
     `- 모드: ${job.mode}`,
     `- 레포: ${s.repo} · wiki: https://github.com/${s.repo}/wiki`,
     `- 오늘(KST): ${s.today}`,
-    `- ${target}`,
+    `- 이 이슈의 버전: ${job.version} (제목에 버전이 없으면 다음 버전)`,
   ].join("\n");
 }

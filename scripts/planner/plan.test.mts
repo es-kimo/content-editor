@@ -6,13 +6,13 @@ import {
   nextJob,
   nextVersion,
   parseOutput,
+  planJobs,
   planningIssueOf,
-  proposalBlocker,
+  prdTitle,
   refErrors,
   releaseReady,
   resolveRefs,
   versionOf,
-  waitingOnOwner,
   type Message,
   type PlanningIssue,
 } from "./plan.mts";
@@ -46,8 +46,19 @@ describe("conversation", () => {
 });
 
 describe("nextJob", () => {
-  test("소유자가 연 이슈에 아직 답이 없으면 대화 모드", () => {
-    expect(nextJob(issue(), people, "v0.2")).toEqual({ mode: "converse", issue: 80, version: "v0.2" });
+  test("소유자가 올린 원문에 아직 답이 없으면 PRD 쓰기, 버전은 다음 버전", () => {
+    expect(nextJob(issue(), people, "v0.2")).toEqual({ mode: "prd", issue: 80, version: "v0.2" });
+  });
+
+  test("PRD 초안에 소유자가 승인이 아닌 코멘트를 달면 PRD 고치기", () => {
+    const draft = issue({ title: "[v0.3] 글 예약 발행", labels: ["planning", "prd-draft"] });
+    const comments = [say("kimo-planner", "PRD를 썼어요"), say("es-kimo", "예약은 blog만 먼저")];
+    expect(nextJob({ ...draft, comments }, people, "v0.4")).toEqual({ mode: "prd", issue: 80, version: "v0.3" });
+  });
+
+  test("이슈를 나눈 뒤에는 소유자가 코멘트해도 할 일이 없다", () => {
+    const issued = issue({ labels: ["planning", "issued"], comments: [say("es-kimo", "진행 어때요?")] });
+    expect(nextJob(issued, people, "v0.2")).toBeNull();
   });
 
   test("마지막 글이 봇 것이면 할 일이 없다", () => {
@@ -67,36 +78,44 @@ describe("nextJob", () => {
       version: "v0.3",
     });
     expect(nextJob({ ...draft, comments: [say("es-kimo", "좋아요, 승인 전에 하나만")] }, people, "v0.4")?.mode).toBe(
-      "converse",
+      "prd",
     );
   });
 
-  test("PRD 초안이 아닌 이슈의 승인은 대화로 처리한다", () => {
-    expect(nextJob(issue({ comments: [say("es-kimo", "승인")] }), people, "v0.2")?.mode).toBe("converse");
+  test("PRD 초안이 없는 이슈의 승인은 PRD 쓰기로 처리한다", () => {
+    expect(nextJob(issue({ comments: [say("es-kimo", "승인")] }), people, "v0.2")?.mode).toBe("prd");
   });
 });
 
-describe("waitingOnOwner", () => {
-  test("봇이 마지막으로 답한 이슈는 소유자를 기다린다", () => {
-    expect(waitingOnOwner(issue({ comments: [say("kimo-planner", "어떤 레포부터?")] }), people)).toBe(true);
-    expect(waitingOnOwner(issue(), people)).toBe(false);
+describe("planJobs", () => {
+  const raw = (number: number, title: string) => issue({ number, title });
+  const approved = issue({
+    number: 70,
+    title: "[v0.3] 검색",
+    labels: ["planning", "prd-draft"],
+    comments: [say("kimo-planner", "PRD를 썼어요"), say("es-kimo", "승인")],
   });
 
-  test("이슈를 만든 뒤에는 기다림으로 세지 않는다", () => {
-    const issued = issue({ labels: ["planning", "issued"], comments: [say("kimo-planner", "이슈 5개를 만들었어요")] });
-    expect(waitingOnOwner(issued, people)).toBe(false);
-  });
-});
-
-describe("proposalBlocker", () => {
-  test("진행 중인 작업이나 답을 기다리는 이슈가 있으면 제안하지 않는다", () => {
-    expect(proposalBlocker({ agentReady: 2, agentPrs: 0, waiting: [] })).toContain("2개");
-    expect(proposalBlocker({ agentReady: 0, agentPrs: 1, waiting: [] })).toContain("PR 1개");
-    expect(proposalBlocker({ agentReady: 0, agentPrs: 0, waiting: [80, 81] })).toContain("#80, #81");
+  test("버전 없는 원문 둘은 다음 버전을 차례로 받는다", () => {
+    const jobs = planJobs("prd", [raw(80, "예약 발행"), raw(81, "노션 만들기")], people, ["v0.2"], "0.1.0", 3);
+    expect(jobs).toEqual([
+      { mode: "prd", issue: 80, version: "v0.3" },
+      { mode: "prd", issue: 81, version: "v0.4" },
+    ]);
   });
 
-  test("아무것도 없으면 제안한다", () => {
-    expect(proposalBlocker({ agentReady: 0, agentPrs: 0, waiting: [] })).toBeNull();
+  test("다른 모드의 이슈는 고르지 않고, 제목의 버전은 그대로 쓴다", () => {
+    expect(planJobs("breakdown", [raw(80, "예약 발행"), approved], people, [], "0.1.0", 3)).toEqual([
+      { mode: "breakdown", issue: 70, version: "v0.3" },
+    ]);
+    expect(planJobs("prd", [approved, raw(80, "예약 발행")], people, [], "0.1.0", 3)).toEqual([
+      { mode: "prd", issue: 80, version: "v0.4" },
+    ]);
+  });
+
+  test("한 실행에서 max개까지만 고른다", () => {
+    const issues = [raw(80, "가"), raw(81, "나"), raw(82, "다")];
+    expect(planJobs("prd", issues, people, [], "0.1.0", 2).map((j) => j.issue)).toEqual([80, 81]);
   });
 });
 
@@ -106,6 +125,17 @@ describe("versionOf", () => {
     expect(versionOf("v1.12")).toBe("v1.12");
     expect(versionOf("M5 blog 적용")).toBeNull();
     expect(versionOf("예약 발행 (v0.3)")).toBeNull();
+  });
+});
+
+describe("prdTitle", () => {
+  test("이슈의 버전을 앞에 붙이고, 모델이 붙인 다른 버전은 뗀다", () => {
+    expect(prdTitle("v0.5", "노션처럼 쓰는 본문 편집", "노션 만들기")).toBe("[v0.5] 노션처럼 쓰는 본문 편집");
+    expect(prdTitle("v0.5", "[v0.9] 노션처럼 쓰는 본문 편집", "노션 만들기")).toBe("[v0.5] 노션처럼 쓰는 본문 편집");
+  });
+
+  test("요약이 비면 이슈 제목을 쓴다", () => {
+    expect(prdTitle("v0.5", " ", "[v0.5] 노션 만들기")).toBe("[v0.5] 노션 만들기");
   });
 });
 
