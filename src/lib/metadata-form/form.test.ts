@@ -26,6 +26,12 @@ const METADATA: { [key: string]: MetadataValue } = {
   other: { status: "ready", createdAt: "2020-11-20T00:00:00Z", views: 3 },
 };
 
+/** 게시 상태가 아닌 select 필드가 있는 글 분류. 상태는 폼에 넣지 않으므로 select 동작은 이 필드로 본다. */
+const withCategory = collection({
+  ...board.metadata,
+  "other.category": { type: "select", label: "분류", options: ["공지", "안내"], required: true },
+});
+
 const initialValues = (c: Collection, metadata: { [key: string]: MetadataValue }) =>
   Object.fromEntries(buildForm(c, metadata).map((f) => [f.key, f.initial]));
 
@@ -36,17 +42,22 @@ describe("buildForm", () => {
       ["description", "첫 줄\n둘째 줄", null],
       ["keywords", "휴진\n공지", null],
       ["other.createdAt", "2020-11-20T00:00:00", null],
-      ["other.status", "ready", null],
     ]);
   });
 
+  test("게시 상태는 상태별 저장 행동으로만 바꾸므로 config에 있어도 폼에 넣지 않는다", () => {
+    expect(buildForm(board, METADATA).map((f) => f.key)).not.toContain(STATUS_FIELD);
+    expect(buildForm(board, { other: { status: "hidden" } }).map((f) => f.key)).not.toContain(STATUS_FIELD);
+    expect(buildForm(board, { other: "x" }).map((f) => f.key)).not.toContain(STATUS_FIELD);
+  });
+
   test("config의 label·type·required·options를 필드에 옮긴다", () => {
-    expect(buildForm(board, METADATA).map((f) => [f.key, f.label, f.type, f.required, f.options])).toEqual([
+    expect(buildForm(withCategory, METADATA).map((f) => [f.key, f.label, f.type, f.required, f.options])).toEqual([
       ["title", "제목", "string", true, []],
       ["description", "요약", "text", false, []],
       ["keywords", "검색어", "string[]", false, []],
       ["other.createdAt", "작성일", "datetime", false, []],
-      ["other.status", "상태", "select", false, ["ready", "draft"]],
+      ["other.category", "분류", "select", true, ["공지", "안내"]],
     ]);
   });
 
@@ -56,7 +67,6 @@ describe("buildForm", () => {
       description: { type: "text" },
       keywords: { type: "string[]" },
       "other.createdAt": { type: "datetime" },
-      "other.status": { type: "select", options: ["ready"] },
       "other.code": { type: "string" },
     });
     expect(buildForm(labels, {}).map((f) => [f.key, f.label])).toEqual([
@@ -64,9 +74,9 @@ describe("buildForm", () => {
       ["description", "요약"],
       ["keywords", "검색어"],
       ["other.createdAt", "작성일"],
-      ["other.status", "상태"],
       ["other.code", "other.code"],
     ]);
+    expect(fieldLabel(STATUS_FIELD)).toBe("상태");
     expect(fieldLabel("toString")).toBe("toString");
   });
 
@@ -77,7 +87,6 @@ describe("buildForm", () => {
       ["description", "", null],
       ["keywords", "", null],
       ["other.createdAt", "", null],
-      ["other.status", "", null],
     ]);
   });
 
@@ -88,7 +97,6 @@ describe("buildForm", () => {
       ["description", false],
       ["keywords", true],
       ["other.createdAt", true],
-      ["other.status", true],
     ]);
   });
 
@@ -109,16 +117,15 @@ describe("buildForm", () => {
   );
 
   test("선택지에 없는 지금 값은 선택지 맨 앞에 더해 그대로 고를 수 있게 한다", () => {
-    const field = buildForm(board, { other: { status: "hidden" } }).find((f) => f.key === "other.status")!;
-    expect(field.options).toEqual(["hidden", "ready", "draft"]);
-    expect(field.initial).toBe("hidden");
+    const field = buildForm(withCategory, { other: { category: "행사" } }).find((f) => f.key === "other.category")!;
+    expect(field.options).toEqual(["행사", "공지", "안내"]);
+    expect(field.initial).toBe("행사");
   });
 });
 
 describe("optionLabel", () => {
   test("상태 필드의 ready·draft는 ‘게시 대상’·‘초안’으로 보이고 저장할 선택지 값은 그대로다", () => {
-    const status = buildForm(board, METADATA).find((f) => f.key === STATUS_FIELD)!;
-    expect(status.options.map((value) => [value, optionLabel(status.key, value)])).toEqual([
+    expect(["ready", "draft"].map((value) => [value, optionLabel(STATUS_FIELD, value)])).toEqual([
       ["ready", "게시 대상"],
       ["draft", "초안"],
     ]);
@@ -139,15 +146,14 @@ describe("splitTitleField", () => {
       ["description", true],
       ["keywords", false],
       ["other.createdAt", true],
-      ["other.status", true],
     ]);
   });
 
   test("config에 제목 필드가 없으면 모든 필드가 나머지에 남는다", () => {
-    const fields = buildForm(collection({ "other.status": { type: "select", options: ["ready"] } }), METADATA);
+    const fields = buildForm(collection({ description: { type: "text" } }), METADATA);
     const { title, settings } = splitTitleField(fields);
     expect(title).toBeNull();
-    expect(settings.map((f) => f.key)).toEqual(["other.status"]);
+    expect(settings.map((f) => f.key)).toEqual(["description"]);
   });
 });
 

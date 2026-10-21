@@ -15,7 +15,7 @@ const board: Collection = testConfig([
       description: { type: "text", label: "요약" },
       keywords: { type: "string[]" },
       "other.createdAt": { type: "datetime", label: "작성일" },
-      "other.status": { type: "select", label: "상태", options: ["ready", "draft"], required: true },
+      "other.category": { type: "select", label: "분류", options: ["공지", "안내"], required: true },
     },
   },
 ]).collections[0]!;
@@ -24,7 +24,7 @@ const METADATA: { [key: string]: MetadataValue } = {
   title: "11월 휴진 안내",
   description: "첫 줄\n둘째 줄",
   keywords: ["휴진", "공지"],
-  other: { status: "ready", createdAt: "2020-11-20T00:00:00Z" },
+  other: { category: "공지", createdAt: "2020-11-20T00:00:00Z" },
 };
 
 /** 브라우저가 폼을 제출할 때처럼 잠긴(disabled) 필드는 빼고, 처음 값에 `edits`를 덮은 FormData. */
@@ -51,7 +51,7 @@ describe("metadataFormChanged", () => {
       ["description", "첫 줄"],
       ["keywords", "휴진\n공지\n안내"],
       ["other.createdAt", "2020-11-21T00:00:00"],
-      ["other.status", "draft"],
+      ["other.category", "안내"],
     ] as const) {
       expect(metadataFormChanged(fields, formData(fields, { [key]: value })), key).toBe(true);
     }
@@ -77,8 +77,8 @@ describe("metadataFormChanged", () => {
 
   test("값이 없는 필수 선택지를 고르지 않은 채 두면 변경이 아니고, 고르면 변경이다", () => {
     const empty = buildForm(board, { title: "제목" });
-    expect(metadataFormChanged(empty, formData(empty, { "other.status": null }))).toBe(false);
-    expect(metadataFormChanged(empty, formData(empty, { "other.status": "ready" }))).toBe(true);
+    expect(metadataFormChanged(empty, formData(empty, { "other.category": null }))).toBe(false);
+    expect(metadataFormChanged(empty, formData(empty, { "other.category": "공지" }))).toBe(true);
   });
 
   test("브라우저가 0초를 뗀 날짜나 바꾼 줄바꿈은 변경으로 보지 않는다", () => {
@@ -100,7 +100,7 @@ describe("metadataFormChanged", () => {
   });
 
   test("값이 없던 필드에 공백만 적으면 저장해도 키가 생기지 않으므로 변경이 아니다", () => {
-    const empty = buildForm(board, { title: "제목", other: { status: "ready" } });
+    const empty = buildForm(board, { title: "제목", other: { category: "공지" } });
     for (const [key, value] of [
       ["description", "  "],
       ["keywords", "\n \n"],
