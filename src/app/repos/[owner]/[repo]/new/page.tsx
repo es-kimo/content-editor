@@ -61,7 +61,7 @@ async function NewPostView({ params, searchParams }: { params: Params; searchPar
       </header>
       <CollectionTabs config={config} current={collection} href={(c) => newPostHref(repo, c)} />
       {/* 컬렉션을 바꾸면 입력과 결과를 새로 시작한다. */}
-      <PostEditorProvider key={collection.name} initial={collection.editor} post={opened.post}>
+      <PostEditorProvider key={collection.name} initial={opened.initial} post={opened.post}>
         <DraftsProvider
           owner={login === null ? null : { login, repo, branch: config.branch }}
           query={{ kind: "new", collection: collection.name }}

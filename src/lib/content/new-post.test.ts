@@ -39,7 +39,7 @@ const metadataOf = (source: string) => {
 };
 
 describe("newPostSource", () => {
-  test("빈 제목·기본 설정·빈 본문의 초안으로, 글 분류의 기본 편집 모드로 열린다", () => {
+  test("빈 제목·기본 설정·빈 본문의 초안이고, 원문 편집으로만 열어야 하는 제한이 없다", () => {
     const source = newPostSource(board, config.syntax, NOW);
     const doc = parseMdx(source, config.syntax);
 
@@ -65,6 +65,15 @@ describe("openNewPost", () => {
     });
     expect(opened.doc.body).toBe("");
     expect(opened.fields.find((f) => f.key === "title")).toMatchObject({ initial: "", required: true, locked: null });
+  });
+
+  test("원문 편집이 기본인 글 분류도 새 글은 일반 편집으로 연다", () => {
+    const blog = blogConfig();
+    const [post] = blog.collections as [Collection];
+
+    expect(post.editor).toBe("source");
+    expect(openNewPost(post, blog.syntax, NOW).initial).toBe("wysiwyg");
+    expect(openNewPost(board, config.syntax, NOW).initial).toBe("wysiwyg");
   });
 
   test("글 설정에 제목 필드가 없는 글 분류에도 맨 앞에 비어 있는 필수 제목 칸을 둔다", () => {

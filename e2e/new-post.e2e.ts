@@ -24,6 +24,8 @@ const CONFIG = {
       editor: "wysiwyg",
     },
     { name: "게시판", path: "content/게시판/{submenu}/{slug}/page.mdx", metadata, editor: "wysiwyg" },
+    // 기존 글은 원문 편집으로 여는 글 분류.
+    { name: "메모", path: "content/메모/{slug}/page.mdx", metadata, editor: "source" },
   ],
 };
 const EXISTING = "content/게시판/공지/안내/page.mdx";
@@ -162,6 +164,16 @@ describe("새 글", () => {
     await modeButton("일반 편집").click();
     await bodyEditor().getByText("제목은 나중에 쓸게요.").waitFor();
     expect(await titleInput().inputValue()).toBe("");
+    expect(newCommits()).toBe(0);
+  });
+
+  test("원문 편집이 기본인 글 분류도 새 글은 일반 편집으로 열고, 원문 편집으로 바꿔 쓸 수 있다", async () => {
+    await openNew("메모");
+    expect(await modeButton("일반 편집").getAttribute("aria-pressed")).toBe("true");
+    await titleInput().fill("첫 메모");
+
+    await modeButton("원문 편집").click();
+    expect(await sourceEditor().innerText()).toContain('title: "첫 메모"');
     expect(newCommits()).toBe(0);
   });
 
