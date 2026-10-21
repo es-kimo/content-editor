@@ -4,7 +4,15 @@ import type { Collection } from "@/lib/editor-config";
 import type { MetadataValue } from "@/lib/mdx-doc";
 import { testConfig } from "@/test/config";
 
-import { applyForm, buildForm, FIELD_PREFIX, metadataFormChanged, readFormData, type FormField } from "./form";
+import {
+  applyForm,
+  buildForm,
+  FIELD_PREFIX,
+  metadataFormChanged,
+  readFormData,
+  withFormValues,
+  type FormField,
+} from "./form";
 
 const board: Collection = testConfig([
   {
@@ -108,5 +116,36 @@ describe("metadataFormChanged", () => {
       expect(metadataFormChanged(empty, formData(empty, { [key]: value })), key).toBe(false);
     }
     expect(metadataFormChanged(empty, formData(empty, { description: "요약" }))).toBe(true);
+  });
+});
+
+describe("다른 모드에서 이어받은 폼 값", () => {
+  const fields = buildForm(board, METADATA);
+
+  test("폼 값으로도 미저장 변경을 판정한다", () => {
+    expect(metadataFormChanged(fields, readFormData(board, formData(fields)))).toBe(false);
+    expect(metadataFormChanged(fields, readFormData(board, formData(fields, { title: "12월 휴진 안내" })))).toBe(true);
+  });
+
+  test("이어받은 값으로 다시 연 폼은 그 값을 처음 값으로 보이고, 글의 지금 값과 다르면 변경으로 남는다", () => {
+    const opened = withFormValues(fields, { ...readFormData(board, formData(fields)), title: "12월 휴진 안내" });
+
+    expect(opened.find((field) => field.key === "title")?.initial).toBe("12월 휴진 안내");
+    expect(metadataFormChanged(opened, formData(opened))).toBe(true);
+    expect(metadataFormChanged(opened, formData(opened, { title: "11월 휴진 안내" }))).toBe(false);
+  });
+
+  test("선택지에 없는 이어받은 값은 고를 수 있게 선택지 앞에 더한다", () => {
+    const opened = withFormValues(fields, { "other.category": "행사" });
+
+    expect(opened.find((field) => field.key === "other.category")?.options).toEqual(["행사", "공지", "안내"]);
+  });
+
+  test("잠긴 필드는 이어받은 값으로 바꾸지 않는다", () => {
+    const locked = buildForm(board, { ...METADATA, keywords: "휴진, 공지" });
+
+    const opened = withFormValues(locked, { keywords: "다른 값" });
+
+    expect(opened.find((field) => field.key === "keywords")).toEqual(locked.find((field) => field.key === "keywords"));
   });
 });

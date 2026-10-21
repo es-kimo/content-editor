@@ -77,6 +77,22 @@ export function splitTitleField(fields: FormField[]): { title: FormField | null;
   };
 }
 
+/**
+ * 폼을 `values`로 채워 다시 열 필드. 잠긴 필드는 제출되지 않으므로 그대로 둔다.
+ * 미저장 판정의 기준(`current`)은 바꾸지 않아, 다시 연 입력이 글의 지금 값과 다르면 변경으로 남는다.
+ */
+export function withFormValues(fields: FormField[], values: FormValues): FormField[] {
+  return fields.map((field) => {
+    if (field.locked !== null) return field;
+    const initial = values[field.key] ?? "";
+    const options =
+      field.type === "select" && initial !== "" && !field.options.includes(initial)
+        ? [initial, ...field.options]
+        : field.options;
+    return { ...field, initial, options };
+  });
+}
+
 /** 제출된 FormData에서 config 필드의 값만 꺼낸다. 없는 입력은 빠진다. */
 export function readFormData(collection: Collection, data: FormData): FormValues {
   const values: FormValues = {};
@@ -124,13 +140,13 @@ export function applyForm(collection: Collection, metadata: MetadataObject, valu
  * metadata 폼에 저장하지 않은 변경이 있는지. 고칠 수 있는 필드의 지금 입력을 저장(`applyForm`)과 같은 규칙으로 해석해
  * 글의 지금 값과 비교한다. 그래서 저장해도 값이 그대로인 입력(끝의 빈 줄, CRLF, 0초를 뗀 날짜)은 변경이 아니다.
  * 잠긴 필드는 제출되지 않으므로 보지 않는다. 필수값을 비우거나 형식이 틀린 중간 입력도 변경이다.
- * @param data 폼의 지금 입력 (`new FormData(form)`)
+ * @param data 폼의 지금 입력 (`new FormData(form)`)이나 그 값(`readFormData`)
  */
-export function metadataFormChanged(fields: FormField[], data: FormData): boolean {
+export function metadataFormChanged(fields: FormField[], data: FormData | FormValues): boolean {
   return fields.some((field) => {
     if (field.locked !== null) return false;
     // 선택지가 고르지 않은 자리(disabled)에 있으면 FormData에 빠지므로 빈 값으로 본다.
-    const raw = data.get(FIELD_PREFIX + field.key);
+    const raw = data instanceof FormData ? data.get(FIELD_PREFIX + field.key) : data[field.key];
     const parsed = savedValue(field, typeof raw === "string" ? raw : "", field.current);
     return !parsed.ok || !sameValue(parsed.value, field.current);
   });

@@ -1,6 +1,7 @@
 import {
   addedImageFile,
   addImage,
+  addImageAs,
   findUnusedImageImports,
   readImageImports,
   setBody,
@@ -109,10 +110,32 @@ export function usedUploads(plan: UploadPlan, body: string): UploadImage[] {
 }
 
 /**
+ * `doc`의 본문을 `body`로 바꾸고 새 이미지의 import를 더한다. import·metadata는 `doc` 그대로 남는다.
+ * 본문이 쓰지 않는 새 이미지는 커밋하지 않도록 실패로 돌려준다. 일반 편집 저장과 모드 전환이 같은 결과를 내게 같이 쓴다.
+ * @param files 글 폴더에 이미 있는 파일 이름. 새 이미지 이름이 그 번호를 쓰지 않게 한다.
+ */
+export function applyUploads(
+  doc: MdxDoc,
+  body: string,
+  images: UploadImage[],
+  files: string[],
+): { ok: true; doc: MdxDoc } | Exclude<UploadCheck, { ok: true }> {
+  for (const { file } of images) {
+    const added = addImageAs(doc, file, { component: IMAGE_COMPONENT, files });
+    if (!added) return { ok: false, reason: "image", file, problem: "name" };
+    doc = added.doc;
+  }
+  const edited = setBody(doc, body);
+  const unused = findUnusedImageImports(edited).find((image) => images.some(({ file }) => image.path === `./${file}`));
+  if (unused) return { ok: false, reason: "image", file: unused.path.slice(2), problem: "unused" };
+  return { ok: true, doc: edited };
+}
+
+/**
  * 원문 편집에서 넣은 이미지 중 원문이 경로(`"./N.ext"`)로 가리키는 것. 쓰지 않는 import라도 가리키면 올린다.
  * 원문 편집은 import까지 사용자가 고치므로, 가리키는 파일을 빼고 저장하면 사이트에서 글을 만들 수 없다.
  */
-export function sourceUploads({ images }: Pick<UploadPlan, "images">, source: string): UploadImage[] {
+export function sourceUploads<I extends UploadImage>({ images }: { images: I[] }, source: string): I[] {
   return images.filter(({ file }) => source.includes(`"./${file}"`) || source.includes(`'./${file}'`));
 }
 

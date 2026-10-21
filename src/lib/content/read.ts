@@ -90,7 +90,7 @@ export type EditorModes =
  * 글 화면에서 처음 열 본문 편집 모드와, 원문 모드만 쓸 수 있는 글인지.
  * metadata를 폼으로 읽을 수 없는 글은 WYSIWYG로 본문을 저장할 수는 있어도 metadata를 고칠 곳이 원문뿐이라 원문 모드로만 연다.
  */
-export function editorModes(post: Post): EditorModes {
+export function editorModes(post: Pick<Post, "collection" | "doc" | "metadata">): EditorModes {
   if (!post.doc.ok) return { initial: "source", sourceOnly: { reason: "doc", message: post.doc.message } };
   if (post.metadata && !post.metadata.editable) {
     return { initial: "source", sourceOnly: { reason: "metadata", message: post.metadata.reason } };
