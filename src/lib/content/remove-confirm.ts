@@ -13,6 +13,9 @@ export type RemoveConfirm =
   | { kind: "unsaved"; title: string; message: string; areas: string[]; save: PostAction }
   | { kind: "confirm"; action: RemoveAction; title: string; message: string; confirmLabel: string };
 
+/** 휴지통에 얼마나 남는지. 영구 삭제와 자동 비우기가 없어 기간 제한 없이 남는다(v0.4 PRD §5). 휴지통 목록도 함께 보인다. */
+export const TRASH_RETENTION = "휴지통의 글은 기간 제한 없이 남고 자동으로 지워지지 않아요.";
+
 /** 저장된 글의 상태에서 휴지통으로 옮기기 전에 입력을 반영하는 저장. 상태는 그대로 둔다. */
 const SAVE_BEFORE_TRASH: { [status in PostStatus]: PostAction } = { draft: "save-draft", ready: "update" };
 
@@ -59,7 +62,8 @@ export function removeConfirm({
     action,
     title: `‘${title}’을 휴지통으로 옮길까요?`,
     message:
-      "휴지통에서 초안으로 복구할 수 있어요. 첨부 이미지는 지우지 않아요. 사이트에서 사라지기까지 시간이 걸릴 수 있어요.",
+      `휴지통에서 초안으로 복구할 수 있어요. ${TRASH_RETENTION} 첨부 이미지는 지우지 않아요. ` +
+      "사이트에서 사라지기까지 시간이 걸릴 수 있어요.",
     confirmLabel: "삭제",
   };
 }

@@ -8,8 +8,11 @@ import type { InsertFormInput, InsertFormTarget } from "./insert-form";
 import type { FormArea } from "./save-flow";
 import type { UploadSession } from "./upload-session";
 
-/** 보관본을 유지하는 기간. 마지막 변경(보관 시각)부터 센다. */
-export const DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** 보관본을 유지하는 날 수. 마지막 변경(보관 시각)부터 센다. 화면 안내도 이 값을 보인다. */
+export const DRAFT_TTL_DAYS = 30;
+
+/** 보관본을 유지하는 기간. */
+export const DRAFT_TTL_MS = DRAFT_TTL_DAYS * 24 * 60 * 60 * 1000;
 
 /** 보관본을 나누는 글. 새 글은 경로가 없어 작성 건 id로 나누고, 다시 들어왔을 때 찾도록 컬렉션을 함께 둔다. */
 export type DraftDoc = { kind: "post"; path: string } | { kind: "new"; collection: string; id: string };

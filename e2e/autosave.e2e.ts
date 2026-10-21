@@ -93,9 +93,13 @@ describe("자동 보관과 복구", () => {
     await open(url);
     await titleInput().fill("복구할 제목");
     await archived().waitFor({ timeout: 2000 });
+    expect(
+      await page.getByText("자동 보관은 이 브라우저에만 30일 동안 두는 것이라 레포에는 저장되지 않아요.").isVisible(),
+    ).toBe(true);
 
     const next = await reopen(url);
     await restoreNotice(next).waitFor();
+    expect(await next.getByText("마지막으로 보관한 뒤 30일이 지나면 지워져요.").count()).toBe(1);
     expect(
       await next.getByText("다른 기기나 다른 브라우저, 브라우저 데이터를 지운 뒤에는 복구할 수 없어요.").count(),
     ).toBe(1);

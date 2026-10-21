@@ -18,6 +18,7 @@ export {
 export {
   AUTOSAVE_DELAY_MS,
   AUTOSAVE_FAILED,
+  AUTOSAVE_SCOPE,
   autosaveNotice,
   createAutosave,
   type Autosave,
@@ -145,7 +146,7 @@ export {
 } from "./preview";
 export { editorModes, type EditorMode, type EditorModes } from "./editor-modes";
 export { editorKeys, findCollection, readPost, sourceComponents, type Post, type PostImage } from "./read";
-export { removeConfirm, type RemoveConfirm } from "./remove-confirm";
+export { removeConfirm, TRASH_RETENTION, type RemoveConfirm } from "./remove-confirm";
 export { saveBody, type SaveBodyInput, type SaveBodyResult } from "./save-body";
 export { saveEdit, type EditContent, type SaveEditInput, type SaveEditResult } from "./save-edit";
 export {
@@ -156,6 +157,7 @@ export {
   newPostActions,
   newPostRequest,
   postActions,
+  SAVE_ACTIONS_HINTS,
   savedAreas,
   SUBMENU_FIELD,
   STATUS_PROBLEM_MESSAGES,

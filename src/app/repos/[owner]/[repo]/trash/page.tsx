@@ -3,7 +3,7 @@ import Link from "next/link";
 import { CollectionTabs, openRepoPage, postHref, repoHref, trashHref } from "@/app/_lib/repo";
 import type { SearchParams } from "@/app/_lib/session";
 import { PageShell, TechDetails } from "@/app/_lib/ui";
-import { listTitle, listTrash, timed, trashedAtText } from "@/lib/content";
+import { listTitle, listTrash, timed, TRASH_RETENTION, trashedAtText } from "@/lib/content";
 
 import { restorePostAction } from "../post/actions";
 import { RestoreButton } from "../post/restore-button";
@@ -45,7 +45,10 @@ async function TrashList({ params, searchParams }: { params: Params; searchParam
           {repo} · {collection.name}
         </Link>
         <h1 className="text-2xl font-semibold">휴지통</h1>
-        <p className="text-sm text-zinc-500">휴지통의 글은 사이트에 보이지 않아요. 복구하면 초안이 돼요.</p>
+        <p className="text-sm text-zinc-500">
+          휴지통의 글은 사이트에 보이지 않아요. 복구하면 초안이 돼요. {TRASH_RETENTION} 글과 첨부 이미지 파일은 레포에
+          그대로 있어요.
+        </p>
       </header>
       <CollectionTabs config={config} current={collection} href={(c) => trashHref(repo, c)} />
       <section className="flex flex-col gap-2">

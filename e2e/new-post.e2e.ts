@@ -143,6 +143,7 @@ describe("새 글", () => {
 
   test("제목을 비운 새 글도 원문 편집과 일반 편집을 오가고, 원문 편집에서 제목 없이 ‘임시저장’하면 제목 오류를 보이고 커밋하지 않는다", async () => {
     await openNew("게시판");
+    expect(await page.getByText("‘임시저장’은 글을 초안으로 레포에 저장해요.").isVisible()).toBe(true);
     await page.getByRole("combobox", { name: "하위 메뉴 *" }).selectOption("공지");
     await bodyEditor().click();
     await page.keyboard.type("제목은 나중에 쓸게요.");

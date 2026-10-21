@@ -11,6 +11,7 @@ import { removeConfirm, type RemoveConfirm } from "@/lib/content/remove-confirm"
 import {
   BODY_FIELD,
   newPostRequest,
+  SAVE_ACTIONS_HINTS,
   SUBMENU_FIELD,
   type PostActions,
   type RemoveAction,
@@ -153,6 +154,7 @@ export function PostActionBar({
           </button>
         )}
       </div>
+      <p className="text-xs text-zinc-500">{SAVE_ACTIONS_HINTS[actions.status]}</p>
       {(isPostAction(flow.formBlocked) || flow.formBlocked === "trash") && <FormBlockedNotice />}
       {preparing && (
         <p className="text-sm text-zinc-500">이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 저장해 주세요.</p>

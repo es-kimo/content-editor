@@ -16,7 +16,7 @@ import { useLeaveDiscard } from "@/app/_lib/leave";
 import { SECONDARY_BUTTON_CLASS } from "@/app/_lib/ui";
 import { useFormFlow, useImagePreparing, useSaveLocked } from "@/app/_lib/unsaved";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 자동 보관과 보관본만 가져온다.
-import { autosaveNotice, createAutosave, type Autosave } from "@/lib/content/autosave";
+import { AUTOSAVE_SCOPE, autosaveNotice, createAutosave, type Autosave } from "@/lib/content/autosave";
 import {
   collectDraft,
   discardDraft,
@@ -180,9 +180,12 @@ function AutosaveLine({ autosave }: { autosave: Autosave }) {
   const notice = autosaveNotice(state, useImagePreparing());
   if (!notice) return null;
   return (
-    <p role="status" className={`text-xs ${notice.tone === "warning" ? "text-amber-600" : "text-zinc-500"}`}>
-      {notice.text}
-    </p>
+    <div className="flex flex-col gap-1">
+      <p role="status" className={`text-xs ${notice.tone === "warning" ? "text-amber-600" : "text-zinc-500"}`}>
+        {notice.text}
+      </p>
+      <p className="text-xs text-zinc-500">{AUTOSAVE_SCOPE}</p>
+    </div>
   );
 }
 

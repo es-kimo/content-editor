@@ -4,7 +4,7 @@ import { parseMdx, readMetadata, type MdxDoc, type Syntax } from "@/lib/mdx-doc"
 import { fieldLabel, TITLE_FIELD } from "@/lib/metadata-form";
 
 import type { NewPostSubmenu } from "./create-post";
-import { checkRestore, type Draft, type DraftAttachment, type DraftContent } from "./draft";
+import { checkRestore, DRAFT_TTL_DAYS, type Draft, type DraftAttachment, type DraftContent } from "./draft";
 import type { FormModeInput, SourceModeInput, SwitchPost } from "./mode-switch";
 import { koreaTimeText, postTitle, UNTITLED_POST } from "./summary";
 import { applyUploads } from "./upload";
@@ -46,8 +46,10 @@ export const DRAFT_ACTION_LABELS: { [action in DraftAction]: string } = {
   copy: "보관 내용 복사",
 };
 
-/** 복구 안내에 늘 함께 두는 보장 범위. */
-export const DRAFT_RESTORE_LIMIT = "다른 기기나 다른 브라우저, 브라우저 데이터를 지운 뒤에는 복구할 수 없어요.";
+/** 복구 안내에 늘 함께 두는 보관 기간과 보장 범위. */
+export const DRAFT_RESTORE_LIMIT =
+  `보관한 입력은 마지막으로 보관한 뒤 ${DRAFT_TTL_DAYS}일이 지나면 지워져요. ` +
+  "다른 기기나 다른 브라우저, 브라우저 데이터를 지운 뒤에는 복구할 수 없어요.";
 
 /**
  * 복구 안내에 보일 보관본 하나. `target`은 무엇을 보관했는지, `archived`는 복사할 보관 내용이다.

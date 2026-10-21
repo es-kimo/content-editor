@@ -4,7 +4,7 @@ import { parseMdx } from "@/lib/mdx-doc";
 import { memoryStorage } from "@/test/draft-storage";
 import { JPEG, PNG, SOURCE } from "@/test/upload-images";
 
-import { AUTOSAVE_FAILED, autosaveNotice, createAutosave, type Schedule } from "./autosave";
+import { AUTOSAVE_FAILED, AUTOSAVE_SCOPE, autosaveNotice, createAutosave, type Schedule } from "./autosave";
 import { draftAttachments, listDrafts, saveDraft, type DraftContent, type DraftKey } from "./draft";
 import { createLeaveGuard } from "./leave-guard";
 import type { SaveState } from "./save-flow";
@@ -172,6 +172,11 @@ describe("상태 문구", () => {
 
   test("아직 보관한 적이 없으면 아무것도 보이지 않는다", () => {
     expect(autosaveNotice({ kind: "idle" }, false)).toBeNull();
+  });
+
+  test("상태 줄 아래 안내는 자동 보관이 이 브라우저에 30일 동안만 두는 것이고 레포 저장이 아니라고 알린다", () => {
+    expect(AUTOSAVE_SCOPE).toContain("이 브라우저에만 30일 동안");
+    expect(AUTOSAVE_SCOPE).toContain("레포에는 저장되지 않아요");
   });
 });
 
