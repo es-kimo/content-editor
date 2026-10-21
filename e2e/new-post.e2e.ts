@@ -66,8 +66,33 @@ async function openNew(collection: string) {
   await bodyEditor().waitFor();
 }
 
+// 1×1 PNG.
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+const imageForm = () => page.getByRole("form", { name: "이미지 넣기" });
+const saveButtons = () => page.getByRole("button", { name: /^(게시|임시저장)$/ });
+
+/** 준비가 끝나는 시점을 테스트가 정하도록 이미지 읽기를 붙잡아 둔다. 새 글을 열기 전에 부른다. */
+async function holdImagePreparing() {
+  await page.addInitScript(() => {
+    const original = window.createImageBitmap.bind(window);
+    const held = window as unknown as { finishImage?: () => void };
+    window.createImageBitmap = ((...args: Parameters<typeof createImageBitmap>) =>
+      new Promise((resolve) => {
+        held.finishImage = () => resolve(original(...args));
+      })) as typeof createImageBitmap;
+  });
+}
+
+async function finishImagePreparing() {
+  await page.evaluate(() => (window as unknown as { finishImage: () => void }).finishImage());
+}
+
 describe("새 글", () => {
-  test("하위 메뉴가 없는 글 분류에서 새 메뉴·제목·본문을 쓰고 모드를 바꿔도 커밋하지 않고, ‘임시저장’ 한 번에 새 메뉴와 첫 글을 초안으로 저장한다", async () => {
+  test("하위 메뉴가 없는 글 분류에서 새 메뉴·제목·본문·이미지를 쓰고 모드를 바꿔도 커밋하지 않고, ‘임시저장’ 한 번에 새 메뉴와 첫 글을 초안으로 저장한다", async () => {
+    await holdImagePreparing();
     await openNew("강좌");
     expect(await page.getByText("하위 메뉴 폴더를 먼저").count()).toBe(0);
 
@@ -78,10 +103,27 @@ describe("새 글", () => {
     await unsaved("하위 메뉴, 제목, 본문").waitFor();
     expect(await page.getByText("경로 content/강좌/AI/첫 강좌/page.mdx").isVisible()).toBe(true);
 
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByTitle("이미지 넣기").click();
+    await (await chooser).setFiles({ name: "사진.png", mimeType: "image/png", buffer: PNG });
+    await page.getByText("이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 저장해 주세요.").waitFor();
+    expect(await saveButtons().evaluateAll((buttons) => buttons.map((b) => (b as HTMLButtonElement).disabled))).toEqual(
+      [true, true],
+    );
+    await finishImagePreparing();
+    await imageForm().getByRole("textbox", { name: "대체 텍스트" }).fill("강의실");
+    // 넣기 폼이 열려 있는 동안 누른 ‘임시저장’은 저장하지 않고 폼을 먼저 끝내라고 안내한다.
+    await page.getByRole("button", { name: "임시저장" }).click();
+    await page.getByText("열려 있는 폼을 먼저 적용하거나 취소해 주세요.").waitFor();
+    await imageForm().getByRole("button", { name: "적용" }).click();
+    await unsaved("하위 메뉴, 제목, 본문, 첨부 이미지").waitFor();
+    expect(newCommits()).toBe(0);
+
     await modeButton("원문 편집").click();
     const carried = await sourceEditor().innerText();
     expect(carried).toContain('title: "첫 강좌"');
     expect(carried).toContain("AI에게 물어봐도 될까요?");
+    expect(carried).toContain('<Image src={image1} alt="강의실" />');
     await modeButton("일반 편집").click();
     await bodyEditor().getByText("AI에게 물어봐도 될까요?").waitFor();
     expect(newCommits()).toBe(0);
@@ -95,6 +137,8 @@ describe("새 글", () => {
     expect(saved).toContain('title: "첫 강좌"');
     expect(saved).toContain('status: "draft"');
     expect(saved).toContain("AI에게 물어봐도 될까요?");
+    expect(saved).toContain('<Image src={image1} alt="강의실" />');
+    expect(app.file("content/강좌/AI/첫 강좌/1.png")).toBeTruthy();
   });
 
   test("게시하는데 본문이 비거나 새 메뉴 이름에 쓸 수 없는 문자가 있으면 그 필드 옆에 오류를 보이고 입력을 둔 채 커밋하지 않는다", async () => {

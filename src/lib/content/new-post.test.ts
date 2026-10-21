@@ -10,7 +10,7 @@ import { PNG } from "@/test/upload-images";
 
 import { createPost } from "./create-post";
 import { editorModes } from "./editor-modes";
-import { formToSource, sourceToForm } from "./mode-switch";
+import { formToSource } from "./mode-switch";
 import { newPostFromSource, newPostSource, openNewPost, readNewPostForm } from "./new-post";
 import { createSaveFlow, newPostActions, newPostRequest, savedAreas, type SaveState } from "./save-flow";
 
@@ -136,22 +136,24 @@ describe("새 글 화면의 저장 요청", () => {
     return { flow, submit };
   };
 
-  test("제목·본문·이미지·새 메뉴 입력, 모드 전환, 이미지 준비만으로는 저장 요청이 생기지 않는다", () => {
-    const { flow, submit } = setup();
-    const { post } = openNewPost(lecture!, config.syntax, NOW);
+  test.each<PostAction>(["save-draft", "publish"])(
+    "이미지를 준비하는 동안과 넣기 폼이 열려 있는 동안은 %s 요청도 저장을 시작하지 않는다",
+    (action) => {
+      const { flow, submit } = setup();
+      const request = newPostRequest(action, "wysiwyg")!;
+      for (const area of ["title", "submenu", "metadata", "body", "images"] as const) flow.report(area, true);
 
-    for (const area of ["title", "submenu", "metadata", "body", "images"] as const) flow.report(area, true);
-    flow.prepare("body", true);
-    flow.prepare("body", false);
-    const source = formToSource(post, { values: { title: "첫 강좌" }, body: BODY, images: [IMAGE] });
-    if (!source.ok) throw new Error(source.reason);
-    flow.report("source", true);
-    expect(sourceToForm(post, source.input).ok).toBe(true);
+      flow.prepare("body", true);
+      expect(flow.request(request, submit)).toBe(false);
+      flow.prepare("body", false);
+      flow.openForm("body");
+      expect(flow.request(request, submit)).toBe(false);
 
-    expect(submit).not.toHaveBeenCalled();
-    expect(flow.getState().phase).toEqual({ kind: "idle" });
-    expect(flow.getState().results).toEqual({});
-  });
+      expect(submit).not.toHaveBeenCalled();
+      expect(flow.getState().phase).toEqual({ kind: "idle" });
+      expect(flow.getState().form).toMatchObject({ area: "body", blocked: action });
+    },
+  );
 
   test.each<PostAction>(["save-draft", "publish"])("저장 요청은 %s 행동을 눌렀을 때만 한 번 만들어진다", (action) => {
     const { flow, submit } = setup();
