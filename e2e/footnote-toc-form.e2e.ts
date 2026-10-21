@@ -4,7 +4,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { startApp, type App } from "./app";
 
 const REPO = "es-kimo/footnotes";
-const METADATA = { title: { type: "string", label: "제목", required: true } };
+const METADATA = {
+  title: { type: "string", label: "제목", required: true },
+  "other.status": { type: "select", label: "상태", options: ["ready", "draft"] },
+};
 const COMPONENTS = ["Footnote", "FootnoteRef", "Mermaid", "TOC"];
 const CONFIG = {
   branch: "main",
@@ -38,6 +41,7 @@ const source = (
   { heading = true, extra = "", titleValue = `'${title}'` } = {},
 ) => `export const metadata = {
   title: ${titleValue},
+  other: { status: 'draft' },
 };
 
 # ${title}
@@ -157,12 +161,14 @@ async function applyText(name: string, field: string, text: string) {
   await form(name).waitFor({ state: "detached" });
 }
 
-/** 저장하고 저장한 커밋으로 글 화면이 다시 열릴 때까지 기다린다. 앞 저장의 안내가 남아 있어 주소로 기다린다. */
-async function saveAndReopen(label: "본문 저장" | "원문 저장") {
+const saveButton = () => page.getByRole("button", { name: "임시저장" });
+
+/** 임시저장하고 저장한 커밋으로 글 화면이 다시 열릴 때까지 기다린다. 앞 저장의 안내가 남아 있어 주소로 기다린다. */
+async function saveAndReopen() {
   const before = page.url();
-  await page.getByRole("button", { name: label }).click();
+  await saveButton().click();
   await page.waitForURL((url) => url.href !== before && url.searchParams.has("saved"));
-  await page.getByText(/^저장했어요\./).waitFor();
+  await page.getByText(/^임시저장했어요\./).waitFor();
 }
 
 describe("각주와 각주 출처", () => {
@@ -193,7 +199,7 @@ describe("각주와 각주 출처", () => {
       .replace("</Footnote>.", '</Footnote>.<Footnote id="2">토요일 \\<포함\\></Footnote>')
       .concat('\n<FootnoteRef ids={["2"]}>\n  병원 공지\n</FootnoteRef>\n');
     await unsaved("원문 편집").waitFor();
-    await saveAndReopen("원문 저장");
+    await saveAndReopen();
     expect(newCommits()).toBe(1);
     expect(app.file(path)).toBe(added);
 
@@ -210,7 +216,7 @@ describe("각주와 각주 출처", () => {
     await applyText("각주 2 수정", "각주 내용", "토요일·일요일");
     await page.getByRole("button", { name: "각주 2 출처 수정" }).click();
     await applyText("각주 2 출처 수정", "출처 내용", "병원 공지사항");
-    await saveAndReopen("원문 저장");
+    await saveAndReopen();
 
     expect(newCommits()).toBe(2);
     expect(app.file(path)).toBe(
@@ -231,7 +237,7 @@ describe("각주와 각주 출처", () => {
     await form("각주 출처 넣기").getByRole("checkbox", { name: "각주 2 토요일 포함" }).check();
     await applyText("각주 출처 넣기", "출처 내용", "병원 공지");
     await unsaved("본문").waitFor();
-    await saveAndReopen("본문 저장");
+    await saveAndReopen();
 
     expect(newCommits()).toBe(1);
     const saved = app.file(path)!;
@@ -247,7 +253,7 @@ describe("각주와 각주 출처", () => {
     await page.getByRole("button", { name: "각주 2 출처 수정" }).click();
     await applyText("각주 2 출처 수정", "출처 내용", "병원 공지사항");
     await unsaved("본문").waitFor();
-    await saveAndReopen("본문 저장");
+    await saveAndReopen();
 
     expect(newCommits()).toBe(2);
     const resaved = app.file(path)!;
@@ -281,7 +287,7 @@ describe("각주와 각주 출처", () => {
     app.pushElsewhere(path, source("다른 곳에서 고친 글"));
     const elsewhere = app.commits();
 
-    await page.getByRole("button", { name: "원문 저장" }).click();
+    await saveButton().click();
     await page
       .getByText("글을 연 뒤 다른 곳에서 글이 바뀌었어요. 입력한 내용을 따로 보관한 뒤 글을 다시 열어 주세요.")
       .waitFor();
@@ -308,7 +314,7 @@ describe("목차", () => {
     await page.keyboard.press("Enter");
     await toc.waitFor({ state: "detached" });
     await unsaved("원문 편집").waitFor();
-    await saveAndReopen("원문 저장");
+    await saveAndReopen();
     expect(app.file(path)).toBe(`${before}\n<TOC items={toc} />\n`);
 
     await choose("목차");
@@ -321,7 +327,7 @@ describe("목차", () => {
     await page.getByRole("button", { name: "목차 제거" }).click();
     await unsaved("원문 편집").waitFor();
     expect(await sourceText()).not.toContain("<TOC");
-    await saveAndReopen("원문 저장");
+    await saveAndReopen();
     expect(newCommits()).toBe(2);
     expect(app.file(path)).toBe(before);
   });
@@ -336,13 +342,13 @@ describe("목차", () => {
     await form("목차 넣기").getByRole("button", { name: "적용" }).click();
     await form("목차 넣기").waitFor({ state: "detached" });
     await unsaved("본문").waitFor();
-    await saveAndReopen("본문 저장");
+    await saveAndReopen();
     expect(app.file(path)).toContain("\n<TOC items={toc} />\n");
 
     await insertList(2).click();
     await page.getByRole("button", { name: "목차 제거" }).click();
     await unsaved("본문").waitFor();
-    await saveAndReopen("본문 저장");
+    await saveAndReopen();
     expect(newCommits()).toBe(2);
     expect(app.file(path)).not.toContain("<TOC");
     expect(app.file(path)).toContain('<Footnote id="1">공휴일</Footnote>');
@@ -449,7 +455,7 @@ describe("메뉴와 제한", () => {
     await choose("각주 출처");
     await form("각주 출처 넣기").getByRole("textbox", { name: "출처 내용" }).fill("작성 중");
 
-    await page.getByRole("button", { name: "원문 저장" }).click();
+    await saveButton().click();
     await page.getByText(BLOCKED).waitFor();
     expect(newCommits()).toBe(0);
     expect(await form("각주 출처 넣기").getByRole("textbox").inputValue()).toBe("작성 중");
