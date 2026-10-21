@@ -3,6 +3,7 @@ import {
   clearSavedDraft,
   discardDraft,
   saveDraft,
+  type Draft,
   type DraftContent,
   type DraftKey,
   type DraftStorage,
@@ -36,8 +37,11 @@ export type Autosave = {
   saving(content: DraftContent | null, submit: () => Promise<SaveState>): Promise<SaveState>;
   /** ‘버리고 나가기’·‘작성 취소’. 기다리던 보관을 취소하고 이 탭의 보관본을 지운다. 그 뒤로는 보관하지 않는다. */
   discard(): Promise<void>;
-  /** 복구한 보관본의 키로 이어서 보관한다. 복구한 입력과 이어 쓴 입력이 보관본 둘로 나뉘지 않는다. */
-  adopt(key: DraftKey): void;
+  /**
+   * 복구한 보관본을 이 탭의 보관본으로 옮긴다. 복구한 입력을 바로 이 탭의 키로 보관하고, 보관에 성공하면 원래 보관본을 지운다.
+   * 원래 보관본의 키를 넘겨받지 않아, 그 보관본을 만든 탭이 아직 열려 있어도 두 탭이 같은 보관본을 덮어쓰지 않는다.
+   */
+  restore(draft: Draft): Promise<void>;
 };
 
 /**
@@ -47,7 +51,7 @@ export type Autosave = {
  */
 export function createAutosave({
   storage,
-  key: initialKey,
+  key,
   base,
   collect,
   schedule,
@@ -63,7 +67,6 @@ export function createAutosave({
   delay?: number;
 }): Autosave {
   let state: AutosaveState = { kind: "idle" };
-  let key = initialKey;
   let cancel: (() => void) | null = null;
   let discarded = false;
   let queue: Promise<void> = Promise.resolve();
@@ -79,17 +82,23 @@ export function createAutosave({
     return queue;
   };
 
+  /** 이 탭의 키로 보관하고 상태를 바꾼다. 보관했으면 true. */
+  const write = async (content: DraftContent | null) => {
+    if (!content || discarded) return false;
+    let result: SaveDraftResult;
+    try {
+      result = await saveDraft(storage, key, content, base(), now());
+    } catch {
+      result = { ok: false, reason: "storage" };
+    }
+    if (discarded) return false;
+    update(result.ok ? { kind: "saved", savedAt: result.savedAt, missing: result.missing } : { kind: "failed" });
+    return result.ok;
+  };
+
   const store = (content: DraftContent | null) =>
     enqueue(async () => {
-      if (!content || discarded) return;
-      let result: SaveDraftResult;
-      try {
-        result = await saveDraft(storage, key, content, base(), now());
-      } catch {
-        result = { ok: false, reason: "storage" };
-      }
-      if (discarded) return;
-      update(result.ok ? { kind: "saved", savedAt: result.savedAt, missing: result.missing } : { kind: "failed" });
+      await write(content);
     });
 
   /** 기다리던 보관을 취소한다. 기다리던 것이 있었으면 true. */
@@ -130,8 +139,12 @@ export function createAutosave({
       unschedule();
       return enqueue(() => discardDraft(storage, key));
     },
-    adopt(next) {
-      key = next;
+    restore({ input, form, attachments, key: original }) {
+      // 복구한 입력이 이 탭의 지금 입력을 대신하므로 기다리던 보관은 버린다.
+      unschedule();
+      return enqueue(async () => {
+        if (await write({ input, form, attachments })) await discardDraft(storage, original);
+      });
     },
   };
 }

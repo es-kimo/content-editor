@@ -305,17 +305,74 @@ describe("버리기 정리", () => {
 });
 
 describe("복구한 보관본 이어 쓰기", () => {
-  test("복구한 보관본의 키로 이어서 보관해 같은 입력이 보관본 둘로 나뉘지 않는다", async () => {
+  test("복구하면 그 입력을 이 탭의 보관본으로 옮기고 원래 보관본은 지워, 같은 입력이 보관본 둘로 나뉘지 않는다", async () => {
     const { autosave, clock, type, storage, drafts } = setup();
     const previous: DraftKey = { ...KEY, tab: "previous-tab" };
     await saveDraft(storage, previous, content("지난번 입력", [{ file: "2.jpg", content: JPEG }]), "sha-1", NOW);
+    const [draft] = await drafts();
 
-    autosave.adopt(previous);
+    await autosave.restore(draft);
+
+    expect((await drafts()).map((d) => [d.key.tab, d.input, d.attachments.map((a) => a.file)])).toEqual([
+      ["tab-1", content("지난번 입력").input, ["2.jpg"]],
+    ]);
     type("지난번 입력에 이어 쓴 입력");
     await clock.advance(2000);
-
-    expect((await drafts()).map((draft) => [draft.key.tab, draft.input])).toEqual([
-      ["previous-tab", content("지난번 입력에 이어 쓴 입력").input],
+    expect((await drafts()).map((d) => [d.key.tab, d.input])).toEqual([
+      ["tab-1", content("지난번 입력에 이어 쓴 입력").input],
     ]);
+  });
+
+  test("아직 열려 있는 탭의 보관본을 다른 탭에서 복구해도 두 탭은 같은 보관본을 덮어쓰지 않는다", async () => {
+    const clock = fakeClock();
+    const { storage } = memoryStorage();
+    const tab = (id: string) => {
+      let typed: DraftContent | null = null;
+      const autosave = createAutosave({
+        storage,
+        key: { ...KEY, tab: id },
+        base: () => "sha-1",
+        collect: () => typed,
+        schedule: clock.schedule,
+        now: clock.now,
+      });
+      const type = (body: string) => {
+        typed = content(body);
+        autosave.touch();
+      };
+      return { autosave, type };
+    };
+    const drafts = async () =>
+      (await listDrafts(storage, OWNER, POST, clock.now())).map((d) => [d.key.tab, d.input]).sort();
+    const a = tab("tab-a");
+    a.type("A에서 쓰는 중");
+    await clock.advance(2000);
+
+    const b = tab("tab-b");
+    const [draftOfA] = await listDrafts(storage, OWNER, POST, clock.now());
+    await b.autosave.restore(draftOfA);
+    a.type("A에서 이어 쓴 입력");
+    b.type("B에서 이어 쓴 입력");
+    await clock.advance(2000);
+
+    expect(await drafts()).toEqual([
+      ["tab-a", content("A에서 이어 쓴 입력").input],
+      ["tab-b", content("B에서 이어 쓴 입력").input],
+    ]);
+    await b.autosave.discard();
+    expect(await drafts()).toEqual([["tab-a", content("A에서 이어 쓴 입력").input]]);
+  });
+
+  test("복구한 입력을 보관하지 못하면 원래 보관본을 지우지 않는다", async () => {
+    const { autosave, storage, block, drafts } = setup();
+    const previous: DraftKey = { ...KEY, tab: "previous-tab" };
+    await saveDraft(storage, previous, content("지난번 입력"), "sha-1", NOW);
+    const [draft] = await drafts();
+    block();
+
+    await autosave.restore(draft);
+
+    expect(autosave.getState()).toEqual({ kind: "failed" });
+    expect((await drafts()).map((d) => [d.key.tab, d.input])).toEqual([["previous-tab", content("지난번 입력").input]]);
   });
 });

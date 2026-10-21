@@ -170,16 +170,18 @@ describe("새 글", () => {
     await open(newUrl(app));
     await titleInput().fill("쓰다 만 새 글");
     await archived().waitFor({ timeout: 2000 });
+    await page.close();
 
     const next = await reopen(newUrl(app));
     await restoreNotice(next).waitFor();
     await next.getByRole("button", { name: "복구", exact: true }).click();
     expect(await titleInput(next).inputValue()).toBe("쓰다 만 새 글");
-    await next.close();
+    // 복구한 입력이 이 탭의 보관본으로 옮겨진 뒤에 취소해야 그 보관본을 지우는지 볼 수 있다.
+    await archived(next).waitFor();
 
-    await page.getByRole("button", { name: "작성 취소" }).click();
-    await page.getByRole("dialog", { name: "작성을 취소할까요?" }).getByRole("button", { name: "작성 취소" }).click();
-    await page.waitForURL(`${app.origin}/repos/${REPO}?collection=%EA%B2%8C%EC%8B%9C%ED%8C%90`);
+    await next.getByRole("button", { name: "작성 취소" }).click();
+    await next.getByRole("dialog", { name: "작성을 취소할까요?" }).getByRole("button", { name: "작성 취소" }).click();
+    await next.waitForURL(`${app.origin}/repos/${REPO}?collection=%EA%B2%8C%EC%8B%9C%ED%8C%90`);
 
     await expectNoRestoreNotice(await reopen(newUrl(app)));
     expect(app.commits()).toBe(commitsBefore);

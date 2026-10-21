@@ -188,7 +188,7 @@ function AutosaveLine({ autosave }: { autosave: Autosave }) {
 
 /**
  * 편집 화면을 다시 열었을 때 이 브라우저의 보관본을 보이고 ‘복구’·‘버리기’를 고르게 한다.
- * 복구하면 보관한 모드의 편집기에 다시 열고 그 보관본에 이어서 보관한다. 저장하지는 않는다.
+ * 복구하면 보관한 모드의 편집기에 다시 열고 그 입력을 이 탭의 보관본으로 옮긴다. 저장하지는 않는다.
  * @param current 지금 원격 글의 sha. 새 글이면 null.
  * @param remote 비교해 보일 지금 원격 글 원문. 새 글이면 null.
  */
@@ -220,7 +220,7 @@ export function DraftRestoreNotice({
       restoreDisabled={locked || form !== null || preparing}
       onRestore={(draft) => {
         editor.restore(draft);
-        drafts.autosave.adopt(draft.key);
+        void drafts.autosave.restore(draft);
       }}
     />
   );
