@@ -141,6 +141,29 @@ describe("새 글", () => {
     expect(app.file("content/강좌/AI/첫 강좌/1.png")).toBeTruthy();
   });
 
+  test("제목을 비운 새 글도 원문 편집과 일반 편집을 오가고, 원문 편집에서 제목 없이 ‘임시저장’하면 제목 오류를 보이고 커밋하지 않는다", async () => {
+    await openNew("게시판");
+    await page.getByRole("combobox", { name: "하위 메뉴 *" }).selectOption("공지");
+    await bodyEditor().click();
+    await page.keyboard.type("제목은 나중에 쓸게요.");
+
+    await modeButton("원문 편집").click();
+    expect(await modeButton("원문 편집").getAttribute("aria-pressed")).toBe("true");
+    const carried = await sourceEditor().innerText();
+    expect(carried).toContain('title: ""');
+    expect(carried).toContain("제목은 나중에 쓸게요.");
+
+    await page.getByRole("button", { name: "임시저장" }).click();
+    await page.getByText("제목: 값을 입력해 주세요.").waitFor();
+    expect(await page.getByText("새 글로 저장할 수 없는 것").count()).toBe(0);
+    expect(newCommits()).toBe(0);
+
+    await modeButton("일반 편집").click();
+    await bodyEditor().getByText("제목은 나중에 쓸게요.").waitFor();
+    expect(await titleInput().inputValue()).toBe("");
+    expect(newCommits()).toBe(0);
+  });
+
   test("게시하는데 본문이 비거나 새 메뉴 이름에 쓸 수 없는 문자가 있으면 그 필드 옆에 오류를 보이고 입력을 둔 채 커밋하지 않는다", async () => {
     await openNew("게시판");
     await page.getByRole("combobox", { name: "하위 메뉴 *" }).selectOption("새 메뉴");

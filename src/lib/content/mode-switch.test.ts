@@ -79,6 +79,15 @@ describe("formToSource → sourceToForm 왕복", () => {
     expect(back.input).toEqual(edited);
   });
 
+  test("일반 편집에서 제목을 비워도 원문 편집으로 바꾸고, 다시 바꾸면 빈 제목 그대로다", () => {
+    const emptied = { values: { ...FORM, title: "" }, body: parseBody(SOURCE), images: [] };
+
+    const source = formToSource(post, emptied);
+    if (!source.ok) throw new Error(source.reason);
+    expect(source.input.source).toContain('title: ""');
+    expect(sourceToForm(post, source.input)).toMatchObject({ ok: true, input: emptied });
+  });
+
   test("일반 편집 입력을 고치지 않고 원문으로 바꾸면 연 원문 그대로다", () => {
     const source = formToSource(post, { values: FORM, body: parseBody(SOURCE), images: [] });
     expect(source).toEqual({ ok: true, input: { source: SOURCE, images: [] } });
@@ -97,6 +106,12 @@ describe("sourceToForm", () => {
     if (!result.ok) throw new Error(result.reason);
     expect(result.input.values).toEqual({ ...FORM, title: "11월 휴진 일정" });
     expect(result.input.body).toContain("휴진 일정을 알려 드려요.");
+  });
+
+  test("원문에서 제목을 비워도 전환을 막지 않고 빈 제목을 일반 편집으로 이어받는다", () => {
+    const result = sourceToForm(post, { source: sourceWith('title: "11월 휴진 안내"', 'title: ""'), images: [] });
+
+    expect(result.ok && result.input.values).toEqual({ ...FORM, title: "" });
   });
 
   test("원문에서 바꾼 게시 상태는 저장 행동이 정하므로 전환을 막지 않고 이어받지도 않는다", () => {

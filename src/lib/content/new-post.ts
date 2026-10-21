@@ -53,7 +53,7 @@ export function openNewPost(original: Collection, syntax: Syntax, now: Date): Ne
 /**
  * 원문 편집으로 쓴 새 글을 처음 저장할 일반 편집 입력(제목·설정 값, 본문, 첨부)으로 바꾼다.
  * 새 글은 제목·설정으로 글 폴더와 글 설정을 만들므로, 일반 편집으로 바꿀 수 있는 원문만 저장한다.
- * 바꿀 수 없으면 모드 전환과 같은 이유를 돌려준다.
+ * 바꿀 수 없으면 모드 전환과 같은 이유를 돌려준다. 비운 제목 같은 필수 값은 바꾼 입력을 저장할 때(`createPost`) 필드 오류로 알린다.
  */
 export function newPostFromSource<I extends UploadImage>(
   collection: Collection,
