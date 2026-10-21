@@ -1,7 +1,9 @@
 // 편집 화면이 브라우저에서 쓴다. GitHub 클라이언트를 import하지 않는다.
-import type { FormValues } from "@/lib/metadata-form";
+import type { Collection } from "@/lib/editor-config";
+import { readFormData, type FormValues } from "@/lib/metadata-form";
 
 import type { NewPostSubmenu } from "./create-post";
+import type { EditorMode } from "./editor-modes";
 import type { InsertFormInput, InsertFormTarget } from "./insert-form";
 import type { FormArea } from "./save-flow";
 import type { UploadSession } from "./upload-session";
@@ -18,9 +20,13 @@ export type DraftQuery = { kind: "post"; path: string } | { kind: "new"; collect
 /** 같은 브라우저에서 보관본을 나누는 단위. 탭마다 따로 보관해 서로 덮어쓰지 않는다. */
 export type DraftKey = { login: string; repo: string; branch: string; doc: DraftDoc; tab: string };
 
-/** 모드별 입력. 일반 편집은 제목을 포함한 설정 폼 값과 본문, 원문 편집은 파일 전체 원문이다. */
+/**
+ * 모드별 입력. 일반 편집은 제목을 포함한 설정 폼 값과 본문, 원문 편집은 파일 전체 원문이다.
+ * 새 글의 하위 메뉴는 편집 모드와 상관없이 고르므로 두 모드 모두 담는다.
+ */
 export type DraftInput =
-  { mode: "form"; values: FormValues; body: string; submenu?: NewPostSubmenu } | { mode: "source"; source: string };
+  | { mode: "form"; values: FormValues; body: string; submenu?: NewPostSubmenu }
+  | { mode: "source"; source: string; submenu?: NewPostSubmenu };
 
 /** 적용하지 않은 넣기·수정 폼과 그 작성 중 입력. */
 export type DraftForm = { area: FormArea; target: InsertFormTarget; input: InsertFormInput };
@@ -65,9 +71,50 @@ function draftStorageKey({ login, repo, branch, doc, tab }: DraftKey): string {
   return PREFIX + JSON.stringify([login, repo, branch, doc.kind, ...id, tab]);
 }
 
-/** 업로드 세션에서 준비가 끝나 계획에 든 첨부. 준비 중인 이미지는 아직 계획에 없어 담기지 않는다. */
-export function draftAttachments(session: Pick<UploadSession<{ name: string }>, "plan" | "sizes">): DraftAttachment[] {
-  return session.plan.images.map(({ file, content }) => ({ file, content, ...session.sizes.get(file) }));
+/**
+ * 업로드 세션에서 준비가 끝난 첨부 중 `text`가 쓰는 것과 그 크기. 준비 중인 이미지는 아직 계획에 없어 담기지 않는다.
+ * 저장할 때 올리는 첨부와 같은 규칙으로 골라, 저장 성공 처리(`clearSavedDraft`)가 같은 첨부로 비교하게 한다.
+ * @param text 편집 영역의 원문(일반 편집은 본문, 원문 편집은 파일 전체).
+ */
+export function draftAttachments(
+  session: Pick<UploadSession<{ name: string }>, "attached" | "sizes">,
+  text: string,
+): DraftAttachment[] {
+  return session.attached(text).map(({ file, content }) => ({ file, content, ...session.sizes.get(file) }));
+}
+
+/** 보관할 때 편집 영역이 내는 지금 입력. 저장과 달리 입력을 검사하지 않고, 준비 중인 이미지는 빼고 낸다. */
+export type DraftInputCollectors = {
+  /** 제목을 포함한 글 설정 폼의 지금 값. */
+  settings?: () => FormData | null;
+  wysiwyg?: () => { body: string; images: DraftAttachment[] } | null;
+  source?: () => { source: string; images: DraftAttachment[] } | null;
+  /** 새 글의 하위 메뉴. 하위 메뉴가 없는 글 분류면 undefined. */
+  submenu?: () => NewPostSubmenu | undefined;
+};
+
+/**
+ * 지금 모드의 입력을 보관할 내용으로 모은다. 일반 편집은 설정 폼 값·본문·첨부를, 원문 편집은 원문과 첨부를 담는다.
+ * 적용하지 않은 폼은 담지 않는다. 지금 모드의 편집기가 아직 없으면 null.
+ * @param collection 설정 폼 값을 읽을 글 분류. 새 글은 제목 칸을 더한 글 분류다.
+ */
+export function collectDraft(
+  collectors: DraftInputCollectors,
+  mode: EditorMode,
+  collection: Collection,
+): DraftContent | null {
+  const submenu = collectors.submenu?.();
+  const extra = submenu ? { submenu } : {};
+  if (mode === "source") {
+    const source = collectors.source?.();
+    if (!source) return null;
+    return { input: { mode: "source", source: source.source, ...extra }, form: null, attachments: source.images };
+  }
+  const editor = collectors.wysiwyg?.();
+  if (!editor) return null;
+  const data = collectors.settings?.();
+  const values = data ? readFormData(collection, data) : {};
+  return { input: { mode: "form", values, body: editor.body, ...extra }, form: null, attachments: editor.images };
 }
 
 /**

@@ -87,8 +87,13 @@ const KOREA_TIME = new Intl.DateTimeFormat("sv-SE", {
   minute: "2-digit",
 });
 
+/** 화면에 보일 시각(`YYYY-MM-DD HH:mm`, 한국 시각). @param time epoch 밀리초 */
+export function koreaTimeText(time: number): string {
+  return KOREA_TIME.format(time);
+}
+
 /** 휴지통 목록에 보일 삭제 시각(`YYYY-MM-DD HH:mm`, 한국 시각). 시각이 없거나 읽을 수 없으면 `-`. */
 export function trashedAtText(trashedAt: string | null): string {
   const time = trashedAt === null ? NaN : Date.parse(trashedAt);
-  return Number.isNaN(time) ? "-" : KOREA_TIME.format(time);
+  return Number.isNaN(time) ? "-" : koreaTimeText(time);
 }

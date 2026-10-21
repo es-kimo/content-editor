@@ -30,6 +30,8 @@ export type UploadSession<F extends { name: string }> = {
   unsaved(text: string): boolean;
   /** `text`를 저장할 때 함께 올릴 이미지. 준비 중이면 저장하지 않는다. */
   submission(text: string): UploadSubmission;
+  /** 준비가 끝난 첨부 중 `text`가 참조하는 것. 준비 중인 이미지는 아직 계획에 없어 들지 않는다. */
+  attached(text: string): UploadImage[];
 };
 
 /**
@@ -113,6 +115,9 @@ export function createUploadSession<F extends { name: string }>({
     submission(text) {
       if (running > 0) return { ok: false, reason: "preparing" };
       return { ok: true, images: used(plan, text) };
+    },
+    attached(text) {
+      return plan.images.length > 0 ? used(plan, text) : [];
     },
   };
 }
