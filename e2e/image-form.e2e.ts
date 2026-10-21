@@ -389,9 +389,10 @@ describe("원문 편집 이미지", () => {
 });
 
 describe("두 편집 영역의 첨부", () => {
-  test("일반 편집에 저장하지 않은 첨부가 있으면 원문 편집으로 바꾸지 않고, 저장한 뒤에는 바꾼 원문에 그 첨부가 있다", async () => {
+  test("일반 편집에서 넣은 첨부가 원문 편집으로 import와 함께 이어지고, 원문 편집에서 저장하면 그 첨부를 한 번 커밋한다", async () => {
+    const path = POSTS.both;
     const sourceMode = () => page.getByRole("button", { name: "원문 편집", exact: true });
-    await openBody(POSTS.both);
+    await openBody(path);
     await bodyEditor().click();
     await page.keyboard.press("Control+End");
     await chooseImage(page.getByTitle("이미지 넣기"));
@@ -399,17 +400,28 @@ describe("두 편집 영역의 첨부", () => {
     await unsaved("본문, 첨부 이미지").waitFor();
 
     await sourceMode().click();
-    await page
-      .getByText("일반 편집에 저장하지 않은 변경이 있어 모드를 바꿀 수 없어요. 먼저 저장하거나 변경을 되돌려 주세요.")
-      .waitFor();
-    expect(await sourceMode().getAttribute("aria-pressed")).toBe("false");
+    expect(await sourceMode().getAttribute("aria-pressed")).toBe("true");
+    const carried = await sourceText();
+    expect(carried).toContain('import image2 from "./2.png";');
+    expect(carried).toContain('<Image src={image2} alt="일반 편집 사진" />');
+    // 숨은 일반 편집의 입력은 원문 편집으로 넘어갔으므로 원문 편집의 변경만 남는다.
+    await unsaved("원문 편집, 원문 편집 첨부 이미지").waitFor();
+    expect(
+      await page
+        .getByText(/^넣은 이미지: 2\.png/)
+        .filter({ visible: true })
+        .count(),
+    ).toBe(1);
     expect(newCommits()).toBe(0);
 
     await saveAndReopen();
     expect(newCommits()).toBe(1);
-    await sourceMode().click();
-    expect(await sourceMode().getAttribute("aria-pressed")).toBe("true");
-    expect(await sourceText()).toContain('<Image src={image2} alt="일반 편집 사진" />');
+    const saved = app.file(path)!;
+    expect(saved.match(/import image2 from "\.\/2\.png";/g)).toHaveLength(1);
+    expect(saved).toContain('<Image src={image2} alt="일반 편집 사진" />');
+    expect(app.file(`${dir(path)}/2.png`)).toBeDefined();
+    expect(app.file(`${dir(path)}/3.png`)).toBeUndefined();
+    expect(app.file(`${dir(path)}/1.png`)).toBe(OLD_IMAGE);
   });
 
   test("이미지를 준비하는 동안 모드를 바꿀 수 없어, 준비가 끝나면 보이는 편집기에 폼이 열리고 적용한 뒤 다시 바꿀 수 있다", async () => {
@@ -431,13 +443,9 @@ describe("두 편집 영역의 첨부", () => {
     expect(await sourceText()).toContain('<Image src={image2} alt="준비 중 사진" />');
 
     expect(await page.getByText("이미지를 준비하고 있어요. 대체 텍스트를 넣은 뒤 모드를 바꿔 주세요.").count()).toBe(0);
-    // 준비가 끝나 모드 버튼은 다시 누를 수 있지만, 일반 편집이 넣은 이미지를 이어받지 못하므로 저장한 뒤에 바꾼다.
-    await page.getByRole("button", { name: "일반 편집", exact: true }).click();
-    await page
-      .getByText("원문 편집에 저장하지 않은 변경이 있어 모드를 바꿀 수 없어요. 먼저 저장하거나 변경을 되돌려 주세요.")
-      .waitFor();
-    await saveAndReopen();
+    // 준비가 끝나 모드를 바꾸면 원문 편집에서 넣은 이미지를 일반 편집이 이어받는다.
     await page.getByRole("button", { name: "일반 편집", exact: true }).click();
     await bodyEditor().waitFor({ state: "visible" });
+    await unsaved("본문, 첨부 이미지").waitFor();
   });
 });

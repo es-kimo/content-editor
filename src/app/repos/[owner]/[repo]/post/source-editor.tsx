@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useRef, useState } from "react";
 
 import { useReportUnsaved, useSaveLocked } from "@/app/_lib/unsaved";
+import type { DraftAttachment } from "@/lib/content/draft";
 // 브라우저 번들에 GitHub 클라이언트가 딸려 오지 않게 content 전체가 아닌 미리보기 메시지와 넣기 메뉴만 가져온다.
 import {
   advancedComponents,
@@ -22,21 +23,14 @@ import { BodyPreview } from "./body-preview";
 import type { SourceEditorHandle } from "./codemirror-source-editor";
 import { AttachedImagesNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
-import { usePostInput } from "./post-editor";
+import { useModeInput, usePostEditor, usePostInput } from "./post-editor";
 
 const CodeMirrorSourceEditor = dynamic(() => import("./codemirror-source-editor"), {
   ssr: false,
   loading: () => <p className="text-zinc-500">불러오는 중…</p>,
 });
 
-/** 원문 모드. import·metadata를 포함한 파일 전체를 고쳐 저장한다. */
-export function SourceEditor({
-  source,
-  syntax,
-  components,
-  upload,
-  preview,
-}: {
+type SourceEditorProps = {
   source: string;
   syntax: Syntax;
   /** 글 분류가 허용한 컴포넌트. `sourceComponents`의 결과. 넣기 메뉴와 고급 삽입으로 나눠 보인다. */
@@ -45,13 +39,45 @@ export function SourceEditor({
   upload: BodyImageUpload | null;
   /** config `preview`. 있으면 사이트 미리보기를 띄운다. */
   preview?: string;
+};
+
+/** 원문 모드. import·metadata를 포함한 파일 전체를 고쳐 저장한다. 일반 편집에서 이어받은 입력이 있으면 그 원문·첨부로 다시 연다. */
+export function SourceEditor(props: SourceEditorProps) {
+  const carried = usePostEditor().carried.source;
+  if (!carried) return <OpenedSourceEditor key="post" {...props} saved={props.source} attachments={[]} />;
+  return (
+    <OpenedSourceEditor
+      key={carried.key}
+      {...props}
+      source={carried.input.source}
+      saved={props.source}
+      attachments={carried.input.images}
+    />
+  );
+}
+
+function OpenedSourceEditor({
+  source,
+  saved,
+  attachments,
+  syntax,
+  components,
+  upload,
+  preview,
+}: SourceEditorProps & {
+  /** 글에 저장된 원문. 미저장 판정의 기준이다. */
+  saved: string;
+  /** 이어받은 첨부. `source`가 그 import를 담고 있다. */
+  attachments: DraftAttachment[];
 }) {
   const locked = useSaveLocked();
+  // 숨은 편집기의 입력은 저장하지 않고 다른 모드로 넘어간 것이라 미저장으로 알리지 않는다.
+  const visible = usePostEditor().mode === "source";
   const edited = useRef(source);
   const [current, setCurrent] = useState(source);
   // 서버가 변경 없음으로 답한 원문. 그 원문은 저장한 것과 같으므로 미저장 판정의 기준으로 삼는다.
-  const [baseline, setBaseline] = useState(source);
-  useReportUnsaved("source", sourceChanged(baseline, current));
+  const [baseline, setBaseline] = useState(saved);
+  useReportUnsaved("source", sourceChanged(baseline, current) && visible);
   const editor = useRef<SourceEditorHandle | null>(null);
   const forms = useInsertForm({
     area: "source",
@@ -69,12 +95,13 @@ export function SourceEditor({
     files: upload?.files ?? [],
     // 원문 편집은 import까지 사용자가 고치므로 원문이 가리키는 첨부를 모두 올린다.
     used: sourceUploads,
+    attachments,
     onAdded: (image, opener) => {
       const at = editor.current?.selection();
       return at ? forms.open({ kind: "image", image, place: { at, opened: edited.current } }, opener) : false;
     },
   });
-  useReportUnsaved("sourceImages", images.session.unsaved(current));
+  useReportUnsaved("sourceImages", images.session.unsaved(current) && visible);
   const inserts = useMemo(() => readInserts(current, syntax), [current, syntax]);
   const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
   const formLocked = locked || !forms.canOpen || images.preparing;
@@ -83,6 +110,11 @@ export function SourceEditor({
     const next = edited.current;
     const data = images.upload(next);
     return data && { text: next, data, unchanged: () => setBaseline(next) };
+  });
+  useModeInput("source", () => {
+    const next = edited.current;
+    const used = images.attachments(next);
+    return used && { source: next, images: used };
   });
 
   return (

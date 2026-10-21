@@ -130,29 +130,37 @@ async function attachImage() {
   await page.getByText(/넣은 이미지: /).waitFor();
 }
 
-const MODE_BLOCKED =
-  "일반 편집에 저장하지 않은 변경이 있어 모드를 바꿀 수 없어요. 먼저 저장하거나 변경을 되돌려 주세요.";
+/** 일반 편집 입력을 이어받은 원문 편집의 미저장 표시. 숨은 일반 편집은 원문으로 넘어간 입력이라 세지 않는다. */
+const SOURCE_EDITED = "저장하지 않은 변경이 있어요. 바뀐 곳: 원문 편집, 원문 편집 첨부 이미지";
 
 /**
- * 제목을 바꾸고 이미지를 넣은 뒤 원문 모드로 바꾸려 한다.
- * 원문 편집은 이 입력을 이어받지 못하므로 전환을 막고 이유를 보이며, 이동이 아니라 묻지 않는다.
+ * 제목을 바꾸고 이미지를 넣은 뒤 원문 모드로 바꾼다.
+ * 원문 편집이 입력과 첨부를 이어받아 미저장으로 남고, 이동이 아니라 묻지 않는다.
  */
 async function editPost() {
   await titleInput().fill("휴진 안내 (수정)");
   await attachImage();
   await page.getByText(POST_EDITED).waitFor();
   await sourceMode().click();
-  await page.getByText(MODE_BLOCKED).waitFor();
+  await page.getByText(SOURCE_EDITED).waitFor();
   expect(await leaveDialog().isVisible()).toBe(false);
 }
 
 /** 취소한 뒤 주소·입력·첨부·모드가 그대로인지. */
 async function expectPostKept() {
   expect(page.url()).toBe(postUrl(app));
-  expect(await titleInput().inputValue()).toBe("휴진 안내 (수정)");
-  expect(await page.getByText(POST_EDITED).count()).toBe(1);
-  expect(await page.getByText(/넣은 이미지: /).count()).toBe(1);
-  expect(await sourceMode().getAttribute("aria-pressed")).toBe("false");
+  expect(await sourceMode().getAttribute("aria-pressed")).toBe("true");
+  const source = await page.locator(".cm-content").innerText();
+  expect(source).toContain("휴진 안내 (수정)");
+  expect(source).toContain('import image1 from "./1.png";');
+  expect(source).toContain('<Image src={image1} alt="병원 입구" />');
+  expect(await page.getByText(SOURCE_EDITED).count()).toBe(1);
+  expect(
+    await page
+      .getByText(/넣은 이미지: /)
+      .filter({ visible: true })
+      .count(),
+  ).toBe(1);
 }
 
 /** 이력 이동을 막으면 Playwright가 이동을 기다리다 끝나므로 기다리지 않는다. */

@@ -32,7 +32,10 @@ export type ModeSwitchProblem =
   | { ok: false; reason: "metadata"; message: string }
   /** 원문에서 고친 것 중 일반 편집이 담지 못하는 것이 있다 (가져오기, 폼에 없거나 잠긴 설정, 설정의 표기 등). */
   | { ok: false; reason: "lossy" }
-  /** 일반 편집기로 열면 본문 구조가 바뀐다 (`sameBodyStructure`). 편집기가 열어 봐야 알 수 있어 화면이 정한다. */
+  /**
+   * 일반 편집기가 본문을 읽지 못하거나 열면 본문 구조가 바뀐다 (`sameBodyStructure`).
+   * 편집기가 열어 봐야 알 수 있어 화면이 정한다.
+   */
   | { ok: false; reason: "structure" }
   /** 설정 폼 값을 글 설정에 쓸 수 없다. */
   | { ok: false; reason: "invalid"; errors: { key: string; message: string }[] }
@@ -45,7 +48,8 @@ export const MODE_SWITCH_MESSAGES: { [reason in ModeSwitchProblem["reason"]]: st
   metadata: "원문의 글 설정을 폼으로 읽을 수 없어 일반 편집으로 바꿀 수 없어요. 원문 편집에서 글 설정을 확인해 주세요.",
   lossy:
     "원문에서 고친 것 중 일반 편집이 담을 수 없는 것(가져오기, 폼에 없는 설정 등)이 있어 일반 편집으로 바꿀 수 없어요. 원문 편집에서 저장한 뒤 바꿔 주세요.",
-  structure: "일반 편집으로 열면 글 구조가 바뀌어 일반 편집으로 바꿀 수 없어요. 원문 편집에서 고치거나 저장해 주세요.",
+  structure:
+    "일반 편집이 이 본문을 그대로 읽을 수 없어 일반 편집으로 바꿀 수 없어요. 원문 편집에서 고치거나 저장해 주세요.",
   invalid: "글 설정에 확인할 항목이 있어 원문 편집으로 바꿀 수 없어요. 글 설정을 고친 뒤 바꿔 주세요.",
   image:
     "넣은 이미지를 원문으로 옮길 수 없어 원문 편집으로 바꿀 수 없어요. 이미지를 다시 넣거나 저장한 뒤 바꿔 주세요.",

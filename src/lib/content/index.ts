@@ -81,6 +81,15 @@ export {
   type TocInsertItem,
 } from "./insert-form";
 export {
+  formToSource,
+  MODE_SWITCH_MESSAGES,
+  sourceToForm,
+  type FormModeInput,
+  type ModeSwitchProblem,
+  type SourceModeInput,
+  type SwitchPost,
+} from "./mode-switch";
+export {
   fetchBlobTexts,
   fetchTree,
   listPosts,
@@ -116,7 +125,6 @@ export {
   collectPostInput,
   createSaveFlow,
   docEditorKeys,
-  modeHasUnsaved,
   postActions,
   savedAreas,
   STATUS_PROBLEM_MESSAGES,

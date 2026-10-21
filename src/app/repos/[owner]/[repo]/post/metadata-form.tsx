@@ -20,6 +20,7 @@ import {
   optionLabel,
   REQUIRED_MESSAGE,
   splitTitleField,
+  withFormValues,
   type FormField,
 } from "@/lib/metadata-form";
 
@@ -34,7 +35,7 @@ type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 type MetadataFormValue = {
   formId: string;
   form: RefObject<HTMLFormElement | null>;
-  /** 글의 지금 metadata 원본. 바뀌면 입력을 그 값으로 다시 연다. */
+  /** 입력을 연 값의 key. 글의 metadata 원본이나 이어받은 입력이 바뀌면 바뀌고, 입력을 그 값으로 다시 연다. */
   version: string;
   fields: FormField[];
   save: ReturnType<typeof useSave>;
@@ -73,42 +74,54 @@ export function MetadataForm({
   const formId = useId();
   const form = useRef<HTMLFormElement>(null);
   const save = useSave("post");
+  const { mode, carried } = usePostEditor();
+  // 원문 편집에서 이어받은 값이 있으면 그 값으로 입력을 다시 연다. 글의 지금 값과 다르면 처음부터 변경이다.
+  const values = carried.wysiwyg?.input.values;
+  const opened = carried.wysiwyg ? `${version}:${carried.wysiwyg.key}` : version;
+  const openedFields = values ? withFormValues(fields, values) : fields;
   // 다시 연 입력은 처음 값이라, 판정과 브라우저 검사 오류를 그때의 version과 함께 두고 version이 바뀌면 버린다.
-  const [changedAt, setChanged] = useState({ version, changed: false });
-  const [invalidAt, setInvalid] = useState<{ version: string; errors: FieldErrors }>({ version, errors: {} });
-  const changed = changedAt.version === version && changedAt.changed;
-  const invalidErrors = invalidAt.version === version ? invalidAt.errors : {};
-  useReportUnsaved("metadata", changed);
+  const [changedAt, setChanged] = useState({ version: opened, changed: false });
+  const [invalidAt, setInvalid] = useState<{ version: string; errors: FieldErrors }>({ version: opened, errors: {} });
+  const changed =
+    changedAt.version === opened ? changedAt.changed : values !== undefined && metadataFormChanged(fields, values);
+  const invalidErrors = invalidAt.version === opened ? invalidAt.errors : {};
+  // 숨은 폼의 입력은 저장하지 않고 원문 편집으로 넘어간 것이라 미저장으로 알리지 않는다.
+  useReportUnsaved("metadata", changed && mode === "wysiwyg");
   usePostInput("settings", () => {
     const element = form.current;
     if (!element) return null;
-    setInvalid({ version, errors: {} });
+    setInvalid({ version: opened, errors: {} });
     // 검사에 걸린 칸은 `invalid`가 오류를 남기고 접힌 글 설정을 펼친다.
     if (!element.reportValidity()) return null;
     // 변경 없음은 저장해도 지금 값과 같다는 뜻이라, 지금 입력을 저장한 값으로 본다.
-    return { data: new FormData(element), unchanged: () => setChanged({ version, changed: false }) };
+    return { data: new FormData(element), unchanged: () => setChanged({ version: opened, changed: false }) };
   });
 
   const value: MetadataFormValue = {
     formId,
     form,
-    version,
-    fields,
+    version: opened,
+    fields: openedFields,
     save,
     changed,
     errors: { ...invalidErrors, ...(save.state.status === "error" ? save.state.fields : undefined) },
     inputChanged: (input) => {
-      if (form.current) setChanged({ version, changed: metadataFormChanged(fields, new FormData(form.current)) });
+      if (form.current) {
+        setChanged({ version: opened, changed: metadataFormChanged(fields, new FormData(form.current)) });
+      }
       const key = input instanceof Element ? (input.getAttribute("name") ?? "").slice(FIELD_PREFIX.length) : "";
       if (key in invalidErrors) {
-        setInvalid({ version, errors: Object.fromEntries(Object.entries(invalidErrors).filter(([k]) => k !== key)) });
+        setInvalid({
+          version: opened,
+          errors: Object.fromEntries(Object.entries(invalidErrors).filter(([k]) => k !== key)),
+        });
       }
     },
     invalid: (field, input) => {
       const message = input.validity.valueMissing ? REQUIRED_MESSAGE : "형식에 맞게 입력해 주세요.";
       setInvalid((current) => ({
-        version,
-        errors: { ...(current.version === version ? current.errors : {}), [field.key]: message },
+        version: opened,
+        errors: { ...(current.version === opened ? current.errors : {}), [field.key]: message },
       }));
     },
   };

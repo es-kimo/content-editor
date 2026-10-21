@@ -22,7 +22,7 @@ import { BodyPreview } from "./body-preview";
 import { AttachedImagesNotice, ImageProblemNotice, useImageUpload } from "./image-upload";
 import { InsertEntryList, InsertMenu, useInsertForm } from "./insert-form";
 import type { BodyEditorHandle } from "./mdx-body-editor";
-import { usePostInput } from "./post-editor";
+import { useModeInput, usePostEditor, usePostInput, type CarriedForm } from "./post-editor";
 
 const MdxBodyEditor = dynamic(() => import("./mdx-body-editor"), {
   ssr: false,
@@ -32,14 +32,7 @@ const MdxBodyEditor = dynamic(() => import("./mdx-body-editor"), {
 /** 이미지를 넣을 수 있는 글이면 글 폴더 파일 이름. */
 export type BodyImageUpload = { files: string[] };
 
-export function BodyEditor({
-  doc,
-  body,
-  syntax,
-  components,
-  upload,
-  preview,
-}: {
+type BodyEditorProps = {
   /** 글을 연 시점의 doc. 넣은 이미지의 import와 사이트 미리보기의 파일 전체를 이 doc에서 만든다. */
   doc: MdxDoc;
   body: string;
@@ -48,10 +41,51 @@ export function BodyEditor({
   upload: BodyImageUpload | null;
   /** config `preview`. 있으면 사이트 미리보기를 띄운다. */
   preview?: string;
+};
+
+/** 일반 편집 본문. 원문 편집에서 이어받은 입력이 있으면 그 본문·첨부로 다시 연다. */
+export function BodyEditor(props: BodyEditorProps) {
+  const carried = usePostEditor().carried.wysiwyg;
+  if (!carried) return <OpenedBodyEditor key="post" {...props} saved={props.body} carried={null} />;
+  return (
+    <OpenedBodyEditor
+      key={carried.key}
+      {...props}
+      doc={carried.doc}
+      body={carried.input.body}
+      saved={props.body}
+      carried={carried}
+    />
+  );
+}
+
+function OpenedBodyEditor({
+  doc,
+  body,
+  saved,
+  carried,
+  syntax,
+  components,
+  upload,
+  preview,
+}: BodyEditorProps & {
+  /** 글에 저장된 본문. 미저장 판정의 기준이다. */
+  saved: string;
+  /** 이어받아 연 입력. 연 본문이 일반 편집으로 읽히지 않으면 전환을 되돌린다. */
+  carried: CarriedForm | null;
 }) {
   const locked = useSaveLocked();
+  const { mode, rejectCarried } = usePostEditor();
+  // 숨은 편집기의 입력은 저장하지 않고 다른 모드로 넘어간 것이라 미저장으로 알리지 않는다.
+  const visible = mode === "wysiwyg";
   /** 일반 편집으로 고칠 수 없게 된 이유. `detail`은 기술 상세에 둘 오류 원문이다. */
   const [problem, setProblem] = useState<{ message: string; detail?: string } | null>(null);
+  // 원문 편집에서 본문을 고쳐 읽을 수 없게 됐을 때만 전환을 되돌린다. 저장된 본문부터 읽을 수 없는 글은
+  // 처음 열 때처럼 이유를 보이고 제목·설정은 일반 편집에서 고치게 둔다.
+  const unreadable = (found: { message: string; detail?: string }) => {
+    if (carried && !carried.restored && body !== saved) rejectCarried(carried.key);
+    else setProblem(found);
+  };
   const normalized = useRef<string | null>(null);
   const edited = useRef<string | null>(null);
   const editor = useRef<BodyEditorHandle | null>(null);
@@ -59,7 +93,7 @@ export function BodyEditor({
   // 저장할 본문(`editedBody`). 본문이 참조하는 첨부를 이 값으로 판정한다.
   const [draft, setDraft] = useState(body);
   // 서버가 변경 없음으로 답한 본문. 그 본문은 저장한 것과 같으므로 미저장 판정의 기준으로 삼는다.
-  const [baseline, setBaseline] = useState(body);
+  const [baseline, setBaseline] = useState(saved);
   const changed = draft !== baseline;
 
   const edit = (markdown: string) => {
@@ -101,11 +135,12 @@ export function BodyEditor({
     area: "body",
     doc,
     files: upload?.files ?? [],
+    attachments: carried?.input.images,
     onAdded: (image, opener) => forms.open({ kind: "image", image, place: null }, opener),
   });
   // WYSIWYG로 고칠 수 없게 된 글은 입력을 저장하지 않으므로 미저장으로 알리지 않는다.
-  useReportUnsaved("body", changed && problem === null);
-  useReportUnsaved("images", images.session.unsaved(draft) && problem === null);
+  useReportUnsaved("body", changed && problem === null && visible);
+  useReportUnsaved("images", images.session.unsaved(draft) && problem === null && visible);
   const { doc: attachedDoc } = images;
   const inserts = useMemo(() => bodyInserts(attachedDoc, current, syntax), [attachedDoc, current, syntax]);
   const tocHeading = useMemo(() => hasTocHeading(current, syntax), [current, syntax]);
@@ -117,6 +152,13 @@ export function BodyEditor({
     const next = editedBody(body, normalized.current, edited.current);
     const data = images.upload(next);
     return data && { text: next, data, unchanged: () => setBaseline(next) };
+  });
+  // 원문 편집으로 넘길 본문과 첨부. 일반 편집으로 고칠 수 없게 된 글은 저장할 때처럼 본문을 연 그대로 넘긴다.
+  useModeInput("wysiwyg", () => {
+    if (problem) return { body, images: [], doc };
+    const next = editedBody(body, normalized.current, edited.current);
+    const attachments = images.attachments(next);
+    return attachments && { body: next, images: attachments, doc: images.session.plan.doc };
   });
   // 이미지는 넣을 수 있는 글에서만 메뉴에 둔다. 고르면 파일 선택 창을 열고, 고른 뒤 폼이 열린다.
   const menu = insertMenuItems(components).filter((item) => item.kind !== "image" || upload);
@@ -165,14 +207,14 @@ export function BodyEditor({
             setDraft(editedBody(body, normalized.current, edited.current));
             // 렌더링 구조까지 바뀌는 글은 고치지 않은 곳까지 바꿔 저장하게 되므로 WYSIWYG로 고치지 않는다.
             if (!sameBodyStructure(body, markdown, syntax)) {
-              setProblem({
+              unreadable({
                 message:
                   "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집으로 열면 글 구조가 바뀌어요.",
               });
             }
           }}
           onError={(message) =>
-            setProblem({
+            unreadable({
               message:
                 "이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요. 일반 편집이 읽을 수 없는 내용이 있어요.",
               detail: message,

@@ -243,17 +243,25 @@ describe("글 단위 저장과 상태별 버튼", () => {
     expect(await row("구성 볼 글").getByRole("cell").nth(1).textContent()).toBe("게시 대상");
   });
 
-  test("본문을 일반 편집으로 고칠 수 없는 글도 일반 편집에서 제목을 저장하고, 본문은 그대로이며 저장한 뒤 원문 편집으로 바꿀 수 있다", async () => {
+  test("본문을 일반 편집으로 고칠 수 없는 글도 고친 제목을 원문 편집과 주고받고, 일반 편집에서 저장하면 본문은 그대로다", async () => {
     const sourceMode = () => page.getByRole("button", { name: "원문 편집", exact: true });
+    const notice = () =>
+      page
+        .getByText("이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요.", { exact: false })
+        .filter({ visible: true });
     await page.goto(postUrl(STRUCTURE_POST));
-    await page.getByText("이 글은 일반 편집을 지원하지 않아요. 원문 편집을 이용해 주세요.", { exact: false }).waitFor();
+    await notice().waitFor();
     await input("title").fill("고친 제목");
     await page.getByText(UNSAVED_SETTINGS, { exact: true }).waitFor();
 
     await sourceMode().click();
-    await page
-      .getByText("일반 편집에 저장하지 않은 변경이 있어 모드를 바꿀 수 없어요. 먼저 저장하거나 변경을 되돌려 주세요.")
-      .waitFor();
+    expect(await sourceMode().getAttribute("aria-pressed")).toBe("true");
+    expect(await page.locator(".cm-content").innerText()).toContain("title: '고친 제목'");
+    // 본문을 고치지 않았으면 처음 열 때처럼 이유를 보이며 일반 편집으로 돌아온다.
+    await button("일반 편집").click();
+    await notice().waitFor();
+    expect(await input("title").inputValue()).toBe("고친 제목");
+    await page.getByText(UNSAVED_SETTINGS, { exact: true }).waitFor();
 
     await button("수정 반영").click();
     await page.getByText(PUBLISHED, { exact: true }).waitFor();

@@ -10,7 +10,6 @@ import { editorKeys, readPost } from "./read";
 import {
   collectPostInput,
   createSaveFlow,
-  modeHasUnsaved,
   postActions,
   savedAreas,
   STATUS_PROBLEM_MESSAGES,
@@ -161,16 +160,6 @@ describe("collectPostInput", () => {
     expect(collectPostInput({ settings: () => settings() }, "wysiwyg")).toBeNull();
     expect(collectPostInput({ settings: () => settings(), source: () => null }, "source")).toBeNull();
     expect(collectPostInput({ settings: () => settings(), wysiwyg: () => wysiwyg() }, "source")).toBeNull();
-  });
-});
-
-describe("modeHasUnsaved", () => {
-  test("일반 편집은 제목·설정·본문·첨부, 원문 편집은 원문과 그 첨부의 미저장 입력만 센다", () => {
-    expect(modeHasUnsaved("wysiwyg", { metadata: true })).toBe(true);
-    expect(modeHasUnsaved("wysiwyg", { images: true })).toBe(true);
-    expect(modeHasUnsaved("wysiwyg", { source: true, sourceImages: true })).toBe(false);
-    expect(modeHasUnsaved("source", { sourceImages: true })).toBe(true);
-    expect(modeHasUnsaved("source", { metadata: true, body: true })).toBe(false);
   });
 });
 
