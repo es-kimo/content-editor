@@ -3,14 +3,16 @@ import { describe, expect, test } from "vitest";
 import {
   blockedReason,
   conversation,
+  failureComment,
   nextJob,
   nextVersion,
+  orderByRefs,
   parseOutput,
   planJobs,
   planningIssueOf,
   prdTitle,
-  refErrors,
   releaseReady,
+  renderMoves,
   resolveRefs,
   versionOf,
   type Message,
@@ -150,19 +152,105 @@ describe("nextVersion", () => {
   });
 });
 
-describe("resolveRefs·refErrors", () => {
+describe("resolveRefs", () => {
   test("#newK를 만든 순서의 실제 번호로 바꾼다", () => {
     expect(resolveRefs("## 의존\n#new1, #new2, #47\n", [90, 91])).toBe("## 의존\n#90, #91, #47\n");
   });
 
-  test("자기보다 뒤나 자기 자신을 가리키면 오류", () => {
-    expect(refErrors(["없음", "#new1", "#new3"])).toEqual(["이슈 3의 #new3: 앞선 이슈(1~2)만 가리킬 수 있다"]);
-    expect(refErrors(["#new1"])).toHaveLength(1);
-    expect(refErrors(["없음", "#new1"])).toEqual([]);
-  });
-
   test("만들지 않은 이슈를 가리키면 던진다", () => {
     expect(() => resolveRefs("#new2", [90])).toThrow("#new2");
+  });
+});
+
+describe("orderByRefs", () => {
+  const spec = (title: string, deps = "없음", extra = "") => ({
+    title,
+    body: `## 할 일\n- ${title}${extra}\n\n## 의존\n${deps}\n`,
+  });
+  const titles = (o: ReturnType<typeof orderByRefs<{ title: string; body: string }>>) =>
+    o.ok ? o.issues.map((i) => i.title) : o.errors;
+
+  test("모두 앞을 가리키면 순서와 본문을 그대로 둔다", () => {
+    const issues = [spec("a"), spec("b", "#new1"), spec("c", "#new1, #new2")];
+    expect(orderByRefs(issues)).toEqual({ ok: true, issues, moved: [] });
+  });
+
+  test("뒤 이슈를 가리키면 가리킨 이슈를 바로 앞으로 옮기고 번호를 다시 매긴다", () => {
+    // #159 두 번째 실행처럼 중간 이슈가 두 칸 뒤를 가리킨 경우
+    const o = orderByRefs([spec("a"), spec("b", "#new4"), spec("c", "#new2"), spec("d", "#new1")]);
+    expect(titles(o)).toEqual(["a", "d", "b", "c"]);
+    expect(o.ok && o.issues.map((i) => i.body.split("## 의존\n")[1]!.trim())).toEqual([
+      "없음",
+      "#new1",
+      "#new2",
+      "#new3",
+    ]);
+  });
+
+  test("옮긴 뒤에는 모든 참조가 앞선 이슈를 가리켜 resolveRefs가 던지지 않는다", () => {
+    const o = orderByRefs([spec("a", "#new3"), spec("b", "#new3", " (#new1 다음)"), spec("c")]);
+    expect(o.ok).toBe(true);
+    if (!o.ok) return;
+    const created: number[] = [];
+    for (const i of o.issues) {
+      resolveRefs(i.body, created);
+      created.push(100 + created.length);
+    }
+    expect(created).toHaveLength(3);
+  });
+
+  test("옮긴 참조를 절과 줄로 돌려준다", () => {
+    const o = orderByRefs([spec("a", "#new2"), spec("b")]);
+    expect(o.ok && o.moved).toEqual([{ from: 1, to: 2, section: "의존", line: "#new2" }]);
+  });
+
+  test("설명 글의 참조도 절 이름과 함께 잡는다", () => {
+    const o = orderByRefs([spec("a", "없음", " (이미지 항목은 #new2에서)"), spec("b")]);
+    expect(o.ok && o.moved).toEqual([{ from: 1, to: 2, section: "할 일", line: "- a (이미지 항목은 #new2에서)" }]);
+  });
+
+  test("순환이면 경로와 각 참조 줄을 오류로 돌려준다", () => {
+    const o = orderByRefs([spec("a"), spec("b", "#new3"), spec("c", "#new2")]);
+    expect(o).toEqual({
+      ok: false,
+      errors: [
+        "순환 참조: 이슈 2 → 이슈 3 → 이슈 2",
+        "이슈 2의 #new3 (의존: `#new3`)",
+        "이슈 3의 #new2 (의존: `#new2`)",
+      ],
+    });
+  });
+
+  test("없는 번호나 자기 자신을 가리키면 오류", () => {
+    expect(titles(orderByRefs([spec("a", "#new1"), spec("b", "#new5")]))).toEqual([
+      "이슈 1의 #new1 (의존: `#new1`): 자기 자신을 가리킨다",
+      "이슈 2의 #new5 (의존: `#new5`): 없는 이슈를 가리킨다",
+    ]);
+  });
+});
+
+describe("renderMoves", () => {
+  test("옮긴 것이 없으면 빈 문자열", () => {
+    expect(renderMoves(["a"], [])).toBe("");
+  });
+
+  test("어느 이슈가 어느 이슈를 어느 절에서 가리켰는지 적는다", () => {
+    expect(renderMoves(["메뉴", "이미지"], [{ from: 1, to: 2, section: "의존", line: "#new2" }])).toBe(
+      "\n\n뒤 이슈를 가리킨 참조가 있어서 가리킨 이슈를 앞으로 옮겼어요.\n- 「메뉴」 → 「이미지」 (의존: `#new2`)",
+    );
+  });
+});
+
+describe("failureComment", () => {
+  test("이유를 인용해 넣어서 다음 실행이 대화에서 읽게 한다", () => {
+    expect(failureComment("순환 참조: 이슈 2 → 이슈 3 → 이슈 2\n이슈 2의 #new3")).toBe(
+      "기획자 실행이 실패했어요.\n\n> 순환 참조: 이슈 2 → 이슈 3 → 이슈 2\n> 이슈 2의 #new3\n\n다시 코멘트를 달면 이 이유를 보고 다시 시도해요.",
+    );
+  });
+
+  test("이유가 없으면 실행 로그를 보라고 한다", () => {
+    expect(failureComment(null)).toContain("실행 로그를 확인해 주세요");
+    expect(failureComment("  ")).toContain("실행 로그를 확인해 주세요");
   });
 });
 

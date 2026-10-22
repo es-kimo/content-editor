@@ -10,7 +10,7 @@
  * jobs는 이벤트 내용이 아니라 열린 기획 이슈의 상태로 할 일을 고른다. 어느 트리거에서 불러도(코멘트, 수동 실행, 다른 워크플로) 같은 일을 한다.
  * env: GH_TOKEN(기획자 봇), REPO, OWNER, EVENT_NAME, GITHUB_EVENT_PATH, PLANNER_DIR, MODEL, EFFORT, RUN_URL
  */
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, readFile, rm, writeFile } from "node:fs/promises";
 
 import {
   renderConversation,
@@ -30,13 +30,15 @@ import {
 } from "./github.mts";
 import {
   blockedReason,
+  failureComment,
+  orderByRefs,
   parseOutput,
   LABEL,
   planJobs,
   planningIssueOf,
   prdTitle,
-  refErrors,
   releaseReady,
+  renderMoves,
   resolveRefs,
   type IssueJob,
   type Job,
@@ -57,6 +59,8 @@ const base = `/repos/${repo}`;
 /** 한 번 실행에서 다룰 기획 이슈 수. 사용량 한도를 나눠 쓰므로 밀린 것은 다음 실행이 받는다. */
 const MAX_JOBS = 3;
 const AGENT_READY = "agent-ready";
+/** apply가 실패한 이유. 워크플로가 apply와 fail을 따로 부르므로 파일로 넘긴다. */
+const errorPath = `${dir}/error.txt`;
 
 async function people(): Promise<People> {
   const bot = await gh.request<{ login: string }>("/user");
@@ -157,6 +161,8 @@ async function releaseItems(milestone: number): Promise<ReleaseItem[]> {
 
 async function context(job: Job): Promise<void> {
   if (job.mode === "release") throw new Error("릴리즈는 모델 입력을 만들지 않는다");
+  // 앞 할 일의 실패 이유가 이번 할 일의 실패 코멘트에 붙지 않게 한다.
+  await rm(errorPath, { force: true });
   const state = await repoState();
   const issue = await gh.request<ApiIssue>(`${base}/issues/${job.issue}`);
   const parts = [
@@ -223,15 +229,15 @@ async function milestoneFor(version: string, description: string, planning: numb
 
 async function applyBreakdown(job: Extract<Job, { mode: "breakdown" }>, out: BreakdownOut): Promise<void> {
   if (out.issues.length === 0) throw new Error("만들 이슈가 없다");
-  const errors = refErrors(out.issues.map((i) => i.body));
-  if (errors.length) throw new Error(errors.join("\n"));
+  const ordered = orderByRefs(out.issues);
+  if (!ordered.ok) throw new Error(ordered.errors.join("\n"));
   const known = new Set((await gh.list<ApiLabel>(`${base}/labels`)).map((l) => l.name));
   const milestone = await milestoneFor(job.version, out.milestone_description, job.issue);
 
   const created: number[] = [];
   const lines: string[] = [];
   const dropped = new Set<string>();
-  for (const spec of out.issues) {
+  for (const spec of ordered.issues) {
     const labels = spec.labels.filter((l) => l !== AGENT_READY && known.has(l));
     spec.labels.filter((l) => l !== AGENT_READY && !known.has(l)).forEach((l) => dropped.add(l));
     if (spec.agent) labels.push(AGENT_READY);
@@ -243,7 +249,11 @@ async function applyBreakdown(job: Extract<Job, { mode: "breakdown" }>, out: Bre
     lines.push(`- #${issue.number} ${spec.title} · ${spec.agent ? "에이전트" : "사람"}`);
   }
 
-  const notes = dropped.size ? `\n\n레포에 없는 라벨이라 달지 않았어요: ${[...dropped].join(", ")}` : "";
+  const notes =
+    renderMoves(
+      out.issues.map((i) => i.title),
+      ordered.moved,
+    ) + (dropped.size ? `\n\n레포에 없는 라벨이라 달지 않았어요: ${[...dropped].join(", ")}` : "");
   await comment(job.issue, `${out.comment}\n\n### 만든 이슈 (${job.version})\n${lines.join("\n")}${notes}`);
   await removeLabel(job.issue, LABEL.prdDraft);
   await addLabels(job.issue, [LABEL.issued]);
@@ -290,12 +300,12 @@ async function apply(job: Job, outPath: string | undefined): Promise<void> {
 async function fail(job: Job, outPath: string | undefined): Promise<void> {
   if (job.mode === "release") return;
   const out = parseOutput(outPath ? await readFile(outPath, "utf8").catch(() => null) : null);
-  const reason = out ? blockedReason(out) : null;
+  const error = await readFile(errorPath, "utf8").catch(() => null);
+  await rm(errorPath, { force: true });
+  // apply 오류에는 모델이 멈춘 이유도 들어 있으니 그쪽을 먼저 쓴다. 모델 실행 자체가 실패했으면 출력의 이유만 있다.
+  const reason = error ?? (out ? blockedReason(out) : null);
   // 실패도 봇의 마지막 글이 되므로 같은 이슈를 계속 다시 돌리지 않는다. 다시 하려면 사용자가 코멘트를 단다.
-  await comment(
-    job.issue,
-    `기획자 실행이 실패했어요.${reason ? `\n\n> ${reason}` : ""}\n\n실행 로그를 확인해 주세요. 다시 코멘트를 달면 다시 시도해요.`,
-  );
+  await comment(job.issue, failureComment(reason));
 }
 
 const [command, jobArg, outPath] = process.argv.slice(2);
@@ -307,7 +317,12 @@ switch (command) {
     await context(JSON.parse(jobArg!) as Job);
     break;
   case "apply":
-    await apply(JSON.parse(jobArg!) as Job, outPath);
+    try {
+      await apply(JSON.parse(jobArg!) as Job, outPath);
+    } catch (e) {
+      await writeFile(errorPath, e instanceof Error ? e.message : String(e));
+      throw e;
+    }
     break;
   case "fail":
     await fail(JSON.parse(jobArg!) as Job, outPath);
