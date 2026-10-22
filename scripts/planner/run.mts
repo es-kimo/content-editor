@@ -31,6 +31,7 @@ import {
 import {
   blockedReason,
   failureComment,
+  hasNewRef,
   orderByRefs,
   parseOutput,
   LABEL,
@@ -237,16 +238,23 @@ async function applyBreakdown(job: Extract<Job, { mode: "breakdown" }>, out: Bre
   const created: number[] = [];
   const lines: string[] = [];
   const dropped = new Set<string>();
+  const unresolved: { number: number; body: string }[] = [];
   for (const spec of ordered.issues) {
     const labels = spec.labels.filter((l) => l !== AGENT_READY && known.has(l));
     spec.labels.filter((l) => l !== AGENT_READY && !known.has(l)).forEach((l) => dropped.add(l));
     if (spec.agent) labels.push(AGENT_READY);
+    const body = resolveRefs(spec.body, created);
     const issue = await gh.request<ApiIssue>(`${base}/issues`, {
       method: "POST",
-      body: { title: spec.title, body: resolveRefs(spec.body, created), labels, milestone },
+      body: { title: spec.title, body, labels, milestone },
     });
     created.push(issue.number);
     lines.push(`- #${issue.number} ${spec.title} · ${spec.agent ? "에이전트" : "사람"}`);
+    if (hasNewRef(body)) unresolved.push({ number: issue.number, body: spec.body });
+  }
+  // 의존은 앞선 이슈만 가리키니 만들 때 다 풀렸다. 남은 것은 설명 글이 뒤 이슈나 자기 자신을 가리킨 것이다.
+  for (const { number, body } of unresolved) {
+    await gh.request(`${base}/issues/${number}`, { method: "PATCH", body: { body: resolveRefs(body, created) } });
   }
 
   const notes =
