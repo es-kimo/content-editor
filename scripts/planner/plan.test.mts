@@ -4,6 +4,7 @@ import {
   blockedReason,
   conversation,
   failureComment,
+  hasNewRef,
   nextJob,
   nextVersion,
   orderByRefs,
@@ -157,8 +158,12 @@ describe("resolveRefs", () => {
     expect(resolveRefs("## 의존\n#new1, #new2, #47\n", [90, 91])).toBe("## 의존\n#90, #91, #47\n");
   });
 
-  test("만들지 않은 이슈를 가리키면 던진다", () => {
-    expect(() => resolveRefs("#new2", [90])).toThrow("#new2");
+  test("아직 만들지 않은 이슈는 그대로 두고, 다 만든 뒤 다시 부르면 풀린다", () => {
+    const body = "## 배경\n사람 확인은 #new2에서\n\n## 의존\n#new1\n";
+    const first = resolveRefs(body, [90]);
+    expect(first).toBe("## 배경\n사람 확인은 #new2에서\n\n## 의존\n#90\n");
+    expect(hasNewRef(first)).toBe(true);
+    expect(hasNewRef(resolveRefs(body, [90, 91]))).toBe(false);
   });
 });
 
@@ -187,26 +192,45 @@ describe("orderByRefs", () => {
     ]);
   });
 
-  test("옮긴 뒤에는 모든 참조가 앞선 이슈를 가리켜 resolveRefs가 던지지 않는다", () => {
-    const o = orderByRefs([spec("a", "#new3"), spec("b", "#new3", " (#new1 다음)"), spec("c")]);
-    expect(o.ok).toBe(true);
-    if (!o.ok) return;
+  // 만들 때처럼 앞에서부터 실제 번호를 붙인다. 만든 직후 본문의 의존 절을 돌려준다.
+  const depsAtCreation = (issues: { body: string }[]) => {
     const created: number[] = [];
-    for (const i of o.issues) {
-      resolveRefs(i.body, created);
+    return issues.map((i) => {
+      const body = resolveRefs(i.body, created);
       created.push(100 + created.length);
-    }
-    expect(created).toHaveLength(3);
+      return body.split("## 의존\n")[1]!.trim();
+    });
+  };
+
+  test("옮긴 뒤에는 만들 때 의존이 모두 실제 번호로 풀린다", () => {
+    const o = orderByRefs([spec("a", "#new3"), spec("b", "#new3, #new1"), spec("c")]);
+    expect(o.ok && depsAtCreation(o.issues)).toEqual(["없음", "#100", "#100, #101"]);
   });
 
-  test("옮긴 참조를 절과 줄로 돌려준다", () => {
+  test("옮긴 의존을 절과 줄로 돌려준다", () => {
     const o = orderByRefs([spec("a", "#new2"), spec("b")]);
-    expect(o.ok && o.moved).toEqual([{ from: 1, to: 2, section: "의존", line: "#new2" }]);
+    expect(o.ok && o.moved).toEqual([{ from: 1, to: 2, section: "의존", line: "#new2", dependency: true }]);
   });
 
-  test("설명 글의 참조도 절 이름과 함께 잡는다", () => {
-    const o = orderByRefs([spec("a", "없음", " (이미지 항목은 #new2에서)"), spec("b")]);
-    expect(o.ok && o.moved).toEqual([{ from: 1, to: 2, section: "할 일", line: "- a (이미지 항목은 #new2에서)" }]);
+  test("설명 글이 뒤 이슈를 가리키면 순서는 그대로 두고 번호만 새 순서로 맞춘다", () => {
+    const o = orderByRefs([spec("a", "#new3", " (이미지 항목은 #new2에서)"), spec("b"), spec("c")]);
+    expect(titles(o)).toEqual(["c", "a", "b"]);
+    expect(o.ok && o.issues[1]!.body).toContain("이미지 항목은 #new3에서");
+    expect(o.ok && o.moved.map((r) => r.section)).toEqual(["의존"]);
+  });
+
+  test("#159 세 번째 실행: 앞 이슈들과 사람 확인 이슈 자신이 설명 글로 그 이슈를 불러도 통과한다", () => {
+    const issues = [
+      spec("메뉴", "없음", " (브라우저 확인은 #new3로 넘긴다)"),
+      spec("이미지", "#new1", " (브라우저 확인은 #new3로 넘긴다)"),
+      spec("사람 확인", "#new1, #new2", " (앞선 이슈의 PR 본문에서 #new3로 넘긴 항목도 본다)"),
+    ];
+    expect(orderByRefs(issues)).toEqual({ ok: true, issues, moved: [] });
+  });
+
+  test("의존 절은 `---`에서 끝난다", () => {
+    const o = orderByRefs([{ body: "## 의존\n없음\n\n---\n#new2 참고" }, { body: "## 의존\n#new1" }]);
+    expect(o.ok).toBe(true);
   });
 
   test("순환이면 경로와 각 참조 줄을 오류로 돌려준다", () => {
@@ -214,17 +238,22 @@ describe("orderByRefs", () => {
     expect(o).toEqual({
       ok: false,
       errors: [
-        "순환 참조: 이슈 2 → 이슈 3 → 이슈 2",
+        "의존 순환: 이슈 2 → 이슈 3 → 이슈 2",
         "이슈 2의 #new3 (의존: `#new3`)",
         "이슈 3의 #new2 (의존: `#new2`)",
       ],
     });
   });
 
-  test("없는 번호나 자기 자신을 가리키면 오류", () => {
-    expect(titles(orderByRefs([spec("a", "#new1"), spec("b", "#new5")]))).toEqual([
-      "이슈 1의 #new1 (의존: `#new1`): 자기 자신을 가리킨다",
-      "이슈 2의 #new5 (의존: `#new5`): 없는 이슈를 가리킨다",
+  test("설명 글끼리 서로 가리켜도 순환이 아니다", () => {
+    const o = orderByRefs([spec("a", "없음", " (#new2와 같이 본다)"), spec("b", "#new1", " (#new1 다음)")]);
+    expect(titles(o)).toEqual(["a", "b"]);
+  });
+
+  test("없는 번호를 가리키거나 자기 자신에 의존하면 오류", () => {
+    expect(titles(orderByRefs([spec("a", "#new1"), spec("b", "없음", " #new5")]))).toEqual([
+      "이슈 1의 #new1 (의존: `#new1`): 자기 자신에 의존한다",
+      "이슈 2의 #new5 (할 일: `- b #new5`): 없는 이슈를 가리킨다",
     ]);
   });
 });
@@ -235,7 +264,9 @@ describe("renderMoves", () => {
   });
 
   test("어느 이슈가 어느 이슈를 어느 절에서 가리켰는지 적는다", () => {
-    expect(renderMoves(["메뉴", "이미지"], [{ from: 1, to: 2, section: "의존", line: "#new2" }])).toBe(
+    expect(
+      renderMoves(["메뉴", "이미지"], [{ from: 1, to: 2, section: "의존", line: "#new2", dependency: true }]),
+    ).toBe(
       "\n\n뒤 이슈를 가리킨 참조가 있어서 가리킨 이슈를 앞으로 옮겼어요.\n- 「메뉴」 → 「이미지」 (의존: `#new2`)",
     );
   });
