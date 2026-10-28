@@ -19,6 +19,8 @@ env:
   CLAUDE_MODEL: ${{ vars.PLANNER_CLAUDE_MODEL || vars.AGENT_MODEL || 'claude-opus-5-5' }}
   CLAUDE_VERSION: "2.1.303"
   PLANNER_DIR: ${{ github.workspace }}/.planner
+  # 봇 GitHub App. 토큰은 scripts/planner/token.sh가 step마다 받는다.
+  APP_ID: ${{ vars.BOT_APP_ID }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
@@ -50,8 +52,9 @@ jobs:
       - name: 할 일 고르기
         id: jobs
         env:
-          GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+          APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
         run: |
+          source scripts/planner/token.sh && fresh_token
           jobs=$(node scripts/planner/run.mts jobs breakdown)
           echo "할 일: $jobs"
           echo "list=$jobs" >> "$GITHUB_OUTPUT"
@@ -59,8 +62,9 @@ jobs:
       - name: 준비
         if: steps.jobs.outputs.list != '[]'
         env:
-          GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+          APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
         run: |
+          source scripts/planner/token.sh && fresh_token
           npm install -g "@anthropic-ai/claude-code@${CLAUDE_VERSION}"
           mkdir -p "$PLANNER_DIR"
           gh label create issued -R "$REPO" --color 0e8a16 --description "작업 이슈로 나눴다. 마일스톤 vX.Y에서 진행한다" --force
@@ -70,7 +74,8 @@ jobs:
         if: steps.jobs.outputs.list != '[]'
         env:
           JOBS: ${{ steps.jobs.outputs.list }}
-          GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+          APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          WIKI_TOKEN: ${{ secrets.PLANNER_WIKI_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           MODEL: ${{ env.CLAUDE_MODEL }}
           EFFORT: ${{ vars.PLANNER_EFFORT_BREAKDOWN || 'high' }}
@@ -79,14 +84,16 @@ jobs:
           schema=$(jq -c . .github/planner/schema-breakdown.json)
           out="$PLANNER_DIR/out.json"
           failed=0
+          source scripts/planner/token.sh
           # 반복문의 stdin(할 일 목록)을 명령이 읽지 않게 /dev/null을 준다. 모델이 읽으면 프롬프트로 들어간다.
           while read -r job; do
             echo "::group::$job ($MODEL, effort $EFFORT)"
+            fresh_token
             bash scripts/planner/wiki.sh reset < /dev/null
             rm -f "$out"
             node scripts/planner/run.mts context "$job" < /dev/null
             # Bash는 검색만 허용한다. 레포 코드는 --add-dir로 읽고, 쓰기는 wiki만 저장된다.
-            if (cd "$PLANNER_DIR" && env -u GH_TOKEN claude -p "$prompt" \
+            if (cd "$PLANNER_DIR" && env -u GH_TOKEN -u APP_PRIVATE_KEY -u WIKI_TOKEN claude -p "$prompt" \
               --model "$MODEL" --fallback-model sonnet --effort "$EFFORT" --max-turns 80 \
               --output-format json --json-schema "$schema" \
               --permission-mode acceptEdits --add-dir "$GITHUB_WORKSPACE" \
@@ -94,6 +101,8 @@ jobs:
               < /dev/null > "$PLANNER_DIR/claude.json") \
               && jq -c '{subtype, num_turns, usage: (.usage | {input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens})}' "$PLANNER_DIR/claude.json" \
               && jq -e '.structured_output // empty' "$PLANNER_DIR/claude.json" > "$out"; then
+              # 모델이 도는 동안 토큰이 오래됐을 수 있다.
+              fresh_token
               msg=$(jq -r 'select(.status == "done") | .wiki_message // empty' "$out")
               if [ -n "$msg" ]; then bash scripts/planner/wiki.sh push "$msg" < /dev/null; fi
               if ! node scripts/planner/run.mts apply "$job" "$out" < /dev/null; then
@@ -102,6 +111,7 @@ jobs:
               fi
             else
               failed=1
+              fresh_token
               node scripts/planner/run.mts fail "$job" "$out" < /dev/null || true
             fi
             echo "::endgroup::"

@@ -29,9 +29,9 @@ permissions:
 env:
   REPO: ${{ github.repository }}
   OWNER: ${{ github.repository_owner }}
-  # 기획자와 같은 봇 계정(es-kimo-bot)의 PAT. 소유자 토큰으로 코멘트하면 본인 활동이라 GitHub Mobile 알림이 오지 않는다.
-  # PAT로 push해야 CI가 돈다 (GITHUB_TOKEN으로 push하면 워크플로가 뜨지 않는다).
-  GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+  # 기획자와 같은 봇 GitHub App. 토큰은 scripts/planner/token.sh가 step마다 받는다.
+  # 소유자 토큰으로 코멘트하면 본인 활동이라 GitHub Mobile 알림이 오지 않고, GITHUB_TOKEN으로 push하면 CI가 뜨지 않는다.
+  APP_ID: ${{ vars.BOT_APP_ID }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
@@ -80,7 +80,9 @@ jobs:
         id: pick
         env:
           ISSUE: ${{ inputs.issue }}
+          APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
         run: |
+          source scripts/planner/token.sh && fresh_token
           n=${ISSUE:-$(node scripts/agent/pick-issue.mts | jq -r '.number // empty')}
           if [ -z "$n" ]; then echo "고를 이슈 없음"; exit 0; fi
           echo "number=$n" >> "$GITHUB_OUTPUT"
@@ -112,6 +114,7 @@ jobs:
           N: ${{ steps.pick.outputs.number }}
           BRANCH: agent/${{ steps.pick.outputs.number }}-${{ github.run_number }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
           ACTIONS_TOKEN: ${{ github.token }}
           AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-opus-5-5' }}
           EFFORT_IMPLEMENT: ${{ vars.AGENT_EFFORT_IMPLEMENT || 'medium' }}
@@ -136,4 +139,7 @@ jobs:
         env:
           SHIFT_STARTED: ${{ needs.plan.outputs.started }}
           SLOTS_RESULT: ${{ needs.slot.result }}
-        run: node scripts/agent/post-report.mts
+          APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+        run: |
+          source scripts/planner/token.sh && fresh_token
+          node scripts/agent/post-report.mts
