@@ -6,7 +6,7 @@
 #   0  merge했다 / 사람 차례로 넘겼다(이슈를 소유자에게 assign) / 다음 밤에 다시 시도한다(실패 표시)
 #   1  사용량 한도나 예기치 못한 오류. 워크플로의 fail-fast가 남은 슬롯을 취소한다
 #
-# env: N(이슈 번호) BRANCH REPO OWNER GH_TOKEN(봇 PAT) ACTIONS_TOKEN RUN_URL
+# env: N(이슈 번호) BRANCH REPO OWNER APP_ID APP_PRIVATE_KEY(봇 앱) ACTIONS_TOKEN RUN_URL
 #      AGENT_MODEL EFFORT_IMPLEMENT EFFORT_REVIEW EFFORT_FIX MAX_FIX MAX_ATTEMPTS
 set -euo pipefail
 
@@ -17,9 +17,23 @@ mkdir -p "$A"
 : > "$A/models.txt"
 : > "$A/history.md"
 
+# GH_TOKEN(앱 설치 토큰)은 1시간이면 만료된다. 슬롯은 몇 시간 돌 수 있으므로 GitHub를 부르는 단계마다 fresh_token을 부른다.
+# shellcheck source=scripts/planner/token.sh
+source scripts/planner/token.sh
+fresh_token
+
 # push 인증은 명령마다 헤더로 넘긴다. remote URL이나 git config에 두면 모델이 읽을 수 있다.
-AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-git_push() { git -c http.extraheader="$AUTH" push --quiet "$@"; }
+git_push() {
+  fresh_token
+  git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push --quiet "$@"
+}
+# 쓰기는 1초 이상 띄운다. 몰아서 쓰면 GitHub가 스팸으로 보고 계정을 막는다 (scripts/planner/github.mts의 WRITE_GAP_MS).
+gh_write() {
+  sleep 1
+  gh "$@"
+}
+# 모델이 고친 코드도 검사에서 돈다. 모델과 검사에는 토큰과 앱 키를 넘기지 않는다.
+SECRET_ENV=(-u GH_TOKEN -u ACTIONS_TOKEN -u APP_PRIVATE_KEY)
 
 WORK_TOOLS="Read,Edit,Write,Glob,Grep,Skill,Bash(git grep *),Bash(pnpm *),Bash(node *),Bash(git status),Bash(git status *),Bash(git diff *),Bash(git add *),Bash(git commit *),Bash(git log *),Bash(git show *),Bash(git rm *),Bash(git restore *),Bash(rm *),Bash(ls *)"
 REVIEW_TOOLS="Read,Glob,Grep,Skill,Bash(git grep *),Bash(pnpm test),Bash(pnpm test *),Bash(pnpm lint),Bash(pnpm format:check),Bash(pnpm typecheck),Bash(pnpm build),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(ls *)"
@@ -47,20 +61,21 @@ on_exit() {
 trap on_exit EXIT
 
 close_pr() {
-  if [ -n "$PR" ]; then gh pr close "$PR" -R "$REPO" --delete-branch > /dev/null || true; fi
+  if [ -n "$PR" ]; then gh_write pr close "$PR" -R "$REPO" --delete-branch > /dev/null || true; fi
 }
 
 # 사람 차례. 이슈를 소유자에게 assign하고 @멘션한다. 소유자가 답을 달고 assign을 풀면 다음 밤에 이어 간다.
 hand_over() {
+  fresh_token
   save_wip
   close_pr
-  gh issue comment "$N" -R "$REPO" --body "<!-- agent:human-turn -->
+  gh_write issue comment "$N" -R "$REPO" --body "<!-- agent:human-turn -->
 @$OWNER 정해 줄 것이 있어요 · [실행 로그]($RUN_URL)
 
 $1
 
 답을 코멘트로 남기고 assign을 풀면 다음 밤에 이어서 해요. $SAVED" > /dev/null
-  gh issue edit "$N" -R "$REPO" --add-assignee "$OWNER" > /dev/null
+  gh_write issue edit "$N" -R "$REPO" --add-assignee "$OWNER" > /dev/null
   echo "사람 차례로 넘김"
   exit 0
 }
@@ -68,6 +83,7 @@ $1
 # 시도 실패. 다음 밤에 다시 시도한다. 마지막 사람 차례 뒤의 실패가 MAX_ATTEMPTS에 닿으면 사람 차례로 넘긴다.
 attempt_failed() {
   local failed
+  fresh_token
   # shellcheck disable=SC2016 # jq 변수다
   failed=$(gh issue view "$N" -R "$REPO" --json comments --jq '[.comments[].body]
     | ([range(length) as $i | select(.[$i] | contains("<!-- agent:human-turn -->")) | $i] | last // -1) as $h
@@ -80,7 +96,7 @@ attempt_failed() {
   fi
   save_wip
   close_pr
-  gh issue comment "$N" -R "$REPO" --body "<!-- agent:attempt-failed -->
+  gh_write issue comment "$N" -R "$REPO" --body "<!-- agent:attempt-failed -->
 구현 시도 실패 (${failed}/${MAX_ATTEMPTS}). 다음 밤에 다시 해요 · [실행 로그]($RUN_URL)
 
 $1
@@ -97,7 +113,7 @@ $SAVED" > /dev/null
 claude_run() {
   local name=$1 prompt=$2 schema=$3 effort=$4 turns=$5 tools=$6 deny=${7:-$NO_TOOLS}
   echo "::group::Claude $name (effort $effort)"
-  env -u GH_TOKEN -u ACTIONS_TOKEN claude -p "$prompt" \
+  env "${SECRET_ENV[@]}" claude -p "$prompt" \
     --model "$AGENT_MODEL" --fallback-model sonnet --effort "$effort" --max-turns "$turns" \
     --output-format stream-json --verbose --json-schema "$(jq -c . "$schema")" \
     --allowedTools "$tools" --disallowedTools "$deny" \
@@ -117,7 +133,7 @@ out() { jq -r "$2 // empty" "$A/$1.out.json"; }
 why() { jq -r '"\(.kind): \(.detail)"' "$A/$1.info.json"; }
 
 run_checks() {
-  pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm e2e
+  env "${SECRET_ENV[@]}" bash -c 'pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm e2e'
 }
 
 # ── 준비 ───────────────────────────────────────────────────────────────
@@ -133,7 +149,7 @@ else
 fi
 
 # public 레포라 누구나 코멘트할 수 있다. 소유자와 봇의 코멘트만 모델에 넘긴다.
-BOT=$(gh api user --jq .login)
+BOT=$BOT_LOGIN
 export BOT OWNER
 TITLE=$(gh issue view "$N" -R "$REPO" --json title --jq .title)
 gh issue view "$N" -R "$REPO" --json title,body,comments --jq '"# #\(env.N) \(.title)\n\n\(.body)\n\n## 코멘트 (소유자 답은 본문보다 우선한다)\n"
@@ -251,7 +267,7 @@ suggestions=$(jq '[.findings[] | select(.severity == "suggestion")] | length' "$
 } > "$A/pr-body.md"
 
 git_push origin "HEAD:refs/heads/$BRANCH"
-url=$(gh pr create -R "$REPO" --base main --head "$BRANCH" --title "$TITLE" --body-file "$A/pr-body.md" --label agent) \
+url=$(gh_write pr create -R "$REPO" --base main --head "$BRANCH" --title "$TITLE" --body-file "$A/pr-body.md" --label agent) \
   || attempt_failed "PR을 만들지 못했어요"
 PR=${url##*/}
 echo "PR #$PR"
@@ -261,6 +277,7 @@ wait_ci() {
   local deadline=$((SECONDS + 45 * 60)) checks state
   while [ $SECONDS -lt $deadline ]; do
     sleep 30
+    fresh_token
     checks=$(gh pr checks "$PR" -R "$REPO" --json workflow,bucket 2> /dev/null) || true
     state=$(jq -r '[.[]? | select(.workflow == "CI") | .bucket]
       | if length == 0 then "pending"
@@ -279,12 +296,12 @@ if ! wait_ci; then
   # 같은 검사를 이미 통과했으므로 먼저 일시적 실패로 보고 한 번만 다시 돌린다.
   run=$(gh pr checks "$PR" -R "$REPO" --json workflow,bucket,link \
     --jq '[.[] | select(.workflow == "CI" and .bucket == "fail") | .link][0] // empty' | grep -oE 'runs/[0-9]+' | cut -d/ -f2 || true)
-  if [ -z "$run" ] || ! GH_TOKEN="$ACTIONS_TOKEN" gh run rerun "$run" -R "$REPO" --failed || ! wait_ci; then
+  if [ -z "$run" ] || ! GH_TOKEN="$ACTIONS_TOKEN" gh_write run rerun "$run" -R "$REPO" --failed || ! wait_ci; then
     attempt_failed "슬롯 안의 검사는 통과했지만 CI가 실패했어요 (PR #$PR)"
   fi
 fi
 
-gh pr merge "$PR" -R "$REPO" --merge || attempt_failed "PR #$PR을 merge하지 못했어요 (main과 충돌 등)"
-gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" > /dev/null || true
-gh api -X DELETE "repos/$REPO/git/refs/heads/$WIP" > /dev/null 2>&1 || true
+gh_write pr merge "$PR" -R "$REPO" --merge || attempt_failed "PR #$PR을 merge하지 못했어요 (main과 충돌 등)"
+gh_write api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" > /dev/null || true
+gh_write api -X DELETE "repos/$REPO/git/refs/heads/$WIP" > /dev/null 2>&1 || true
 echo "PR #$PR merge"

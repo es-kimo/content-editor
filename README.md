@@ -101,7 +101,7 @@ CI (PR)          check + e2e + guard (agent/ 브랜치의 금지 변경 검사)
 
 ### 사람 차례
 
-사람 차례는 assignee 하나로 나타낸다. 소유자에게 assign된 이슈가 내 할 일이고, 에이전트는 assign된 이슈를 고르지 않는다. 알림이 오도록 코멘트·assign은 봇 계정(es-kimo-bot)이 한다.
+사람 차례는 assignee 하나로 나타낸다. 소유자에게 assign된 이슈가 내 할 일이고, 에이전트는 assign된 이슈를 고르지 않는다. 알림이 오도록 코멘트·assign은 봇 GitHub App이 한다.
 
 | 언제                                                                               | 무엇을                                           |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -138,16 +138,16 @@ CI (PR)          check + e2e + guard (agent/ 브랜치의 금지 변경 검사)
 
 누가 할지는 `agent-ready` 라벨로 나눈다. 에이전트 몫이면 단다(완료 기준을 테스트나 실행 결과로 확인할 수 있고 이 레포 밖의 작업이 없어야 한다). 사람 작업이면 달지 않는다. 잠시 빼 두려면 `blocked`를 단다.
 
-| 설정                                                                  | 종류     | 값                                                                                             |
-| --------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `CLAUDE_CODE_OAUTH_TOKEN`                                             | secret   | `claude setup-token` (구독 사용)                                                               |
-| `PLANNER_GH_TOKEN`                                                    | secret   | 봇 계정 classic PAT. 기획자와 같이 쓴다 ([기획자 준비](.github/planner/README.md#준비))        |
-| `AGENT_ENABLED`                                                       | variable | `true`일 때만 돈다 (끄는 스위치)                                                               |
-| `AGENT_NIGHT_SLOTS`                                                   | variable | 기본 `10`. 하룻밤 슬롯 수 (= 최대 merge 수)                                                    |
-| `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable | 기본 `5` / `2`. 수정 상한은 검사 실패 수정과 리뷰 지적 수정에 따로 적용한다                    |
-| `AGENT_MODEL`                                                         | variable | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR 본문 끝에 남는다    |
-| `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable | 기본 `medium` / `high` / `medium`                                                              |
-| `AGENT_SKILLS_MARKETPLACE`                                            | variable | 기본 `https://github.com/es-kimo/claude-skills.git`. `review-kit` 플러그인이 있는 마켓플레이스 |
+| 설정                                                                  | 종류              | 값                                                                                             |
+| --------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------- |
+| `CLAUDE_CODE_OAUTH_TOKEN`                                             | secret            | `claude setup-token` (구독 사용)                                                               |
+| `BOT_APP_ID` / `BOT_APP_PRIVATE_KEY`                                  | variable / secret | 봇 GitHub App. 기획자와 같이 쓴다 ([봇 GitHub App](.github/planner/README.md#봇-github-app))   |
+| `AGENT_ENABLED`                                                       | variable          | `true`일 때만 돈다 (끄는 스위치)                                                               |
+| `AGENT_NIGHT_SLOTS`                                                   | variable          | 기본 `10`. 하룻밤 슬롯 수 (= 최대 merge 수)                                                    |
+| `AGENT_MAX_FIX` / `AGENT_MAX_ATTEMPTS`                                | variable          | 기본 `5` / `2`. 수정 상한은 검사 실패 수정과 리뷰 지적 수정에 따로 적용한다                    |
+| `AGENT_MODEL`                                                         | variable          | 기본 `claude-opus-5-5`. 쓸 수 없으면 `sonnet`으로 fallback. 실제 모델은 PR 본문 끝에 남는다    |
+| `AGENT_EFFORT_IMPLEMENT` / `AGENT_EFFORT_REVIEW` / `AGENT_EFFORT_FIX` | variable          | 기본 `medium` / `high` / `medium`                                                              |
+| `AGENT_SKILLS_MARKETPLACE`                                            | variable          | 기본 `https://github.com/es-kimo/claude-skills.git`. `review-kit` 플러그인이 있는 마켓플레이스 |
 
 수동 실행: `gh workflow run night-shift.yml -f issue=<번호>` (이슈 하나), `gh workflow run night-shift.yml -f slots=3` (자동 선택 3개)
 

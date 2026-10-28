@@ -36,9 +36,11 @@ jobs:
 
       - name: 릴리즈 초안
         env:
-          GH_TOKEN: ${{ secrets.PLANNER_GH_TOKEN }}
+          APP_ID: ${{ vars.BOT_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
+          source scripts/planner/token.sh && fresh_token
           jobs=$(node scripts/planner/run.mts jobs release)
           echo "할 일: $jobs"
           while read -r job; do

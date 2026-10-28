@@ -8,7 +8,7 @@
  *   node scripts/planner/run.mts fail '<job>' [out.json]   # 실패를 기획 이슈에 알린다
  *
  * jobs는 이벤트 내용이 아니라 열린 기획 이슈의 상태로 할 일을 고른다. 어느 트리거에서 불러도(코멘트, 수동 실행, 다른 워크플로) 같은 일을 한다.
- * env: GH_TOKEN(기획자 봇), REPO, OWNER, EVENT_NAME, GITHUB_EVENT_PATH, PLANNER_DIR, MODEL, EFFORT, RUN_URL
+ * env: GH_TOKEN(봇 앱 설치 토큰), BOT_LOGIN, REPO, OWNER, EVENT_NAME, GITHUB_EVENT_PATH, PLANNER_DIR, MODEL, EFFORT, RUN_URL
  */
 import { access, readFile, rm, writeFile } from "node:fs/promises";
 
@@ -63,9 +63,9 @@ const AGENT_READY = "agent-ready";
 /** apply가 실패한 이유. 워크플로가 apply와 fail을 따로 부르므로 파일로 넘긴다. */
 const errorPath = `${dir}/error.txt`;
 
-async function people(): Promise<People> {
-  const bot = await gh.request<{ login: string }>("/user");
-  return { owner: env("OWNER"), bot: bot.login };
+// 앱 설치 토큰으로는 /user를 부를 수 없어서 봇 이름을 env로 받는다 (scripts/planner/token.sh).
+function people(): People {
+  return { owner: env("OWNER"), bot: env("BOT_LOGIN") };
 }
 
 const issuesOnly = (items: ApiIssue[]) => items.filter((i) => !i.pull_request);
@@ -93,7 +93,7 @@ async function issueJobs(mode: IssueJob["mode"]): Promise<IssueJob[]> {
   const milestones = await gh.list<ApiMilestone>(`${base}/milestones?state=all`);
   const pkg = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
   const used = milestones.map((m) => m.title);
-  return planJobs(mode, planning, await people(), used, pkg.version, MAX_JOBS);
+  return planJobs(mode, planning, people(), used, pkg.version, MAX_JOBS);
 }
 
 /** 이슈가 닫혀서 불렸으면 그 이슈의 마일스톤만, 수동 실행이면 열린 마일스톤을 모두 본다. */
@@ -166,11 +166,7 @@ async function context(job: Job): Promise<void> {
   await rm(errorPath, { force: true });
   const state = await repoState();
   const issue = await gh.request<ApiIssue>(`${base}/issues/${job.issue}`);
-  const parts = [
-    renderHeader(job, state),
-    renderConversation(await toPlanning(issue), await people()),
-    renderState(state),
-  ];
+  const parts = [renderHeader(job, state), renderConversation(await toPlanning(issue), people()), renderState(state)];
   await writeFile(`${dir}/context.md`, parts.join("\n\n---\n\n") + "\n");
 }
 
